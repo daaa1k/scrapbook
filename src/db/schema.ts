@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 export const notebooks = sqliteTable('notebooks', {
@@ -25,6 +26,7 @@ export const sources = sqliteTable(
     summary: text('summary'),
     contentHash: text('content_hash'),
     fetchStatus: text('fetch_status').notNull(),
+    acquiredVia: text('acquired_via').notNull().default('fetch'),
     r2Key: text('r2_key'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
@@ -32,21 +34,29 @@ export const sources = sqliteTable(
   (table) => [uniqueIndex('sources_normalized_url_unique').on(table.normalizedUrl)],
 )
 
-export const jobs = sqliteTable('jobs', {
-  id: text('id').primaryKey(),
-  sourceId: text('source_id')
-    .notNull()
-    .references(() => sources.id),
-  status: text('status').notNull(),
-  cursorAgentId: text('cursor_agent_id'),
-  errorCode: text('error_code'),
-  errorMessage: text('error_message'),
-  attemptCount: integer('attempt_count').notNull().default(0),
-  createdAt: integer('created_at').notNull(),
-  updatedAt: integer('updated_at').notNull(),
-  startedAt: integer('started_at'),
-  finishedAt: integer('finished_at'),
-})
+export const jobs = sqliteTable(
+  'jobs',
+  {
+    id: text('id').primaryKey(),
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => sources.id),
+    status: text('status').notNull(),
+    cursorAgentId: text('cursor_agent_id'),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+    startedAt: integer('started_at'),
+    finishedAt: integer('finished_at'),
+  },
+  (table) => [
+    uniqueIndex('jobs_one_active_per_source')
+      .on(table.sourceId)
+      .where(sql`${table.status} not in ('succeeded', 'failed')`),
+  ],
+)
 
 export const cursorRuns = sqliteTable('cursor_runs', {
   id: text('id').primaryKey(),

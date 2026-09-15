@@ -4,6 +4,7 @@ import {
   CursorNotConfigured,
   createCursorClient,
   createMockCursorClient,
+  ingestPromptForUrl,
 } from '../src/server/cursor/client'
 import { runPromiseFail } from '../src/lib/effect-run'
 
@@ -88,5 +89,11 @@ describe('Cursor client', () => {
     const run = await Effect.runPromise(mock.getRun(created.agent.id, created.run.id))
     expect(run.status).toBe('FINISHED')
     expect(run.result).toContain('モック')
+  })
+
+  it('adds an unauthenticated X note for twitter hosts', () => {
+    const prompt = ingestPromptForUrl('https://x.com/foo/status/1')
+    expect(prompt).toContain('authenticated X fetch is not implemented')
+    expect(ingestPromptForUrl('https://example.com/a')).not.toContain('authenticated X fetch is not implemented')
   })
 })

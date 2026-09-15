@@ -1,4 +1,5 @@
 import { Data, Effect } from 'effect'
+import { sourceKindFromUrl } from '~/domain/url'
 import {
   createAgentResponseSchema,
   createFollowUpResponseSchema,
@@ -213,7 +214,7 @@ export function createMockCursorClient(options?: {
 }
 
 export function ingestPromptForUrl(url: string): string {
-  return [
+  const lines = [
     `Fetch the URL (curl or equivalent): ${url}`,
     'Reply with ONLY JSON, no markdown commentary. Shape:',
     JSON.stringify({
@@ -225,5 +226,11 @@ export function ingestPromptForUrl(url: string): string {
       fetchStatus: 'full | partial | failed',
       failureReason: 'string | null',
     }),
-  ].join('\n')
+  ]
+  if (sourceKindFromUrl(url) === 'x') {
+    lines.push(
+      'This is an X/Twitter URL. Fetch it without login. If the page is gated or empty, set fetchStatus to failed and say authenticated X fetch is not implemented.',
+    )
+  }
+  return lines.join('\n')
 }

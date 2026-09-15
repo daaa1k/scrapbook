@@ -1,0 +1,2 @@
+ALTER TABLE `sources` ADD `acquired_via` text DEFAULT 'fetch' NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `jobs_one_active_per_source` ON `jobs` (`source_id`) WHERE "jobs"."status" not in ('succeeded', 'failed');

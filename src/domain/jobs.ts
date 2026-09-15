@@ -46,6 +46,29 @@ export function isTerminalJobStatus(status: JobStatus): boolean {
   return status === 'succeeded' || status === 'failed'
 }
 
+export function canStartCursorJob(status: JobStatus | null): boolean {
+  return status === null || isTerminalJobStatus(status)
+}
+
+export const JOB_ERROR_LABEL: Record<string, string> = {
+  workflow_start_failed: '取得ワークフローを開始できませんでした',
+  cursor_not_configured: 'Cursor APIキーが設定されていません',
+  cursor_run_failed: 'Cursor による取得が失敗しました',
+  timeout: '取得が時間切れになりました',
+  ingest_failed: '取得処理に失敗しました',
+  ingest_result_not_json: '取得結果の形式が不正でした',
+  source_not_found: 'ソースが見つかりません',
+  source_has_no_url: 'このソースには再取得できるURLがありません',
+  job_in_progress: '取得処理中です。完了してから貼り付けてください',
+}
+
+export function jobErrorReason(code: string | null, message: string | null): string {
+  const label = code ? (JOB_ERROR_LABEL[code] ?? '失敗しました') : '失敗しました'
+  const detail = message?.trim() ?? ''
+  if (detail && detail !== code) return `${label}: ${detail}`
+  return label
+}
+
 export function sanitizeErrorMessage(message: string): string {
   return message.replace(/\s+/g, ' ').trim().slice(0, 400)
 }
