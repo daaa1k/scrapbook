@@ -1,0 +1,8 @@
+pre-commit:
+  commands:
+    typecheck:
+      run: bun run typecheck
+    test:
+      run: bun run test
+    secrets:
+      run: bun run secrets

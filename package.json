@@ -1,0 +1,50 @@
+{
+  "name": "scrapbook",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "packageManager": "bun@1.4.2",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "migrate": "wrangler d1 migrations apply DB --local",
+    "secrets": "bash scripts/secrets.sh",
+    "cf-typegen": "wrangler types",
+    "db:generate": "drizzle-kit generate",
+    "deploy": "bun run build && wrangler deploy"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.2",
+    "@tanstack/react-router": "^1.170.36",
+    "@tanstack/react-router-ssr-query": "^1.167.2",
+    "@tanstack/react-start": "^1.168.54",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.44.5",
+    "jose": "^6.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.3.1",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.29.0",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.5.4",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "better-sqlite3": "^12.2.0",
+    "drizzle-kit": "^0.31.4",
+    "lefthook": "^1.13.1",
+    "tailwindcss": "^4.2.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vite": "^8.0.14",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.74.0"
+  }
+}
