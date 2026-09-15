@@ -9,11 +9,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.8.2'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
       - name: Install
         run: bun install --frozen-lockfile
+      - name: Rebuild native test bindings
+        run: npm rebuild better-sqlite3
+      - name: Node version
+        run: node --version
       - name: Typecheck
         run: bun run typecheck
       - name: Test

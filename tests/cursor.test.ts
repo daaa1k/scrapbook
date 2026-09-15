@@ -1,9 +1,11 @@
+import { Effect, Exit } from 'effect'
 import { describe, expect, it } from 'vitest'
 import {
   CursorNotConfigured,
   createCursorClient,
   createMockCursorClient,
 } from '../src/server/cursor/client'
+import { runPromiseFail } from '../src/lib/effect-run'
 
 const createFixture = {
   agent: {
@@ -34,8 +36,14 @@ const runFixture = {
 }
 
 describe('Cursor client', () => {
-  it('throws CursorNotConfigured when apiKey is empty', () => {
-    expect(() => createCursorClient({ apiKey: '' })).toThrow(CursorNotConfigured)
+  it('fails with CursorNotConfigured when apiKey is empty', async () => {
+    const client = createCursorClient({ apiKey: '' })
+    const exit = await Effect.runPromiseExit(client.createAgent('hello'))
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit) && exit.cause._tag === 'Fail') {
+      expect(exit.cause.error).toBeInstanceOf(CursorNotConfigured)
+      expect(exit.cause.error._tag).toBe('CursorNotConfigured')
+    }
   })
 
   it('parses create and get-run fixtures via mock fetch', async () => {
@@ -56,11 +64,11 @@ describe('Cursor client', () => {
       },
     })
 
-    const created = await client.createAgent('hello')
+    const created = await Effect.runPromise(client.createAgent('hello'))
     expect(created.agent.id).toBe(createFixture.agent.id)
     expect(created.run.status).toBe('CREATING')
 
-    const run = await client.getRun(created.agent.id, created.run.id)
+    const run = await Effect.runPromise(client.getRun(created.agent.id, created.run.id))
     expect(run.status).toBe('FINISHED')
     expect(run.result).toBe('Added README.md')
     expect(calls.every((call) => call.auth === 'Bearer test-key')).toBe(true)
@@ -71,13 +79,13 @@ describe('Cursor client', () => {
       apiKey: 'test-key',
       fetch: async () => new Response('{not json', { status: 200 }),
     })
-    await expect(client.getAgent('bc-x')).rejects.toThrow(/non-JSON/)
+    await expect(runPromiseFail(client.getAgent('bc-x'))).rejects.toThrow(/non-JSON/)
   })
 
   it('mock client returns FINISHED canned JSON', async () => {
     const mock = createMockCursorClient()
-    const created = await mock.createAgent('x')
-    const run = await mock.getRun(created.agent.id, created.run.id)
+    const created = await Effect.runPromise(mock.createAgent('x'))
+    const run = await Effect.runPromise(mock.getRun(created.agent.id, created.run.id))
     expect(run.status).toBe('FINISHED')
     expect(run.result).toContain('モック')
   })

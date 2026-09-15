@@ -24,7 +24,8 @@ Worker  src/server.ts
 - **Official Vite** (`vite` + `@cloudflare/vite-plugin`). Not Vite+. Vite+ aliases `vite` and fights the Cloudflare plugin.
 - Custom entry `src/server.ts` re-exports TanStack `fetch` **and** the `IngestWorkflow` class.
 - Bindings via `import { env } from "cloudflare:workers"`.
-- Zod at server functions, Access JWT, Cursor API, and Workflow I/O.
+- Zod at server functions, Access JWT, Cursor JSON, and Workflow I/O. Effect Schema is not used.
+- Effect (`effect` 3.22.2) on the Cursor REST client and job transitions. Typed errors (`CursorNotConfigured`, `CursorApiError`, `IllegalJobTransitionError`) travel the Effect channel. Cloudflare Workflow steps stay Promise-based. `Effect.runPromise` is the bridge.
 - `jose` verifies Access JWTs (signature + `iss` + `aud` + `exp` + email allowlist). Never decode-only.
 
 ## Data model
@@ -58,7 +59,7 @@ failed (terminal)
 
 ## Local commands
 
-Requires bun 1.4.2 (via mise) and Node 22.
+Requires bun 1.4.2 (via mise) and Node 26.8.2 (mise toolchain; production still runs on Workers, not Node). Tests use `better-sqlite3`, which must be compiled for that Node. After a Node bump, run `npm rebuild better-sqlite3` if Vitest reports an ABI mismatch.
 
 ```bash
 eval "$(~/.local/bin/mise activate bash)"

@@ -1,4 +1,6 @@
+import { Data, Effect } from 'effect'
 import { z } from 'zod'
+import { runSyncFail } from '~/lib/effect-run'
 
 export const jobStatusSchema = z.enum([
   'queued',
@@ -20,23 +22,24 @@ export const JOB_TRANSITIONS: Readonly<Record<JobStatus, readonly JobStatus[]>> 
   failed: [],
 }
 
-export class IllegalJobTransitionError extends Error {
-  readonly code = 'illegal_job_transition' as const
+export class IllegalJobTransitionError extends Data.TaggedError('IllegalJobTransitionError')<{
+  readonly from: JobStatus
+  readonly to: JobStatus
+}> {}
 
-  constructor(
-    readonly from: JobStatus,
-    readonly to: JobStatus,
-  ) {
-    super(`illegal job transition: ${from} -> ${to}`)
-    this.name = 'IllegalJobTransitionError'
+export function assertTransitionEffect(
+  from: JobStatus,
+  to: JobStatus,
+): Effect.Effect<void, IllegalJobTransitionError> {
+  const allowed = JOB_TRANSITIONS[from]
+  if (!allowed.includes(to)) {
+    return Effect.fail(new IllegalJobTransitionError({ from, to }))
   }
+  return Effect.void
 }
 
 export function assertTransition(from: JobStatus, to: JobStatus): void {
-  const allowed = JOB_TRANSITIONS[from]
-  if (!allowed.includes(to)) {
-    throw new IllegalJobTransitionError(from, to)
-  }
+  runSyncFail(assertTransitionEffect(from, to))
 }
 
 export function isTerminalJobStatus(status: JobStatus): boolean {

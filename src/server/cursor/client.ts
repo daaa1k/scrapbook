@@ -1,3 +1,4 @@
+import { Data, Effect } from 'effect'
 import {
   createAgentResponseSchema,
   createFollowUpResponseSchema,
@@ -8,32 +9,22 @@ import {
   type CursorRun,
 } from './schemas'
 
-export class CursorNotConfigured extends Error {
-  readonly code = 'cursor_not_configured' as const
+export class CursorNotConfigured extends Data.TaggedError('CursorNotConfigured')<{
+  readonly message: string
+}> {}
 
-  constructor() {
-    super('CURSOR_API_KEY is not configured')
-    this.name = 'CursorNotConfigured'
-  }
-}
+export class CursorApiError extends Data.TaggedError('CursorApiError')<{
+  readonly status: number
+  readonly message: string
+}> {}
 
-export class CursorApiError extends Error {
-  readonly code = 'cursor_api_error' as const
-
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message)
-    this.name = 'CursorApiError'
-  }
-}
+export type CursorFailure = CursorNotConfigured | CursorApiError
 
 export type CursorClient = {
-  createAgent: (promptText: string) => Promise<CreateAgentResponse>
-  createFollowUp: (agentId: string, promptText: string) => Promise<{ run: CursorRun }>
-  getAgent: (id: string) => Promise<CursorAgent>
-  getRun: (agentId: string, runId: string) => Promise<CursorRun>
+  createAgent: (promptText: string) => Effect.Effect<CreateAgentResponse, CursorFailure>
+  createFollowUp: (agentId: string, promptText: string) => Effect.Effect<{ run: CursorRun }, CursorFailure>
+  getAgent: (id: string) => Effect.Effect<CursorAgent, CursorFailure>
+  getRun: (agentId: string, runId: string) => Effect.Effect<CursorRun, CursorFailure>
 }
 
 type FetchLike = typeof fetch
@@ -44,64 +35,105 @@ export type CursorClientOptions = {
   baseUrl?: string
 }
 
-function assertKey(apiKey: string): string {
-  if (!apiKey) {
-    throw new CursorNotConfigured()
-  }
-  return apiKey
+function missingKey(): CursorNotConfigured {
+  return new CursorNotConfigured({ message: 'CURSOR_API_KEY is not configured' })
 }
 
-async function parseJson(response: Response, context: string): Promise<unknown> {
-  const text = await response.text()
-  if (!response.ok) {
-    throw new CursorApiError(response.status, `${context} failed (${response.status})`)
-  }
-  try {
-    return JSON.parse(text) as unknown
-  } catch {
-    throw new CursorApiError(response.status, `${context} returned non-JSON`)
-  }
+function parseJson(response: Response, context: string): Effect.Effect<unknown, CursorApiError> {
+  return Effect.gen(function* () {
+    const text = yield* Effect.tryPromise({
+      try: () => response.text(),
+      catch: () => new CursorApiError({ status: response.status, message: `${context} failed to read body` }),
+    })
+    if (!response.ok) {
+      return yield* Effect.fail(
+        new CursorApiError({ status: response.status, message: `${context} failed (${response.status})` }),
+      )
+    }
+    return yield* Effect.try({
+      try: () => JSON.parse(text) as unknown,
+      catch: () => new CursorApiError({ status: response.status, message: `${context} returned non-JSON` }),
+    })
+  })
+}
+
+function parseWithZod<T>(schema: { parse: (value: unknown) => T }, body: unknown): Effect.Effect<T, CursorApiError> {
+  return Effect.try({
+    try: () => schema.parse(body),
+    catch: (cause) =>
+      new CursorApiError({
+        status: 200,
+        message: cause instanceof Error ? cause.message : 'invalid cursor response',
+      }),
+  })
 }
 
 export function createCursorClient(options: CursorClientOptions): CursorClient {
-  const apiKey = assertKey(options.apiKey)
+  if (!options.apiKey) {
+    const fail = Effect.fail(missingKey())
+    return {
+      createAgent: () => fail,
+      createFollowUp: () => fail,
+      getAgent: () => fail,
+      getRun: () => fail,
+    }
+  }
+
+  const apiKey = options.apiKey
   const fetchImpl = options.fetch ?? fetch
   const baseUrl = (options.baseUrl ?? 'https://api.cursor.com').replace(/\/$/, '')
 
-  async function request(path: string, init?: RequestInit): Promise<unknown> {
-    const response = await fetchImpl(`${baseUrl}${path}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        ...(init?.headers ?? {}),
-      },
+  const request = (path: string, init?: RequestInit): Effect.Effect<unknown, CursorApiError> =>
+    Effect.gen(function* () {
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetchImpl(`${baseUrl}${path}`, {
+            ...init,
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              ...(init?.headers ?? {}),
+            },
+          }),
+        catch: (cause) =>
+          new CursorApiError({
+            status: 0,
+            message: cause instanceof Error ? cause.message : 'cursor request failed',
+          }),
+      })
+      return yield* parseJson(response, `${init?.method ?? 'GET'} ${path}`)
     })
-    return parseJson(response, `${init?.method ?? 'GET'} ${path}`)
-  }
 
   return {
-    async createAgent(promptText: string) {
-      const body = await request('/v1/agents', {
-        method: 'POST',
-        body: JSON.stringify({ prompt: { text: promptText } }),
+    createAgent(promptText: string) {
+      return Effect.gen(function* () {
+        const body = yield* request('/v1/agents', {
+          method: 'POST',
+          body: JSON.stringify({ prompt: { text: promptText } }),
+        })
+        return yield* parseWithZod(createAgentResponseSchema, body)
       })
-      return createAgentResponseSchema.parse(body)
     },
-    async createFollowUp(agentId: string, promptText: string) {
-      const body = await request(`/v1/agents/${agentId}/runs`, {
-        method: 'POST',
-        body: JSON.stringify({ prompt: { text: promptText } }),
+    createFollowUp(agentId: string, promptText: string) {
+      return Effect.gen(function* () {
+        const body = yield* request(`/v1/agents/${agentId}/runs`, {
+          method: 'POST',
+          body: JSON.stringify({ prompt: { text: promptText } }),
+        })
+        return yield* parseWithZod(createFollowUpResponseSchema, body)
       })
-      return createFollowUpResponseSchema.parse(body)
     },
-    async getAgent(id: string) {
-      const body = await request(`/v1/agents/${id}`, { method: 'GET' })
-      return cursorAgentSchema.parse(body)
+    getAgent(id: string) {
+      return Effect.gen(function* () {
+        const body = yield* request(`/v1/agents/${id}`, { method: 'GET' })
+        return yield* parseWithZod(cursorAgentSchema, body)
+      })
     },
-    async getRun(agentId: string, runId: string) {
-      const body = await request(`/v1/agents/${agentId}/runs/${runId}`, { method: 'GET' })
-      return cursorRunSchema.parse(body)
+    getRun(agentId: string, runId: string) {
+      return Effect.gen(function* () {
+        const body = yield* request(`/v1/agents/${agentId}/runs/${runId}`, { method: 'GET' })
+        return yield* parseWithZod(cursorRunSchema, body)
+      })
     },
   }
 }
@@ -127,12 +159,12 @@ export function createMockCursorClient(options?: {
   const status = options?.runStatus ?? 'FINISHED'
 
   return {
-    async createAgent() {
-      return {
+    createAgent() {
+      return Effect.succeed({
         agent: {
           id: agentId,
           name: 'ingest',
-          status: 'ACTIVE',
+          status: 'ACTIVE' as const,
           createdAt: now,
           updatedAt: now,
           latestRunId: runId,
@@ -140,42 +172,42 @@ export function createMockCursorClient(options?: {
         run: {
           id: runId,
           agentId,
-          status: 'CREATING',
+          status: 'CREATING' as const,
           createdAt: now,
           updatedAt: now,
         },
-      }
+      })
     },
-    async createFollowUp() {
-      return {
+    createFollowUp() {
+      return Effect.succeed({
         run: {
           id: `${runId}-followup`,
           agentId,
-          status: 'CREATING',
+          status: 'CREATING' as const,
           createdAt: now,
           updatedAt: now,
         },
-      }
+      })
     },
-    async getAgent() {
-      return {
+    getAgent() {
+      return Effect.succeed({
         id: agentId,
         name: 'ingest',
-        status: 'IDLE',
+        status: 'IDLE' as const,
         createdAt: now,
         updatedAt: now,
         latestRunId: runId,
-      }
+      })
     },
-    async getRun() {
-      return {
+    getRun() {
+      return Effect.succeed({
         id: runId,
         agentId,
         status,
         createdAt: now,
         updatedAt: now,
         result: status === 'FINISHED' ? result : undefined,
-      }
+      })
     },
   }
 }

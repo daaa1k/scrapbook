@@ -1,20 +1,23 @@
+import { Effect } from 'effect'
 import { eq } from 'drizzle-orm'
 import { cursorRuns, jobs, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { parseIngestResultJson, sha256Hex } from '~/domain/ingest-result'
 import {
-  assertTransition,
+  assertTransitionEffect,
   IllegalJobTransitionError,
   jobStatusSchema,
   sanitizeErrorMessage,
   type JobStatus,
 } from '~/domain/jobs'
+import { runPromiseFail } from '~/lib/effect-run'
 import {
   createCursorClient,
   createMockCursorClient,
   ingestPromptForUrl,
   CursorNotConfigured,
   type CursorClient,
+  type CursorFailure,
 } from '~/server/cursor/client'
 import { FAILED_CURSOR_RUN_STATUSES } from '~/server/cursor/schemas'
 import { isInsecureAuthBypassEnabled } from '~/server/auth/access'
@@ -59,7 +62,7 @@ async function transitionJob(
 ): Promise<void> {
   const job = await loadJob(db, jobId)
   const from = jobStatusSchema.parse(job.status)
-  assertTransition(from, to)
+  await runPromiseFail(assertTransitionEffect(from, to))
   await db
     .update(jobs)
     .set({
@@ -80,7 +83,7 @@ async function failJob(
   const job = await loadJob(db, jobId)
   const from = jobStatusSchema.parse(job.status)
   if (from !== 'failed') {
-    assertTransition(from, 'failed')
+    await runPromiseFail(assertTransitionEffect(from, 'failed'))
   }
   await db
     .update(jobs)
@@ -94,16 +97,20 @@ async function failJob(
     .where(eq(jobs.id, jobId))
 }
 
-function resolveCursor(options: IngestRunOptions): CursorClient {
-  if (options.cursor) return options.cursor
+function resolveCursor(options: IngestRunOptions): Effect.Effect<CursorClient, CursorNotConfigured> {
+  if (options.cursor) return Effect.succeed(options.cursor)
   const key = options.env?.CURSOR_API_KEY ?? ''
   if (!key) {
     if (options.env && isInsecureAuthBypassEnabled(options.env)) {
-      return createMockCursorClient()
+      return Effect.succeed(createMockCursorClient())
     }
-    throw new CursorNotConfigured()
+    return Effect.fail(new CursorNotConfigured({ message: 'CURSOR_API_KEY is not configured' }))
   }
-  return createCursorClient({ apiKey: key, fetch: options.fetchImpl })
+  return Effect.succeed(createCursorClient({ apiKey: key, fetch: options.fetchImpl }))
+}
+
+function runCursor<A>(effect: Effect.Effect<A, CursorFailure>): Promise<A> {
+  return runPromiseFail(effect)
 }
 
 export async function runIngestWorkflow(options: IngestRunOptions): Promise<void> {
@@ -120,8 +127,12 @@ export async function runIngestWorkflow(options: IngestRunOptions): Promise<void
     })
 
     const created = await step.do('create-cursor-agent', async () => {
-      const cursor = resolveCursor(options)
-      return cursor.createAgent(ingestPromptForUrl(params.url))
+      return runCursor(
+        Effect.gen(function* () {
+          const cursor = yield* resolveCursor(options)
+          return yield* cursor.createAgent(ingestPromptForUrl(params.url))
+        }),
+      )
     })
 
     await step.do('save-cursor-ids', async () => {
@@ -152,8 +163,12 @@ export async function runIngestWorkflow(options: IngestRunOptions): Promise<void
     for (let i = 0; i < maxPolls; i += 1) {
       await step.sleep(`poll-sleep-${i}`, pollSleep)
       terminal = await step.do(`poll-run-${i}`, async () => {
-        const cursor = resolveCursor(options)
-        const run = await cursor.getRun(created.agent.id, created.run.id)
+        const run = await runCursor(
+          Effect.gen(function* () {
+            const cursor = yield* resolveCursor(options)
+            return yield* cursor.getRun(created.agent.id, created.run.id)
+          }),
+        )
         const ts = now()
         await db
           .update(cursorRuns)
