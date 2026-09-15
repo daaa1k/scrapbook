@@ -1,0 +1,69 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "scrapbook",
+  "compatibility_date": "2026-09-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/server.ts",
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "scrapbook",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ASSETS",
+      "bucket_name": "scrapbook-assets"
+    }
+  ],
+  "workflows": [
+    {
+      "name": "scrapbook-ingest",
+      "binding": "INGEST_WORKFLOW",
+      "class_name": "IngestWorkflow"
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "development",
+    "ALLOW_INSECURE_AUTH_BYPASS": "true",
+    "ACCESS_TEAM_DOMAIN": "https://example.cloudflareaccess.com",
+    "ACCESS_AUD": "replace-me",
+    "ACCESS_ALLOWED_EMAILS": "you@example.com"
+  },
+  "env": {
+    "production": {
+      "name": "scrapbook",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "ALLOW_INSECURE_AUTH_BYPASS": "false",
+        "ACCESS_TEAM_DOMAIN": "https://example.cloudflareaccess.com",
+        "ACCESS_AUD": "replace-me",
+        "ACCESS_ALLOWED_EMAILS": "you@example.com"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "scrapbook",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "drizzle"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "ASSETS",
+          "bucket_name": "scrapbook-assets"
+        }
+      ],
+      "workflows": [
+        {
+          "name": "scrapbook-ingest",
+          "binding": "INGEST_WORKFLOW",
+          "class_name": "IngestWorkflow"
+        }
+      ]
+    }
+  }
+}
