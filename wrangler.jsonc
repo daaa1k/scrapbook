@@ -9,7 +9,7 @@
     {
       "binding": "DB",
       "database_name": "scrapbook",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "9f72eb28-2229-4e60-acc1-6d6d4d15cee2",
       "migrations_dir": "drizzle"
     }
   ],
@@ -47,7 +47,7 @@
         {
           "binding": "DB",
           "database_name": "scrapbook",
-          "database_id": "00000000-0000-0000-0000-000000000000",
+          "database_id": "9f72eb28-2229-4e60-acc1-6d6d4d15cee2",
           "migrations_dir": "drizzle"
         }
       ],
