@@ -17,7 +17,7 @@
     "secrets": "bash scripts/secrets.sh",
     "cf-typegen": "wrangler types",
     "db:generate": "drizzle-kit generate",
-    "deploy": "bun run build && wrangler deploy"
+    "deploy": "CLOUDFLARE_ENV=production bun run build && wrangler deploy"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.2",
