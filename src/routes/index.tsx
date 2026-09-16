@@ -5,8 +5,8 @@ import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { Input } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
-import { acquiredViaLabel, jobStatusLabel, userFacingError } from '~/lib/utils'
-import { listSources, pasteSource, registerSource, stubPdfUpload } from '~/server/functions/sources'
+import { acquiredViaLabel, jobStatusLabel, sourceKindLabel, userFacingError } from '~/lib/utils'
+import { listSources, pasteSource, registerPdf, registerSource } from '~/server/functions/sources'
 
 export const Route = createFileRoute('/')({
   loader: ({ context }) =>
@@ -28,6 +28,8 @@ function HomePage() {
   const [pasteBody, setPasteBody] = useState('')
   const [pasteUrl, setPasteUrl] = useState('')
   const [pasteError, setPasteError] = useState<string | null>(null)
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [pdfError, setPdfError] = useState<string | null>(null)
 
   const sourcesQuery = useQuery({
     queryKey: ['sources', submittedQuery],
@@ -63,8 +65,19 @@ function HomePage() {
     },
   })
 
-  const pdfStub = useMutation({
-    mutationFn: () => stubPdfUpload(),
+  const uploadPdf = useMutation({
+    mutationFn: (file: File) => {
+      const data = new FormData()
+      data.set('file', file)
+      return registerPdf({ data })
+    },
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ['sources'] })
+      await navigate({ to: '/sources/$sourceId', params: { sourceId: result.sourceId } })
+    },
+    onError: (error) => {
+      setPdfError(userFacingError(error))
+    },
   })
 
   const sources = sourcesQuery.data ?? []
@@ -95,19 +108,39 @@ function HomePage() {
           </Button>
         </form>
         {formError ? <p className="mt-2 text-sm text-red-600">{formError}</p> : null}
-        <p className="mt-3 text-sm text-zinc-500">
-          PDFアップロードは未実装です。スタブとして R2 に空ファイルを書けます。
+      </section>
+
+      <section>
+        <h2 className="mb-4 text-xl font-semibold">PDFを登録</h2>
+        <p className="mb-3 text-sm text-zinc-500">
+          原本は非公開のまま保存します。テキスト層があるPDFは本文を抽出します。Cursorは起動しません。8MBまでです。
         </p>
-        <Button
-          className="mt-2 bg-zinc-600"
-          disabled={pdfStub.isPending}
-          onClick={() => pdfStub.mutate()}
+        <form
+          className="flex flex-col gap-3 sm:flex-row sm:items-end"
+          onSubmit={(event) => {
+            event.preventDefault()
+            setPdfError(null)
+            if (!pdfFile) {
+              setPdfError('PDFファイルを選んでください')
+              return
+            }
+            uploadPdf.mutate(pdfFile)
+          }}
         >
-          PDFスタブを書く
-        </Button>
-        {pdfStub.data ? (
-          <p className="mt-2 text-sm text-zinc-500">R2 キー: {pdfStub.data.key}</p>
-        ) : null}
+          <Input
+            name="pdf"
+            type="file"
+            accept="application/pdf,.pdf"
+            aria-label="PDFファイル"
+            onChange={(event) => {
+              setPdfFile(event.target.files?.[0] ?? null)
+            }}
+          />
+          <Button type="submit" disabled={uploadPdf.isPending}>
+            PDFを登録
+          </Button>
+        </form>
+        {pdfError ? <p className="mt-2 text-sm text-red-600">{pdfError}</p> : null}
       </section>
 
       <section>
@@ -178,7 +211,7 @@ function HomePage() {
             <p>
               {submittedQuery
                 ? '一致するソースがありません。'
-                : 'まだソースがありません。URLを登録するか、本文を貼り付けてください。'}
+                : 'まだソースがありません。URLを登録するか、PDFをアップロードするか、本文を貼り付けてください。'}
             </p>
           </Card>
         ) : (
@@ -188,9 +221,13 @@ function HomePage() {
                 <Link to="/sources/$sourceId" params={{ sourceId: source.id }}>
                   <Card className="hover:border-zinc-400">
                     <p className="font-medium">{source.title ?? source.url ?? source.id}</p>
-                    <p className="text-sm text-zinc-500">{source.url}</p>
+                    <p className="text-sm text-zinc-500">
+                      {source.kind === 'pdf' ? 'PDF' : source.url}
+                    </p>
                     <p className="mt-1 text-sm">
-                      処理状況: {jobStatusLabel(source.jobStatus)} / 取得経路:{' '}
+                      種類: {sourceKindLabel(source.kind)}
+                      {source.kind === 'pdf' ? null : ` / 処理状況: ${jobStatusLabel(source.jobStatus)}`}
+                      {' / 取得経路: '}
                       {acquiredViaLabel(source.acquiredVia)}
                     </p>
                   </Card>

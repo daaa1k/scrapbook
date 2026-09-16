@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SourcesSourceIdRouteImport } from './routes/sources.$sourceId'
+import { Route as AssetsSourcesSourceIdRouteImport } from './routes/assets.sources.$sourceId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const SourcesSourceIdRoute = SourcesSourceIdRouteImport.update({
   path: '/sources/$sourceId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AssetsSourcesSourceIdRoute = AssetsSourcesSourceIdRouteImport.update({
+  id: '/assets/sources/$sourceId',
+  path: '/assets/sources/$sourceId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
+  '/assets/sources/$sourceId': typeof AssetsSourcesSourceIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
+  '/assets/sources/$sourceId': typeof AssetsSourcesSourceIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
+  '/assets/sources/$sourceId': typeof AssetsSourcesSourceIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/sources/$sourceId'
+  fullPaths: '/' | '/sources/$sourceId' | '/assets/sources/$sourceId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/sources/$sourceId'
-  id: '__root__' | '/' | '/sources/$sourceId'
+  to: '/' | '/sources/$sourceId' | '/assets/sources/$sourceId'
+  id: '__root__' | '/' | '/sources/$sourceId' | '/assets/sources/$sourceId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SourcesSourceIdRoute: typeof SourcesSourceIdRoute
+  AssetsSourcesSourceIdRoute: typeof AssetsSourcesSourceIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SourcesSourceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/assets/sources/$sourceId': {
+      id: '/assets/sources/$sourceId'
+      path: '/assets/sources/$sourceId'
+      fullPath: '/assets/sources/$sourceId'
+      preLoaderRoute: typeof AssetsSourcesSourceIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SourcesSourceIdRoute: SourcesSourceIdRoute,
+  AssetsSourcesSourceIdRoute: AssetsSourcesSourceIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

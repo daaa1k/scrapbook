@@ -28,7 +28,7 @@ export type CursorClient = {
   getRun: (agentId: string, runId: string) => Effect.Effect<CursorRun, CursorFailure>
 }
 
-type FetchLike = typeof fetch
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 export type CursorClientOptions = {
   apiKey: string
