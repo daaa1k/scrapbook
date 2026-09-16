@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, sql } from 'drizzle-orm'
 import { jobs, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { sha256Hex } from '~/domain/ingest-result'
@@ -37,7 +37,7 @@ export async function latestJobForSource(db: AppDb, sourceId: string) {
     .select()
     .from(jobs)
     .where(eq(jobs.sourceId, sourceId))
-    .orderBy(desc(jobs.createdAt))
+    .orderBy(desc(jobs.createdAt), desc(sql`rowid`))
     .limit(1)
   return rows[0] ?? null
 }

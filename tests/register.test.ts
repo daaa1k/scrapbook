@@ -94,6 +94,49 @@ describe('register ingest', () => {
     expect(created).toHaveLength(1)
   })
 
+  it('does not start a second job when a later job shares createdAt with a failed one', async () => {
+    const { db } = createTestDb()
+    const created: unknown[] = []
+    const workflow = {
+      create: async (options: { params: unknown }) => {
+        created.push(options.params)
+        return { id: `wf-${created.length}` }
+      },
+    }
+    const first = await registerUrlSource(db, { url: 'https://example.com/same-created-at' }, workflow)
+    const firstJob = (await db.select().from(jobs).where(eq(jobs.id, first.jobId)))[0]!
+    await db
+      .update(jobs)
+      .set({
+        status: 'failed',
+        errorCode: 'cursor_run_failed',
+        errorMessage: 'Cursor run ended: ERROR',
+        finishedAt: firstJob.createdAt,
+        updatedAt: firstJob.createdAt,
+      })
+      .where(eq(jobs.id, first.jobId))
+
+    const queuedId = crypto.randomUUID()
+    await db.insert(jobs).values({
+      id: queuedId,
+      sourceId: first.sourceId,
+      status: 'queued',
+      cursorAgentId: null,
+      errorCode: null,
+      errorMessage: null,
+      attemptCount: 1,
+      createdAt: firstJob.createdAt,
+      updatedAt: firstJob.createdAt,
+      startedAt: null,
+      finishedAt: null,
+    })
+
+    const again = await retrySourceIngest(db, first.sourceId, workflow)
+    expect(again.started).toBe(false)
+    expect(again.jobId).toBe(queuedId)
+    expect(created).toHaveLength(1)
+  })
+
   it('starts a new job after the latest job has failed', async () => {
     const { db } = createTestDb()
     const created: unknown[] = []
