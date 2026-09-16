@@ -5,12 +5,14 @@ import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { Input } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
+import { pdfTextHelp, sourceOriginalPath } from '~/domain/pdf'
 import {
   acquiredViaLabel,
   fetchStatusLabel,
   isTerminalJobStatus,
   jobErrorReason,
   jobStatusLabel,
+  sourceKindLabel,
   userFacingError,
 } from '~/lib/utils'
 import { getSource, pasteSource, retrySource } from '~/server/functions/sources'
@@ -93,10 +95,27 @@ function SourceDetailPage() {
         <h1 className="text-2xl font-semibold">{source.title ?? '無題のソース'}</h1>
         <p className="mt-1 text-sm text-zinc-500">{source.url}</p>
         <p className="mt-1 text-sm">
-          種類: {source.kind} / 取得: {fetchStatusLabel(source.fetchStatus)} / 取得経路:{' '}
+          種類: {sourceKindLabel(source.kind)} / 取得: {fetchStatusLabel(source.fetchStatus)} / 取得経路:{' '}
           {acquiredViaLabel(source.acquiredVia)}
         </p>
+        {source.kind === 'pdf' ? (
+          <p className="mt-3 text-sm">
+            <a
+              href={sourceOriginalPath(source.id)}
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              PDFを開く
+            </a>
+            {' · '}
+            <a href={`${sourceOriginalPath(source.id)}?download=1`} className="underline">
+              ダウンロード
+            </a>
+          </p>
+        ) : null}
       </div>
+      {source.kind === 'pdf' ? null : (
       <Card>
         <h2 className="mb-2 font-medium">処理状況</h2>
         <p>{jobStatusLabel(jobStatus)}</p>
@@ -123,12 +142,16 @@ function SourceDetailPage() {
           </div>
         ) : null}
       </Card>
+      )}
       <Card>
         <h2 className="mb-2 font-medium">要約</h2>
         <p className="whitespace-pre-wrap">{source.summary ?? 'まだありません'}</p>
       </Card>
       <Card>
         <h2 className="mb-2 font-medium">本文</h2>
+        {pdfTextHelp(source) ? (
+          <p className="mb-2 text-sm text-red-600">{pdfTextHelp(source)}</p>
+        ) : null}
         <p className="whitespace-pre-wrap">{source.body ?? 'まだありません'}</p>
       </Card>
       <Card>

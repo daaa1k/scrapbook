@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { AcquiredVia, FetchStatus } from '~/domain/url'
+import type { AcquiredVia, FetchStatus, SourceKind } from '~/domain/url'
 import type { JobStatus } from '~/domain/jobs'
 import { isTerminalJobStatus, jobErrorReason, JOB_ERROR_LABEL } from '~/domain/jobs'
 
@@ -27,6 +27,13 @@ const FETCH_STATUS_LABEL: Record<FetchStatus, string> = {
 const ACQUIRED_VIA_LABEL: Record<AcquiredVia, string> = {
   fetch: '自動取得',
   paste: '手動貼り付け',
+  upload: 'アップロード',
+}
+
+const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
+  url: 'URL',
+  pdf: 'PDF',
+  x: 'X',
 }
 
 export function jobStatusLabel(status: JobStatus | null): string {
@@ -40,6 +47,10 @@ export function fetchStatusLabel(status: string): string {
 
 export function acquiredViaLabel(value: string): string {
   return ACQUIRED_VIA_LABEL[value as AcquiredVia] ?? value
+}
+
+export function sourceKindLabel(value: string): string {
+  return SOURCE_KIND_LABEL[value as SourceKind] ?? value
 }
 
 export function userFacingError(error: unknown): string {

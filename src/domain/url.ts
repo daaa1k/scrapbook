@@ -6,7 +6,7 @@ export type SourceKind = z.infer<typeof sourceKindSchema>
 export const fetchStatusSchema = z.enum(['none', 'partial', 'full', 'failed'])
 export type FetchStatus = z.infer<typeof fetchStatusSchema>
 
-export const acquiredViaSchema = z.enum(['fetch', 'paste'])
+export const acquiredViaSchema = z.enum(['fetch', 'paste', 'upload'])
 export type AcquiredVia = z.infer<typeof acquiredViaSchema>
 
 const X_HOSTS = new Set(['x.com', 'twitter.com'])

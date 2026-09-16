@@ -60,6 +60,10 @@ export const JOB_ERROR_LABEL: Record<string, string> = {
   source_not_found: 'ソースが見つかりません',
   source_has_no_url: 'このソースには再取得できるURLがありません',
   job_in_progress: '取得処理中です。完了してから貼り付けてください',
+  pdf_not_pdf: 'PDFファイルを選んでください',
+  pdf_too_large: 'PDFは8MB以下にしてください',
+  pdf_empty_file: 'ファイルが空です',
+  expected_form_data: 'アップロードの形式が不正です',
 }
 
 export function jobErrorReason(code: string | null, message: string | null): string {

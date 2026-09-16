@@ -7,12 +7,14 @@ import { sources } from '~/db/schema'
 import { acquiredViaSchema, listSourcesInputSchema, pasteSourceInputSchema, registerUrlInputSchema, retrySourceInputSchema } from '~/domain/url'
 import { jobStatusSchema, type JobStatus } from '~/domain/jobs'
 import { authMiddleware } from '~/server/auth/middleware'
+import { parseRegisterPdfForm, parsePdfUpload } from '~/domain/pdf'
 import {
   latestJobForSource,
   pasteSourceBody,
   registerUrlSource,
   retrySourceIngest,
 } from '~/server/ingest/register'
+import { extractPdfTextWithUnpdf, registerPdfSource, workerAssets } from '~/server/ingest/pdf'
 import { findSourcesByQuery } from '~/server/ingest/search'
 
 const sourceIdInput = z.object({
@@ -131,10 +133,12 @@ export const pasteSource = createServerFn({ method: 'POST' })
     return pasteSourceBody(db, data)
   })
 
-export const stubPdfUpload = createServerFn({ method: 'POST' })
+export const registerPdf = createServerFn({ method: 'POST' })
   .middleware([authMiddleware])
-  .handler(async () => {
-    const key = 'pdfs/stub.txt'
-    await env.ASSETS.put(key, 'stub')
-    return { key }
+  .validator(parseRegisterPdfForm)
+  .handler(async ({ data }) => {
+    const bytes = new Uint8Array(await data.file.arrayBuffer())
+    const upload = parsePdfUpload({ bytes, filename: data.file.name })
+    const db = createDb(env.DB)
+    return registerPdfSource(db, workerAssets(env.ASSETS), upload, extractPdfTextWithUnpdf)
   })

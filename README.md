@@ -1,6 +1,6 @@
 # Scrapbook
 
-Personal NotebookLM-style app on a single Cloudflare Worker: register a URL, ingest it with a Cursor cloud agent, poll the job, retry or paste a body when fetch fails, and search title and body.
+Personal NotebookLM-style app on a single Cloudflare Worker: register a URL or a PDF, ingest URLs with a Cursor cloud agent, poll the job, retry or paste a body when fetch fails, and search title and body.
 
 This vertical slice is **one repo, one Worker, same domain**. No Hono, tRPC, Better Auth, or Vectorize.
 
@@ -13,7 +13,7 @@ Browser (TanStack Start + Query)
 Worker  src/server.ts
         ├─ TanStack Start fetch handler
         ├─ D1 (notebooks, sources, jobs, cursor_runs, citations)
-        ├─ R2 ASSETS (PDF stub only)
+        ├─ R2 ASSETS (private PDF originals, served only via GET /assets/sources/:id)
         └─ Workflows INGEST_WORKFLOW → IngestWorkflow
                     │
                     ▼
@@ -40,11 +40,13 @@ Worker  src/server.ts
 
 **notebook ↔ source:** many sources belong to one notebook (`sources.notebook_id`). Many-to-many via a join table is an open later decision, not this slice.
 
-`normalized_url` is unique when present (duplicate URL detection). `acquired_via` is `fetch` or `paste`. `content_hash` is SHA-256 of `body` after a successful fetch or paste. Do not log `body` or API keys.
+`normalized_url` is unique when present (duplicate URL detection). `acquired_via` is `fetch`, `paste`, or `upload`. `content_hash` is SHA-256 of `body` after a successful fetch, paste, or PDF extract. Do not log `body`, PDF bytes, or API keys.
 
 Re-registering a URL that already has a job returns that job and does **not** start Cursor. Explicit **再取得** on a terminal job (`succeeded` or `failed`) inserts a new job. At most one non-terminal job per source (`jobs_one_active_per_source`). Viewing a source never starts Cursor.
 
-Manual paste writes `title` and `body`, leaves `summary` null, sets `acquired_via = paste` and `fetchStatus = full`, and does not create a job.
+PDF upload writes the original to private R2 at `pdf/{sourceId}/original.pdf`, inserts `kind: 'pdf'` with `acquired_via = upload`, and extracts text in the Worker with `unpdf`. It does **not** start Cursor. Empty extract (scanned PDF) keeps the original, leaves `fetchStatus = failed`, and the detail page asks you to paste. Bytes are served only from authenticated GET `/assets/sources/:id` (add `?download=1` for attachment). There is no public R2 URL. Cap is 8 MiB. Magic bytes must be `%PDF`.
+
+Manual paste writes `title` and `body`, leaves `summary` null, sets `acquired_via = paste` and `fetchStatus = full`, and does not create a job. Paste on a PDF keeps `kind` and `r2_key`.
 
 Title and body search uses SQLite `LIKE` with escaped wildcards, not FTS5. Unicode `LIKE` is good enough for Japanese substrings. FTS5 without a Japanese tokenizer would miss queries that `LIKE` hits. Vectorize is still out of scope.
 
@@ -141,7 +143,7 @@ Production without `CURSOR_API_KEY`: the job fails with `cursor_not_configured` 
 
 ## What is stubbed / out of scope
 
-- PDF R2 path: home page button writes `pdfs/stub.txt`. Not a real uploader.
+- PDF R2 path: upload stores the original privately, extracts text with unpdf, serves bytes only through Access-authenticated GET `/assets/sources/:id`. Cursor is not started for PDFs. Scanned PDFs use paste.
 - Citations table exists; no UI.
 - FTS5 / Vectorize: title and body search uses `LIKE`. Vectorize is not in this slice.
 - Playwright E2E: upcoming.
