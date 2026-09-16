@@ -6,6 +6,9 @@ export type SourceKind = z.infer<typeof sourceKindSchema>
 export const fetchStatusSchema = z.enum(['none', 'partial', 'full', 'failed'])
 export type FetchStatus = z.infer<typeof fetchStatusSchema>
 
+export const acquiredViaSchema = z.enum(['fetch', 'paste'])
+export type AcquiredVia = z.infer<typeof acquiredViaSchema>
+
 const X_HOSTS = new Set(['x.com', 'twitter.com'])
 
 export function normalizeUrl(raw: string): string {
@@ -41,6 +44,21 @@ export function sourceKindFromUrl(url: string): SourceKind {
 
 export const registerUrlInputSchema = z.object({
   url: z.url(),
+})
+
+export const retrySourceInputSchema = z.object({
+  sourceId: z.string().min(1),
+})
+
+export const pasteSourceInputSchema = z.object({
+  sourceId: z.string().min(1).optional(),
+  title: z.string().trim().min(1).max(500),
+  body: z.string().trim().min(1).max(200_000),
+  url: z.string().optional(),
+})
+
+export const listSourcesInputSchema = z.object({
+  q: z.string().optional(),
 })
 
 export function parseAndNormalizeUrl(url: string): {

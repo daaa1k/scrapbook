@@ -215,6 +215,7 @@ export async function runIngestWorkflow(options: IngestRunOptions): Promise<void
           summary: parsed.summary,
           contentHash: hash,
           fetchStatus: parsed.fetchStatus,
+          acquiredVia: 'fetch',
           fetchedAt: ts,
           updatedAt: ts,
         })

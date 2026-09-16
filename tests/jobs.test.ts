@@ -5,6 +5,8 @@ import {
   IllegalJobTransitionError,
   assertTransition,
   assertTransitionEffect,
+  canStartCursorJob,
+  jobErrorReason,
 } from '../src/domain/jobs'
 
 describe('job transitions', () => {
@@ -35,5 +37,20 @@ describe('job transitions', () => {
   it('encodes terminals as empty adjacency lists', () => {
     expect(JOB_TRANSITIONS.succeeded).toEqual([])
     expect(JOB_TRANSITIONS.failed).toEqual([])
+  })
+
+  it('allows a new Cursor job only when the latest job is missing or terminal', () => {
+    expect(canStartCursorJob(null)).toBe(true)
+    expect(canStartCursorJob('failed')).toBe(true)
+    expect(canStartCursorJob('succeeded')).toBe(true)
+    expect(canStartCursorJob('queued')).toBe(false)
+    expect(canStartCursorJob('waiting_agent')).toBe(false)
+  })
+
+  it('renders a Japanese reason for a failed job', () => {
+    expect(jobErrorReason('cursor_run_failed', 'Cursor run ended: ERROR')).toBe(
+      'Cursor による取得が失敗しました: Cursor run ended: ERROR',
+    )
+    expect(jobErrorReason('timeout', null)).toBe('取得が時間切れになりました')
   })
 })

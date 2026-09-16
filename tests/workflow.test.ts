@@ -29,6 +29,7 @@ describe('ingest workflow', () => {
     expect(source?.summary).toBe(MOCK_INGEST_JSON.summary)
     expect(source?.body).toBe(MOCK_INGEST_JSON.body)
     expect(source?.fetchStatus).toBe('full')
+    expect(source?.acquiredVia).toBe('fetch')
     expect(source?.contentHash).toBeTruthy()
   })
 

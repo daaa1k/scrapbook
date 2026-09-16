@@ -1,13 +1,20 @@
-import { desc, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { createServerFn } from '@tanstack/react-start'
 import { env } from 'cloudflare:workers'
 import { z } from 'zod'
 import { createDb } from '~/db/client'
 import { sources } from '~/db/schema'
-import { registerUrlInputSchema } from '~/domain/url'
+import { acquiredViaSchema, listSourcesInputSchema, pasteSourceInputSchema, registerUrlInputSchema, retrySourceInputSchema } from '~/domain/url'
 import { jobStatusSchema, type JobStatus } from '~/domain/jobs'
 import { authMiddleware } from '~/server/auth/middleware'
-import { latestJobForSource, registerUrlSource } from '~/server/ingest/register'
+import {
+  latestJobForSource,
+  pasteSourceBody,
+  registerUrlSource,
+  retrySourceIngest,
+} from '~/server/ingest/register'
+import { findSourcesByQuery } from '~/server/ingest/search'
+
 const sourceIdInput = z.object({
   sourceId: z.string().min(1),
 })
@@ -18,6 +25,7 @@ export const sourceListItemSchema = z.object({
   url: z.string().nullable(),
   kind: z.string(),
   fetchStatus: z.string(),
+  acquiredVia: acquiredViaSchema,
   jobStatus: jobStatusSchema.nullable(),
   createdAt: z.number(),
 })
@@ -29,6 +37,7 @@ export const sourceDetailSchema = z.object({
   title: z.string().nullable(),
   author: z.string().nullable(),
   fetchStatus: z.string(),
+  acquiredVia: acquiredViaSchema,
   summary: z.string().nullable(),
   body: z.string().nullable(),
   job: z
@@ -43,9 +52,10 @@ export const sourceDetailSchema = z.object({
 
 export const listSources = createServerFn({ method: 'GET' })
   .middleware([authMiddleware])
-  .handler(async () => {
+  .validator(listSourcesInputSchema)
+  .handler(async ({ data }) => {
     const db = createDb(env.DB)
-    const rows = await db.select().from(sources).orderBy(desc(sources.createdAt))
+    const rows = await findSourcesByQuery(db, data.q ?? '')
     const items = []
     for (const row of rows) {
       const job = await latestJobForSource(db, row.id)
@@ -56,6 +66,7 @@ export const listSources = createServerFn({ method: 'GET' })
           url: row.url,
           kind: row.kind,
           fetchStatus: row.fetchStatus,
+          acquiredVia: row.acquiredVia,
           jobStatus: job ? jobStatusSchema.parse(job.status) : null,
           createdAt: row.createdAt,
         }),
@@ -82,6 +93,7 @@ export const getSource = createServerFn({ method: 'GET' })
       title: row.title,
       author: row.author,
       fetchStatus: row.fetchStatus,
+      acquiredVia: row.acquiredVia,
       summary: row.summary,
       body: row.body,
       job: job
@@ -101,6 +113,22 @@ export const registerSource = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const db = createDb(env.DB)
     return registerUrlSource(db, data, env.INGEST_WORKFLOW)
+  })
+
+export const retrySource = createServerFn({ method: 'POST' })
+  .middleware([authMiddleware])
+  .validator(retrySourceInputSchema)
+  .handler(async ({ data }) => {
+    const db = createDb(env.DB)
+    return retrySourceIngest(db, data.sourceId, env.INGEST_WORKFLOW)
+  })
+
+export const pasteSource = createServerFn({ method: 'POST' })
+  .middleware([authMiddleware])
+  .validator(pasteSourceInputSchema)
+  .handler(async ({ data }) => {
+    const db = createDb(env.DB)
+    return pasteSourceBody(db, data)
   })
 
 export const stubPdfUpload = createServerFn({ method: 'POST' })

@@ -1,7 +1,8 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import type { AcquiredVia, FetchStatus } from '~/domain/url'
 import type { JobStatus } from '~/domain/jobs'
-import { isTerminalJobStatus } from '~/domain/jobs'
+import { isTerminalJobStatus, jobErrorReason, JOB_ERROR_LABEL } from '~/domain/jobs'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -16,9 +17,34 @@ const JOB_STATUS_LABEL: Record<JobStatus, string> = {
   failed: '失敗しました',
 }
 
+const FETCH_STATUS_LABEL: Record<FetchStatus, string> = {
+  none: '未取得',
+  partial: '部分取得',
+  full: '全文取得',
+  failed: '取得失敗',
+}
+
+const ACQUIRED_VIA_LABEL: Record<AcquiredVia, string> = {
+  fetch: '自動取得',
+  paste: '手動貼り付け',
+}
+
 export function jobStatusLabel(status: JobStatus | null): string {
   if (!status) return '未処理'
   return JOB_STATUS_LABEL[status]
 }
 
-export { isTerminalJobStatus }
+export function fetchStatusLabel(status: string): string {
+  return FETCH_STATUS_LABEL[status as FetchStatus] ?? status
+}
+
+export function acquiredViaLabel(value: string): string {
+  return ACQUIRED_VIA_LABEL[value as AcquiredVia] ?? value
+}
+
+export function userFacingError(error: unknown): string {
+  const message = error instanceof Error ? error.message : '操作に失敗しました'
+  return JOB_ERROR_LABEL[message] ?? message
+}
+
+export { isTerminalJobStatus, jobErrorReason }

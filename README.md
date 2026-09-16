@@ -1,6 +1,6 @@
 # Scrapbook
 
-Personal NotebookLM-style app on a single Cloudflare Worker: register a URL, ingest it with a Cursor cloud agent, poll the job, read title / status / summary / body.
+Personal NotebookLM-style app on a single Cloudflare Worker: register a URL, ingest it with a Cursor cloud agent, poll the job, retry or paste a body when fetch fails, and search title and body.
 
 This vertical slice is **one repo, one Worker, same domain**. No Hono, tRPC, Better Auth, or Vectorize.
 
@@ -40,7 +40,13 @@ Worker  src/server.ts
 
 **notebook ↔ source:** many sources belong to one notebook (`sources.notebook_id`). Many-to-many via a join table is an open later decision, not this slice.
 
-`normalized_url` is unique when present (duplicate URL detection). `content_hash` is SHA-256 of `body` after a successful fetch. Do not log `body` or API keys.
+`normalized_url` is unique when present (duplicate URL detection). `acquired_via` is `fetch` or `paste`. `content_hash` is SHA-256 of `body` after a successful fetch or paste. Do not log `body` or API keys.
+
+Re-registering a URL that already has a job returns that job and does **not** start Cursor. Explicit **再取得** on a terminal job (`succeeded` or `failed`) inserts a new job. At most one non-terminal job per source (`jobs_one_active_per_source`). Viewing a source never starts Cursor.
+
+Manual paste writes `title` and `body`, leaves `summary` null, sets `acquired_via = paste` and `fetchStatus = full`, and does not create a job.
+
+Title and body search uses SQLite `LIKE` with escaped wildcards, not FTS5. Unicode `LIKE` is good enough for Japanese substrings. FTS5 without a Japanese tokenizer would miss queries that `LIKE` hits. Vectorize is still out of scope.
 
 ## Job state machine
 
@@ -129,7 +135,7 @@ If the flag is set in production config, auth still requires a valid Access JWT.
 
 The Workflow polls `GET /v1/agents/{id}/runs/{runId}`, strips markdown fences from `result`, and Zod-parses that object. There is no separate OpenAI key.
 
-X/Twitter URLs are stored as `kind: 'x'` and use the same fetch path. Logged-in X scraping is **not** implemented (spike / later).
+X/Twitter URLs are stored as `kind: 'x'`. The Cursor prompt adds a note that fetch is unauthenticated. Logged-in X scraping is **not** implemented (unproven without auth).
 
 Production without `CURSOR_API_KEY`: the job fails with `cursor_not_configured` and the UI shows that error (not a spinner forever).
 
@@ -137,7 +143,7 @@ Production without `CURSOR_API_KEY`: the job fails with `cursor_not_configured` 
 
 - PDF R2 path: home page button writes `pdfs/stub.txt`. Not a real uploader.
 - Citations table exists; no UI.
-- FTS / Vectorize: not in this slice.
+- FTS5 / Vectorize: title and body search uses `LIKE`. Vectorize is not in this slice.
 - Playwright E2E: upcoming.
 - X/Twitter authenticated fetch.
 - Backup / export.
