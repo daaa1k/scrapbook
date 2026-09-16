@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { SourceInvestigate } from '~/components/source-investigate'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { Input, controlClassName } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
 import { pdfTextHelp, sourceOriginalPath } from '~/domain/pdf'
-import { MAX_CURSOR_BODY_CHARS, storedBodyText } from '~/domain/ingest-result'
 import { sourceDetailToMarkdown, sourceExportFilename } from '~/domain/export-markdown'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { downloadTextFile } from '~/lib/download'
@@ -20,7 +20,7 @@ import {
   userFacingError,
 } from '~/lib/utils'
 import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
-import { getSource, pasteSource, retrySource, askSource, deleteSourceQaAnswer, deleteRegisteredSource, summarizeSource } from '~/server/functions/sources'
+import { getSource, pasteSource, retrySource, deleteRegisteredSource } from '~/server/functions/sources'
 
 export const Route = createFileRoute('/sources/$sourceId')({
   loader: ({ context, params }) =>
@@ -43,7 +43,6 @@ function SourceDetailPage() {
   const queryClient = useQueryClient()
   const [pasteTitle, setPasteTitle] = useState('')
   const [pasteBody, setPasteBody] = useState('')
-  const [questionDraft, setQuestionDraft] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedNotebookId, setSelectedNotebookId] = useState('')
   const [tagDraft, setTagDraft] = useState('')
@@ -80,46 +79,6 @@ function SourceDetailPage() {
         queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
         queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
       ])
-    },
-    onError: (error) => {
-      setActionError(userFacingError(error))
-    },
-  })
-
-  const summarize = useMutation({
-    mutationFn: () => summarizeSource({ data: { sourceId } }),
-    onSuccess: async () => {
-      setActionError(null)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
-        queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
-      ])
-    },
-    onError: (error) => {
-      setActionError(userFacingError(error))
-    },
-  })
-
-  const ask = useMutation({
-    mutationFn: () => askSource({ data: { sourceId, question: questionDraft } }),
-    onSuccess: async () => {
-      setActionError(null)
-      setQuestionDraft('')
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
-        queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
-      ])
-    },
-    onError: (error) => {
-      setActionError(userFacingError(error))
-    },
-  })
-
-  const deleteQa = useMutation({
-    mutationFn: (qaAnswerId: string) => deleteSourceQaAnswer({ data: { sourceId, qaAnswerId } }),
-    onSuccess: async () => {
-      setActionError(null)
-      await queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) })
     },
     onError: (error) => {
       setActionError(userFacingError(error))
@@ -196,16 +155,16 @@ function SourceDetailPage() {
   const canRetry = Boolean(source.url) && (jobStatus === null || isTerminalJobStatus(jobStatus))
   const retryBusy = Boolean(jobStatus && !isTerminalJobStatus(jobStatus))
   const canDeleteSource = !retryBusy
-  const bodyForCursor = storedBodyText(source.body)
-  const cursorBodyTruncated = Boolean(bodyForCursor && bodyForCursor.length > MAX_CURSOR_BODY_CHARS)
-  const cursorBudgetNote = cursorBodyTruncated
-    ? `Cursor には本文の先頭 ${MAX_CURSOR_BODY_CHARS.toLocaleString('ja-JP')} 文字だけを渡します。`
-    : null
+  const notebookId = source.organization.notebook.id
 
   return (
     <div className="space-y-6">
-      <Link to="/sources" className="text-sm text-zinc-500 hover:underline">
-        ← ソース一覧
+      <Link
+        to="/sources"
+        search={{ notebookId, sourceId }}
+        className="text-sm text-zinc-500 hover:underline"
+      >
+        ← {source.organization.notebook.title}
       </Link>
       <div>
         <h1 className="text-2xl font-semibold">{source.title ?? '無題のソース'}</h1>
@@ -376,121 +335,7 @@ function SourceDetailPage() {
         ) : null}
       </Card>
       )}
-      <Card>
-        <h2 className="mb-2 font-medium">要約</h2>
-        <p className="whitespace-pre-wrap">{source.summary ?? 'まだありません'}</p>
-        {bodyForCursor ? (
-          <div className="mt-4">
-            <Button
-              disabled={retryBusy || summarize.isPending}
-              onClick={() => summarize.mutate()}
-            >
-              {source.summary == null ? '要約する' : '再要約する'}
-            </Button>
-            {retryBusy ? (
-              <p className="mt-2 text-sm text-zinc-500">処理中のため要約できません。</p>
-            ) : (
-              <p className="mt-2 text-sm text-zinc-500">
-                保存済みの本文を要約します。URLの再取得やPDFの再読み込みはしません。
-              </p>
-            )}
-            {cursorBudgetNote ? <p className="mt-2 text-sm text-zinc-500">{cursorBudgetNote}</p> : null}
-          </div>
-        ) : null}
-      </Card>
-      <Card>
-        <h2 className="mb-2 font-medium">引用</h2>
-        {source.citations.length === 0 ? (
-          <p className="text-sm text-zinc-500">まだありません</p>
-        ) : (
-          <ul className="space-y-3">
-            {source.citations.map((citation) => (
-              <li key={citation.id}>
-                <blockquote className="whitespace-pre-wrap">{citation.excerpt}</blockquote>
-                {citation.bodySpan ? (
-                  <a href="#source-body" className="mt-1 inline-block text-sm underline">
-                    本文の該当箇所へ
-                  </a>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-      <Card>
-        <h2 className="mb-2 font-medium">質問</h2>
-        {bodyForCursor ? (
-          <form
-            className="space-y-3"
-            onSubmit={(event) => {
-              event.preventDefault()
-              ask.mutate()
-            }}
-          >
-            <Textarea
-              name="question"
-              required
-              value={questionDraft}
-              onChange={(event) => setQuestionDraft(event.target.value)}
-              placeholder="このソースについて質問"
-              aria-label="質問"
-              maxLength={4000}
-            />
-            <Button type="submit" disabled={retryBusy || ask.isPending || questionDraft.trim() === ''}>
-              質問する
-            </Button>
-            {retryBusy ? (
-              <p className="text-sm text-zinc-500">処理中のため質問できません。</p>
-            ) : (
-              <p className="text-sm text-zinc-500">保存済みの本文だけを使って答えます。複数ソースはまだ選べません。</p>
-            )}
-            {cursorBudgetNote ? <p className="text-sm text-zinc-500">{cursorBudgetNote}</p> : null}
-          </form>
-        ) : (
-          <p className="text-sm text-zinc-500">本文があるときだけ質問できます。</p>
-        )}
-        {source.qaAnswers.length === 0 ? (
-          <p className="mt-4 text-sm text-zinc-500">まだ質問はありません</p>
-        ) : (
-          <ul className="mt-4 space-y-4">
-            {source.qaAnswers.map((turn) => (
-              <li key={turn.id} className="space-y-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <p className="text-sm text-zinc-500">質問</p>
-                    <p className="whitespace-pre-wrap">{turn.question}</p>
-                  </div>
-                  <Button
-                    disabled={!turn.canDelete || deleteQa.isPending}
-                    onClick={() => deleteQa.mutate(turn.id)}
-                  >
-                    削除
-                  </Button>
-                </div>
-                <p className="text-sm text-zinc-500">回答</p>
-                <p className="whitespace-pre-wrap">{turn.answer ?? '回答待ち…'}</p>
-                {!turn.canDelete ? (
-                  <p className="text-sm text-zinc-500">処理中のため削除できません。</p>
-                ) : null}
-                {turn.citations.length > 0 ? (
-                  <ul className="space-y-2">
-                    {turn.citations.map((citation) => (
-                      <li key={citation.id}>
-                        <blockquote className="whitespace-pre-wrap text-sm">{citation.excerpt}</blockquote>
-                        {citation.bodySpan ? (
-                          <a href="#source-body" className="mt-1 inline-block text-sm underline">
-                            本文の該当箇所へ
-                          </a>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      <SourceInvestigate sourceId={sourceId} />
       <Card>
         <h2 className="mb-2 font-medium">本文</h2>
         {pdfTextHelp(source) ? (
