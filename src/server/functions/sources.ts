@@ -6,7 +6,7 @@ import { sourceListFilterSchema } from '~/domain/organization'
 import { parseRegisterPdfForm, parsePdfUpload } from '~/domain/pdf'
 import { pasteSourceInputSchema, registerUrlInputSchema, retrySourceInputSchema } from '~/domain/url'
 import { authMiddleware } from '~/server/auth/middleware'
-import { pasteSourceBody, registerUrlSource, retrySourceIngest } from '~/server/ingest/register'
+import { pasteSourceBody, registerUrlSource, retrySourceIngest, summarizeSourceBody } from '~/server/ingest/register'
 import { extractPdfTextWithUnpdf, registerPdfSource, workerAssets } from '~/server/ingest/pdf'
 import { listSourceViews, readSourceDetail } from '~/server/source-views'
 
@@ -44,6 +44,14 @@ export const retrySource = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const db = createDb(env.DB)
     return retrySourceIngest(db, data.sourceId, env.INGEST_WORKFLOW)
+  })
+
+export const summarizeSource = createServerFn({ method: 'POST' })
+  .middleware([authMiddleware])
+  .validator(sourceIdInput)
+  .handler(async ({ data }) => {
+    const db = createDb(env.DB)
+    return summarizeSourceBody(db, data.sourceId, env.INGEST_WORKFLOW)
   })
 
 export const pasteSource = createServerFn({ method: 'POST' })

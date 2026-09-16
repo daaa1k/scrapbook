@@ -2,6 +2,9 @@ import { Data, Effect } from 'effect'
 import { z } from 'zod'
 import { runSyncFail } from '~/lib/effect-run'
 
+export const jobKindSchema = z.enum(['fetch', 'summarize_body'])
+export type JobKind = z.infer<typeof jobKindSchema>
+
 export const jobStatusSchema = z.enum([
   'queued',
   'starting_agent',
@@ -50,16 +53,29 @@ export function canStartCursorJob(status: JobStatus | null): boolean {
   return status === null || isTerminalJobStatus(status)
 }
 
-export const JOB_ERROR_LABEL: Record<string, string> = {
+const FETCH_ERROR_LABEL: Record<string, string> = {
   workflow_start_failed: '取得ワークフローを開始できませんでした',
-  cursor_not_configured: 'Cursor APIキーが設定されていません',
   cursor_run_failed: 'Cursor による取得が失敗しました',
   timeout: '取得が時間切れになりました',
   ingest_failed: '取得処理に失敗しました',
   ingest_result_not_json: '取得結果の形式が不正でした',
+}
+
+const SUMMARIZE_ERROR_LABEL: Record<string, string> = {
+  workflow_start_failed: '要約ワークフローを開始できませんでした',
+  cursor_run_failed: 'Cursor による要約が失敗しました',
+  timeout: '要約が時間切れになりました',
+  ingest_failed: '要約処理に失敗しました',
+  ingest_result_not_json: '要約結果の形式が不正でした',
+}
+
+export const JOB_ERROR_LABEL: Record<string, string> = {
+  ...FETCH_ERROR_LABEL,
+  cursor_not_configured: 'Cursor APIキーが設定されていません',
   source_not_found: 'ソースが見つかりません',
   source_has_no_url: 'このソースには再取得できるURLがありません',
-  job_in_progress: '取得処理中です。完了してから貼り付けてください',
+  source_has_no_body: 'このソースには要約できる本文がありません',
+  job_in_progress: '処理中です。完了してから貼り付けてください',
   pdf_not_pdf: 'PDFファイルを選んでください',
   pdf_too_large: 'PDFは8MB以下にしてください',
   pdf_empty_file: 'ファイルが空です',
@@ -71,8 +87,15 @@ export const JOB_ERROR_LABEL: Record<string, string> = {
   inbox_notebook_immutable: '受信箱の名前変更や削除はできません',
 }
 
-export function jobErrorReason(code: string | null, message: string | null): string {
-  const label = code ? (JOB_ERROR_LABEL[code] ?? '失敗しました') : '失敗しました'
+export function jobErrorReason(
+  code: string | null,
+  message: string | null,
+  kind: JobKind = 'fetch',
+): string {
+  const kindLabels = kind === 'summarize_body' ? SUMMARIZE_ERROR_LABEL : FETCH_ERROR_LABEL
+  const label = code
+    ? (kindLabels[code] ?? JOB_ERROR_LABEL[code] ?? '失敗しました')
+    : '失敗しました'
   const detail = message?.trim() ?? ''
   if (detail && detail !== code) return `${label}: ${detail}`
   return label

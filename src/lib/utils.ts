@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import type { AcquiredVia, FetchStatus, SourceKind } from '~/domain/url'
-import type { JobStatus } from '~/domain/jobs'
+import type { JobKind, JobStatus } from '~/domain/jobs'
 import { isTerminalJobStatus, jobErrorReason, JOB_ERROR_LABEL } from '~/domain/jobs'
 
 export function cn(...inputs: ClassValue[]) {
@@ -36,8 +36,9 @@ const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   x: 'X',
 }
 
-export function jobStatusLabel(status: JobStatus | null): string {
+export function jobStatusLabel(status: JobStatus | null, kind: JobKind | null = 'fetch'): string {
   if (!status) return '未処理'
+  if (kind === 'summarize_body' && status === 'waiting_agent') return '要約中'
   return JOB_STATUS_LABEL[status]
 }
 

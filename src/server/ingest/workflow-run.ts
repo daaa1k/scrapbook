@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import { eq } from 'drizzle-orm'
 import { cursorRuns, jobs, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
-import { parseIngestResultJson, sha256Hex } from '~/domain/ingest-result'
+import { parseIngestResultJson, parseSummarizeResultJson, sha256Hex, storedBodyText } from '~/domain/ingest-result'
 import {
   assertTransitionEffect,
   IllegalJobTransitionError,
@@ -15,6 +15,7 @@ import {
   createCursorClient,
   createMockCursorClient,
   ingestPromptForUrl,
+  summarizePromptForBody,
   CursorNotConfigured,
   type CursorClient,
   type CursorFailure,
@@ -113,6 +114,71 @@ function runCursor<A>(effect: Effect.Effect<A, CursorFailure>): Promise<A> {
   return runPromiseFail(effect)
 }
 
+async function promptForJob(db: AppDb, params: IngestWorkflowParams): Promise<string> {
+  switch (params.mode) {
+    case 'fetch':
+      return ingestPromptForUrl(params.url)
+    case 'summarize_body': {
+      const rows = await db.select({ body: sources.body }).from(sources).where(eq(sources.id, params.sourceId)).limit(1)
+      const body = storedBodyText(rows[0]?.body)
+      if (!body) throw new Error('source_has_no_body')
+      return summarizePromptForBody(body)
+    }
+  }
+}
+
+async function persistIngestOutput(
+  db: AppDb,
+  params: IngestWorkflowParams,
+  raw: string,
+  ts: number,
+): Promise<void> {
+  switch (params.mode) {
+    case 'fetch': {
+      const parsed = parseIngestResultJson(raw)
+      const hash = parsed.body ? await sha256Hex(parsed.body) : null
+      let publishedAt: number | null = null
+      if (parsed.publishedAt) {
+        const ms = Date.parse(parsed.publishedAt)
+        publishedAt = Number.isNaN(ms) ? null : ms
+      }
+      await db
+        .update(sources)
+        .set({
+          title: parsed.title,
+          author: parsed.author,
+          publishedAt,
+          body: parsed.body,
+          summary: parsed.summary,
+          contentHash: hash,
+          fetchStatus: parsed.fetchStatus,
+          acquiredVia: 'fetch',
+          fetchedAt: ts,
+          updatedAt: ts,
+        })
+        .where(eq(sources.id, params.sourceId))
+      return
+    }
+    case 'summarize_body': {
+      const parsed = parseSummarizeResultJson(raw)
+      await db
+        .update(sources)
+        .set({
+          summary: parsed.summary,
+          updatedAt: ts,
+        })
+        .where(eq(sources.id, params.sourceId))
+      return
+    }
+  }
+}
+
+function failCodeForError(error: unknown): string {
+  const message = error instanceof Error ? error.message : 'ingest_failed'
+  if (message === 'source_has_no_body' || message === 'ingest_result_not_json') return message
+  return 'ingest_failed'
+}
+
 export async function runIngestWorkflow(options: IngestRunOptions): Promise<void> {
   const params = ingestWorkflowParamsSchema.parse(options.params)
   const db = options.db
@@ -127,10 +193,11 @@ export async function runIngestWorkflow(options: IngestRunOptions): Promise<void
     })
 
     const created = await step.do('create-cursor-agent', async () => {
+      const prompt = await promptForJob(db, params)
       return runCursor(
         Effect.gen(function* () {
           const cursor = yield* resolveCursor(options)
-          return yield* cursor.createAgent(ingestPromptForUrl(params.url))
+          return yield* cursor.createAgent(prompt)
         }),
       )
     })
@@ -197,29 +264,7 @@ export async function runIngestWorkflow(options: IngestRunOptions): Promise<void
     })
 
     await step.do('persist-source', async () => {
-      const parsed = parseIngestResultJson(terminal.result ?? '')
-      const ts = now()
-      const hash = parsed.body ? await sha256Hex(parsed.body) : null
-      let publishedAt: number | null = null
-      if (parsed.publishedAt) {
-        const ms = Date.parse(parsed.publishedAt)
-        publishedAt = Number.isNaN(ms) ? null : ms
-      }
-      await db
-        .update(sources)
-        .set({
-          title: parsed.title,
-          author: parsed.author,
-          publishedAt,
-          body: parsed.body,
-          summary: parsed.summary,
-          contentHash: hash,
-          fetchStatus: parsed.fetchStatus,
-          acquiredVia: 'fetch',
-          fetchedAt: ts,
-          updatedAt: ts,
-        })
-        .where(eq(sources.id, params.sourceId))
+      await persistIngestOutput(db, params, terminal.result ?? '', now())
     })
 
     await step.do('persisting-to-succeeded', async () => {
@@ -232,7 +277,7 @@ export async function runIngestWorkflow(options: IngestRunOptions): Promise<void
     }
     const message = error instanceof Error ? error.message : 'ingest_failed'
     try {
-      await failJob(db, params.jobId, 'ingest_failed', message, now())
+      await failJob(db, params.jobId, failCodeForError(error), message, now())
     } catch (failError) {
       if (!(failError instanceof IllegalJobTransitionError)) throw failError
     }

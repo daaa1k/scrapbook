@@ -8,6 +8,7 @@ import {
   canStartCursorJob,
   jobErrorReason,
 } from '../src/domain/jobs'
+import { jobStatusLabel, userFacingError } from '../src/lib/utils'
 
 describe('job transitions', () => {
   it('allows the documented edges', () => {
@@ -52,5 +53,19 @@ describe('job transitions', () => {
       'Cursor による取得が失敗しました: Cursor run ended: ERROR',
     )
     expect(jobErrorReason('timeout', null)).toBe('取得が時間切れになりました')
+    expect(jobErrorReason('cursor_run_failed', 'Cursor run ended: ERROR', 'summarize_body')).toBe(
+      'Cursor による要約が失敗しました: Cursor run ended: ERROR',
+    )
+    expect(jobErrorReason('timeout', null, 'summarize_body')).toBe('要約が時間切れになりました')
+    expect(jobErrorReason('source_has_no_body', null)).toBe('このソースには要約できる本文がありません')
+  })
+
+  it('maps source_has_no_body for user-facing errors', () => {
+    expect(userFacingError(new Error('source_has_no_body'))).toBe('このソースには要約できる本文がありません')
+  })
+
+  it('labels in-flight summarize jobs as 要約中', () => {
+    expect(jobStatusLabel('waiting_agent', 'fetch')).toBe('取得中')
+    expect(jobStatusLabel('waiting_agent', 'summarize_body')).toBe('要約中')
   })
 })

@@ -1,11 +1,11 @@
 import { desc, eq, sql } from 'drizzle-orm'
 import { jobs, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
-import { sha256Hex } from '~/domain/ingest-result'
-import { assertTransition, canStartCursorJob, jobStatusSchema, sanitizeErrorMessage } from '~/domain/jobs'
+import { sha256Hex, storedBodyText } from '~/domain/ingest-result'
+import { assertTransition, canStartCursorJob, jobKindSchema, jobStatusSchema, sanitizeErrorMessage } from '~/domain/jobs'
 import { parseAndNormalizeUrl } from '~/domain/url'
-import { ensureInboxNotebook } from '~/server/organization'
 import { startIngestWorkflow, type WorkflowBinding } from '~/server/ingest/start-workflow'
+import { ensureInboxNotebook } from '~/server/organization'
 
 export type RegisterResult = {
   sourceId: string
@@ -55,7 +55,11 @@ export async function registerUrlSource(
     if (latest) {
       return { sourceId: existing.id, jobId: latest.id, duplicate: true }
     }
-    const queued = await enqueueJob(db, existing.id, normalized, workflow, 0)
+    const queued = await enqueueJob(db, workflow, 0, {
+      mode: 'fetch',
+      sourceId: existing.id,
+      url: normalized,
+    })
     return { ...queued, duplicate: true }
   }
 
@@ -83,7 +87,11 @@ export async function registerUrlSource(
     updatedAt: ts,
   })
 
-  const queued = await enqueueJob(db, sourceId, normalized, workflow, 0)
+  const queued = await enqueueJob(db, workflow, 0, {
+    mode: 'fetch',
+    sourceId,
+    url: normalized,
+  })
   return { ...queued, duplicate: false }
 }
 
@@ -100,16 +108,48 @@ export async function retrySourceIngest(
   if (!source.normalizedUrl) {
     throw new Error('source_has_no_url')
   }
+  return startOrReuseJob(db, sourceId, workflow, {
+    mode: 'fetch',
+    url: source.normalizedUrl,
+  })
+}
 
+export async function summarizeSourceBody(
+  db: AppDb,
+  sourceId: string,
+  workflow: WorkflowBinding | undefined,
+): Promise<RetryResult> {
+  const rows = await db.select().from(sources).where(eq(sources.id, sourceId)).limit(1)
+  const source = rows[0]
+  if (!source) {
+    throw new Error('source_not_found')
+  }
+  if (!storedBodyText(source.body)) {
+    throw new Error('source_has_no_body')
+  }
+  return startOrReuseJob(db, sourceId, workflow, { mode: 'summarize_body' })
+}
+
+type EnqueueParams =
+  | { mode: 'fetch'; sourceId: string; url: string }
+  | { mode: 'summarize_body'; sourceId: string }
+
+type JobStartParams = { mode: 'fetch'; url: string } | { mode: 'summarize_body' }
+
+async function startOrReuseJob(
+  db: AppDb,
+  sourceId: string,
+  workflow: WorkflowBinding | undefined,
+  params: JobStartParams,
+): Promise<RetryResult> {
   const latest = await latestJobForSource(db, sourceId)
   const latestStatus = latest ? jobStatusSchema.parse(latest.status) : null
   if (!canStartCursorJob(latestStatus)) {
     return { sourceId, jobId: latest!.id, started: false }
   }
-
   const attemptCount = (latest?.attemptCount ?? 0) + 1
   try {
-    const queued = await enqueueJob(db, sourceId, source.normalizedUrl, workflow, attemptCount)
+    const queued = await enqueueJob(db, workflow, attemptCount, { ...params, sourceId })
     return { ...queued, started: true }
   } catch (error) {
     if (!isActiveJobUniqueError(error)) throw error
@@ -201,16 +241,17 @@ export async function pasteSourceBody(
 
 async function enqueueJob(
   db: AppDb,
-  sourceId: string,
-  normalizedUrl: string,
   workflow: WorkflowBinding | undefined,
   attemptCount: number,
+  params: EnqueueParams,
 ): Promise<{ sourceId: string; jobId: string }> {
   const jobId = crypto.randomUUID()
   const ts = nowMs()
+  const kind = jobKindSchema.parse(params.mode)
   await db.insert(jobs).values({
     id: jobId,
-    sourceId,
+    sourceId: params.sourceId,
+    kind,
     status: 'queued',
     cursorAgentId: null,
     errorCode: null,
@@ -223,7 +264,7 @@ async function enqueueJob(
   })
 
   try {
-    await startIngestWorkflow(workflow, { jobId, sourceId, url: normalizedUrl })
+    await startIngestWorkflow(workflow, { ...params, jobId })
   } catch (error) {
     assertTransition('queued', 'failed')
     const message = sanitizeErrorMessage(error instanceof Error ? error.message : 'workflow_start_failed')
@@ -239,5 +280,5 @@ async function enqueueJob(
       .where(eq(jobs.id, jobId))
   }
 
-  return { sourceId, jobId }
+  return { sourceId: params.sourceId, jobId }
 }

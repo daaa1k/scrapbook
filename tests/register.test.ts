@@ -28,6 +28,7 @@ describe('register ingest', () => {
     expect(result.duplicate).toBe(false)
     expect(created).toHaveLength(1)
     expect(created[0]).toMatchObject({
+      mode: 'fetch',
       sourceId: result.sourceId,
       jobId: result.jobId,
       url: 'https://example.com/post',

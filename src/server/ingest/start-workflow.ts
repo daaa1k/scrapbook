@@ -1,10 +1,18 @@
 import { z } from 'zod'
 
-export const ingestWorkflowParamsSchema = z.object({
-  jobId: z.string().min(1),
-  sourceId: z.string().min(1),
-  url: z.string().url(),
-})
+export const ingestWorkflowParamsSchema = z.discriminatedUnion('mode', [
+  z.object({
+    mode: z.literal('fetch'),
+    jobId: z.string().min(1),
+    sourceId: z.string().min(1),
+    url: z.string().url(),
+  }),
+  z.object({
+    mode: z.literal('summarize_body'),
+    jobId: z.string().min(1),
+    sourceId: z.string().min(1),
+  }),
+])
 
 export type IngestWorkflowParams = z.infer<typeof ingestWorkflowParamsSchema>
 

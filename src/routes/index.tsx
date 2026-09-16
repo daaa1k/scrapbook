@@ -290,7 +290,9 @@ function HomePage() {
                     ) : null}
                     <p className="mt-1 text-sm">
                       種類: {sourceKindLabel(source.kind)}
-                      {source.kind === 'pdf' ? null : ` / 処理状況: ${jobStatusLabel(source.jobStatus)}`}
+                      {source.kind === 'pdf' && source.jobStatus === null
+                        ? null
+                        : ` / 処理状況: ${jobStatusLabel(source.jobStatus, source.jobKind)}`}
                       {' / 取得経路: '}
                       {acquiredViaLabel(source.acquiredVia)}
                     </p>

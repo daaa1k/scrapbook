@@ -1,7 +1,7 @@
 import { and, desc, eq, exists, inArray, or, sql } from 'drizzle-orm'
 import { notebooks, sources, sourceTags } from '~/db/schema'
 import type { AppDb } from '~/db/types'
-import { jobStatusSchema, type JobStatus } from '~/domain/jobs'
+import { jobKindSchema, jobStatusSchema, type JobStatus } from '~/domain/jobs'
 import {
   INBOX_NOTEBOOK_TITLE,
   notebookIdSchema,
@@ -103,6 +103,7 @@ export async function listSourceViews(db: AppDb, filter: SourceListFilter): Prom
         fetchStatus: row.fetchStatus,
         acquiredVia: row.acquiredVia,
         jobStatus: job ? jobStatusSchema.parse(job.status) : null,
+        jobKind: job ? jobKindSchema.parse(job.kind) : null,
         createdAt: row.createdAt,
         notebook: notebookRef(row.notebookId, row.notebookTitle),
         tags: tagsBySource.get(row.id) ?? [],
@@ -154,6 +155,7 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
       ? {
           id: job.id,
           status: jobStatusSchema.parse(job.status) as JobStatus,
+          kind: jobKindSchema.parse(job.kind),
           errorCode: job.errorCode,
           errorMessage: job.errorMessage,
         }

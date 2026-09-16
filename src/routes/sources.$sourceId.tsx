@@ -6,6 +6,7 @@ import { Card } from '~/components/ui/card'
 import { Input, controlClassName } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
 import { pdfTextHelp, sourceOriginalPath } from '~/domain/pdf'
+import { storedBodyText } from '~/domain/ingest-result'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import {
   acquiredViaLabel,
@@ -17,7 +18,7 @@ import {
   userFacingError,
 } from '~/lib/utils'
 import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
-import { getSource, pasteSource, retrySource } from '~/server/functions/sources'
+import { getSource, pasteSource, retrySource, summarizeSource } from '~/server/functions/sources'
 
 export const Route = createFileRoute('/sources/$sourceId')({
   loader: ({ context, params }) =>
@@ -69,6 +70,20 @@ function SourceDetailPage() {
 
   const retry = useMutation({
     mutationFn: () => retrySource({ data: { sourceId } }),
+    onSuccess: async () => {
+      setActionError(null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
+        queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
+      ])
+    },
+    onError: (error) => {
+      setActionError(userFacingError(error))
+    },
+  })
+
+  const summarize = useMutation({
+    mutationFn: () => summarizeSource({ data: { sourceId } }),
     onSuccess: async () => {
       setActionError(null)
       await Promise.all([
@@ -260,13 +275,13 @@ function SourceDetailPage() {
           </Button>
         </form>
       </Card>
-      {source.kind === 'pdf' ? null : (
+      {source.kind === 'pdf' && !source.job ? null : (
       <Card>
         <h2 className="mb-2 font-medium">処理状況</h2>
-        <p>{jobStatusLabel(jobStatus)}</p>
+        <p>{jobStatusLabel(jobStatus, source.job?.kind ?? null)}</p>
         {failed ? (
           <p className="mt-2 text-sm text-red-600">
-            {jobErrorReason(source.job?.errorCode ?? null, source.job?.errorMessage ?? null)}
+            {jobErrorReason(source.job?.errorCode ?? null, source.job?.errorMessage ?? null, source.job?.kind ?? 'fetch')}
           </p>
         ) : null}
         {source.url ? (
@@ -291,6 +306,23 @@ function SourceDetailPage() {
       <Card>
         <h2 className="mb-2 font-medium">要約</h2>
         <p className="whitespace-pre-wrap">{source.summary ?? 'まだありません'}</p>
+        {storedBodyText(source.body) ? (
+          <div className="mt-4">
+            <Button
+              disabled={retryBusy || summarize.isPending}
+              onClick={() => summarize.mutate()}
+            >
+              {source.summary == null ? '要約する' : '再要約する'}
+            </Button>
+            {retryBusy ? (
+              <p className="mt-2 text-sm text-zinc-500">処理中のため要約できません。</p>
+            ) : (
+              <p className="mt-2 text-sm text-zinc-500">
+                保存済みの本文を要約します。URLの再取得やPDFの再読み込みはしません。
+              </p>
+            )}
+          </div>
+        ) : null}
       </Card>
       <Card>
         <h2 className="mb-2 font-medium">本文</h2>

@@ -5,6 +5,7 @@ import {
   createCursorClient,
   createMockCursorClient,
   ingestPromptForUrl,
+  summarizePromptForBody,
 } from '../src/server/cursor/client'
 import { runPromiseFail } from '../src/lib/effect-run'
 
@@ -95,5 +96,12 @@ describe('Cursor client', () => {
     const prompt = ingestPromptForUrl('https://x.com/foo/status/1')
     expect(prompt).toContain('authenticated X fetch is not implemented')
     expect(ingestPromptForUrl('https://example.com/a')).not.toContain('authenticated X fetch is not implemented')
+  })
+
+  it('asks Cursor to summarize the stored body instead of fetching a URL', () => {
+    const prompt = summarizePromptForBody('手入力の本文です。')
+    expect(prompt).toContain('手入力の本文です。')
+    expect(prompt).toContain('Do not fetch any URL')
+    expect(prompt).not.toContain('Fetch the URL')
   })
 })

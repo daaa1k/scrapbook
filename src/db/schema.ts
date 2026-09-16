@@ -63,6 +63,7 @@ export const jobs = sqliteTable(
     sourceId: text('source_id')
       .notNull()
       .references(() => sources.id),
+    kind: text('kind').notNull().default('fetch'),
     status: text('status').notNull(),
     cursorAgentId: text('cursor_agent_id'),
     errorCode: text('error_code'),

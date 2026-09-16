@@ -1,0 +1,1 @@
+ALTER TABLE `jobs` ADD `kind` text DEFAULT 'fetch' NOT NULL;

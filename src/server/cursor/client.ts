@@ -234,3 +234,14 @@ export function ingestPromptForUrl(url: string): string {
   }
   return lines.join('\n')
 }
+
+export function summarizePromptForBody(body: string): string {
+  return [
+    'Summarize the following stored source body.',
+    'Do not fetch any URL. Do not read files or object storage.',
+    'Reply with ONLY JSON, no markdown commentary. Shape:',
+    JSON.stringify({ summary: 'string' }),
+    'Body:',
+    body,
+  ].join('\n')
+}
