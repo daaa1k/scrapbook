@@ -2,7 +2,7 @@ import { Data, Effect } from 'effect'
 import { z } from 'zod'
 import { runSyncFail } from '~/lib/effect-run'
 
-export const jobKindSchema = z.enum(['fetch', 'summarize_body'])
+export const jobKindSchema = z.enum(['fetch', 'summarize_body', 'ask_source'])
 export type JobKind = z.infer<typeof jobKindSchema>
 
 export const jobStatusSchema = z.enum([
@@ -69,12 +69,21 @@ const SUMMARIZE_ERROR_LABEL: Record<string, string> = {
   ingest_result_not_json: '要約結果の形式が不正でした',
 }
 
+const ASK_ERROR_LABEL: Record<string, string> = {
+  workflow_start_failed: '質問ワークフローを開始できませんでした',
+  cursor_run_failed: 'Cursor による回答が失敗しました',
+  timeout: '質問が時間切れになりました',
+  ingest_failed: '質問処理に失敗しました',
+  ingest_result_not_json: '回答結果の形式が不正でした',
+}
+
 export const JOB_ERROR_LABEL: Record<string, string> = {
   ...FETCH_ERROR_LABEL,
   cursor_not_configured: 'Cursor APIキーが設定されていません',
   source_not_found: 'ソースが見つかりません',
   source_has_no_url: 'このソースには再取得できるURLがありません',
-  source_has_no_body: 'このソースには要約できる本文がありません',
+  source_has_no_body: 'このソースには使える本文がありません',
+  question_empty: '質問を入力してください',
   job_in_progress: '処理中です。完了してから貼り付けてください',
   pdf_not_pdf: 'PDFファイルを選んでください',
   pdf_too_large: 'PDFは8MB以下にしてください',
@@ -92,7 +101,8 @@ export function jobErrorReason(
   message: string | null,
   kind: JobKind = 'fetch',
 ): string {
-  const kindLabels = kind === 'summarize_body' ? SUMMARIZE_ERROR_LABEL : FETCH_ERROR_LABEL
+  const kindLabels =
+    kind === 'summarize_body' ? SUMMARIZE_ERROR_LABEL : kind === 'ask_source' ? ASK_ERROR_LABEL : FETCH_ERROR_LABEL
   const label = code
     ? (kindLabels[code] ?? JOB_ERROR_LABEL[code] ?? '失敗しました')
     : '失敗しました'

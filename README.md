@@ -1,6 +1,6 @@
 # Scrapbook
 
-Personal NotebookLM-style app on a single Cloudflare Worker: register a URL or a PDF, ingest URLs with a Cursor cloud agent, poll the job, retry or paste a body when fetch fails, and search title and body.
+Personal NotebookLM-style app on a single Cloudflare Worker: register a URL or a PDF, ingest URLs with a Cursor cloud agent, poll the job, retry or paste a body when fetch fails, search title and body, and ask a question against one source's stored body.
 
 This vertical slice is **one repo, one Worker, same domain**. No Hono, tRPC, Better Auth, or Vectorize.
 
@@ -12,7 +12,7 @@ Browser (TanStack Start + Query)
         ▼
 Worker  src/server.ts
         ├─ TanStack Start fetch handler
-        ├─ D1 (notebooks, sources, jobs, cursor_runs, citations)
+        ├─ D1 (notebooks, sources, jobs, cursor_runs, citations, qa_answers, qa_citations)
         ├─ R2 ASSETS (private PDF originals, served only via GET /assets/sources/:id)
         └─ Workflows INGEST_WORKFLOW → IngestWorkflow
                     │
@@ -35,9 +35,11 @@ Worker  src/server.ts
 | `notebooks` | Containers. Title is unique. A default notebook titled `受信箱` is created on first use and cannot be renamed or deleted. |
 | `sources` | Ingested URLs / PDFs / pasted bodies. `notebook_id` FK → `notebooks.id`. `summary` is ingest output. `memo` is the user's note. |
 | `source_tags` | Labels on sources. Primary key `(source_id, tag_name)`. No separate tags table. |
-| `jobs` | Per-ingest state machine. `source_id` FK → `sources.id`. `kind` is `fetch` or `summarize_body`. |
+| `jobs` | Per-ingest state machine. `source_id` FK → `sources.id`. `kind` is `fetch`, `summarize_body`, or `ask_source`. |
 | `cursor_runs` | Cursor run snapshots. `job_id` FK → `jobs.id`. |
 | `citations` | Latest quote snapshot for one source. `source_id` FK → `sources.id`. Written on successful Cursor persist and shown on the source detail page. |
+| `qa_answers` | One question/answer turn for a source. `source_id` FK → `sources.id`, `job_id` FK → `jobs.id`. Written when the user asks; `answer` fills on successful ask persist. |
+| `qa_citations` | Quotes for one Q&A turn. `qa_answer_id` FK → `qa_answers.id`. Separate from source-level `citations`. |
 
 **notebook ↔ source:** many sources belong to one notebook (`sources.notebook_id`). A source can move. Duplicate URLs are still one row globally, not one row per notebook. Many-to-many notebooks remain out of scope.
 
@@ -55,6 +57,8 @@ Manual paste writes `title` and `body`, leaves `summary` null, sets `acquired_vi
 
 Explicit **要約する** / **再要約する** on the source detail page starts a job that asks Cursor to summarize the **stored body**. It does not re-fetch the URL and does not re-read R2. The button is shown only when `body` is non-empty. Paste and PDF register still do not auto-summarize.
 
+Explicit **質問する** on the source detail page starts an `ask_source` job that asks Cursor to answer from the **stored body** only. It writes `qa_answers` / `qa_citations` and does not replace source-level `citations` or `summary`. Multi-source picker is out of scope.
+
 Title and body search uses SQLite `LIKE` with escaped wildcards, not FTS5. Unicode `LIKE` is good enough for Japanese substrings. FTS5 without a Japanese tokenizer would miss queries that `LIKE` hits. Vectorize is still out of scope.
 
 ## Job state machine
@@ -70,7 +74,7 @@ succeeded (terminal)
 failed (terminal)
 ```
 
-`waiting_agent → waiting_agent` is the poll loop. Production waits up to 20 sleeps of 15s, then `error_code: timeout`. Encoded in `JOB_TRANSITIONS` + `assertTransition()` (`src/domain/jobs.ts`). Fetch and summarize_body share this machine. They are distinguished by `jobs.kind` and by workflow params `mode`. At most one non-terminal job per source still applies across both kinds.
+`waiting_agent → waiting_agent` is the poll loop. Production waits up to 20 sleeps of 15s, then `error_code: timeout`. Encoded in `JOB_TRANSITIONS` + `assertTransition()` (`src/domain/jobs.ts`). Fetch, summarize_body, and ask_source share this machine. They are distinguished by `jobs.kind` and by workflow params `mode`. At most one non-terminal job per source still applies across all kinds.
 
 ## Local commands
 
@@ -148,6 +152,8 @@ If the flag is set in production config, auth still requires a valid Access JWT.
 The Workflow polls `GET /v1/agents/{id}/runs/{runId}`, strips markdown fences from `result`, and Zod-parses that object. There is no separate OpenAI key.
 
 Summarize-from-body uses the same agent API with a different prompt. The agent is given the stored body and must reply with `{ "summary": "string", "citations": [{ "excerpt": "string", "start": "number | null", "end": "number | null" }] }`. Persist writes `summary` and `updatedAt`, and replaces citation rows for that source. It does not write `body` or `memo`.
+
+Ask-from-body uses the same agent API again. The agent is given the question and stored body and must reply with `{ "answer": "string", "citations": [{ "excerpt": "string", "start": "number | null", "end": "number | null" }] }`. Persist writes the answer onto `qa_answers` and replaces `qa_citations` for that turn only. It does not write `sources.summary`, `sources.body`, or source-level `citations`.
 
 X/Twitter URLs are stored as `kind: 'x'`. The Cursor prompt adds a note that fetch is unauthenticated. Logged-in X scraping is **not** implemented (unproven without auth).
 

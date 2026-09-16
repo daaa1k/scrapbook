@@ -1,5 +1,5 @@
 import { desc, eq, sql } from 'drizzle-orm'
-import { jobs, sources } from '~/db/schema'
+import { jobs, qaAnswers, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { sha256Hex, storedBodyText } from '~/domain/ingest-result'
 import { assertTransition, canStartCursorJob, jobKindSchema, jobStatusSchema, sanitizeErrorMessage } from '~/domain/jobs'
@@ -130,11 +130,36 @@ export async function summarizeSourceBody(
   return startOrReuseJob(db, sourceId, workflow, { mode: 'summarize_body' })
 }
 
+export async function askSourceQuestion(
+  db: AppDb,
+  sourceId: string,
+  question: string,
+  workflow: WorkflowBinding | undefined,
+): Promise<RetryResult> {
+  const trimmed = question.trim()
+  if (!trimmed) {
+    throw new Error('question_empty')
+  }
+  const rows = await db.select().from(sources).where(eq(sources.id, sourceId)).limit(1)
+  const source = rows[0]
+  if (!source) {
+    throw new Error('source_not_found')
+  }
+  if (!storedBodyText(source.body)) {
+    throw new Error('source_has_no_body')
+  }
+  return startOrReuseJob(db, sourceId, workflow, { mode: 'ask_source', question: trimmed })
+}
+
 type EnqueueParams =
   | { mode: 'fetch'; sourceId: string; url: string }
   | { mode: 'summarize_body'; sourceId: string }
+  | { mode: 'ask_source'; sourceId: string; question: string }
 
-type JobStartParams = { mode: 'fetch'; url: string } | { mode: 'summarize_body' }
+type JobStartParams =
+  | { mode: 'fetch'; url: string }
+  | { mode: 'summarize_body' }
+  | { mode: 'ask_source'; question: string }
 
 async function startOrReuseJob(
   db: AppDb,
@@ -263,8 +288,36 @@ async function enqueueJob(
     finishedAt: null,
   })
 
+  let workflowParams:
+    | { mode: 'fetch'; jobId: string; sourceId: string; url: string }
+    | { mode: 'summarize_body'; jobId: string; sourceId: string }
+    | { mode: 'ask_source'; jobId: string; sourceId: string; qaAnswerId: string }
+
+  if (params.mode === 'fetch') {
+    workflowParams = { mode: 'fetch', jobId, sourceId: params.sourceId, url: params.url }
+  } else if (params.mode === 'summarize_body') {
+    workflowParams = { mode: 'summarize_body', jobId, sourceId: params.sourceId }
+  } else {
+    const qaAnswerId = crypto.randomUUID()
+    await db.insert(qaAnswers).values({
+      id: qaAnswerId,
+      sourceId: params.sourceId,
+      jobId,
+      question: params.question,
+      answer: null,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+    workflowParams = {
+      mode: 'ask_source',
+      jobId,
+      sourceId: params.sourceId,
+      qaAnswerId,
+    }
+  }
+
   try {
-    await startIngestWorkflow(workflow, { ...params, jobId })
+    await startIngestWorkflow(workflow, workflowParams)
   } catch (error) {
     assertTransition('queued', 'failed')
     const message = sanitizeErrorMessage(error instanceof Error ? error.message : 'workflow_start_failed')

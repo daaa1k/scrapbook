@@ -2,6 +2,7 @@ import { Effect, Exit } from 'effect'
 import { describe, expect, it } from 'vitest'
 import {
   CursorNotConfigured,
+  askPromptForBody,
   createCursorClient,
   createMockCursorClient,
   ingestPromptForUrl,
@@ -101,6 +102,15 @@ describe('Cursor client', () => {
   it('asks Cursor to summarize the stored body instead of fetching a URL', () => {
     const prompt = summarizePromptForBody('手入力の本文です。')
     expect(prompt).toContain('手入力の本文です。')
+    expect(prompt).toContain('Do not fetch any URL')
+    expect(prompt).not.toContain('Fetch the URL')
+  })
+
+  it('asks Cursor to answer a question from the stored body', () => {
+    const prompt = askPromptForBody('要点は？', '手入力の本文です。')
+    expect(prompt).toContain('Question: 要点は？')
+    expect(prompt).toContain('手入力の本文です。')
+    expect(prompt).toContain('"answer"')
     expect(prompt).toContain('Do not fetch any URL')
     expect(prompt).not.toContain('Fetch the URL')
   })
