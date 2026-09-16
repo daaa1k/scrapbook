@@ -41,7 +41,7 @@
         "ALLOW_INSECURE_AUTH_BYPASS": "false",
         "ACCESS_TEAM_DOMAIN": "https://example.cloudflareaccess.com",
         "ACCESS_AUD": "replace-me",
-        "ACCESS_ALLOWED_EMAILS": "you@example.com"
+        "ACCESS_ALLOWED_EMAILS": "dd41kk@gmail.com"
       },
       "d1_databases": [
         {
