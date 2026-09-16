@@ -7,7 +7,9 @@ import { Input, controlClassName } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
 import { pdfTextHelp, sourceOriginalPath } from '~/domain/pdf'
 import { MAX_CURSOR_BODY_CHARS, storedBodyText } from '~/domain/ingest-result'
+import { sourceDetailToMarkdown, sourceExportFilename } from '~/domain/export-markdown'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
+import { downloadTextFile } from '~/lib/download'
 import {
   acquiredViaLabel,
   fetchStatusLabel,
@@ -228,19 +230,28 @@ function SourceDetailPage() {
             </a>
           </p>
         ) : null}
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Button
+            onClick={() =>
+              downloadTextFile(sourceExportFilename(source), sourceDetailToMarkdown(source))
+            }
+          >
+            Markdownを書き出す
+          </Button>
           <Button
             disabled={!canDeleteSource || removeSource.isPending}
             onClick={() => removeSource.mutate()}
           >
             ソースを削除
           </Button>
-          {retryBusy ? (
-            <p className="mt-2 text-sm text-zinc-500">処理中のため削除できません。</p>
-          ) : (
-            <p className="mt-2 text-sm text-zinc-500">引用・質問・ジョブもまとめて消します。元に戻せません。</p>
-          )}
         </div>
+        {retryBusy ? (
+          <p className="mt-2 text-sm text-zinc-500">処理中のため削除できません。</p>
+        ) : (
+          <p className="mt-2 text-sm text-zinc-500">
+            書き出しは今の画面の内容です。削除は引用・質問・ジョブもまとめて消し、元に戻せません。
+          </p>
+        )}
       </div>
       <Card>
         <h2 className="mb-3 font-medium">整理</h2>

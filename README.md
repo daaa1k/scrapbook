@@ -57,7 +57,7 @@ Manual paste writes `title` and `body`, leaves `summary` null, sets `acquired_vi
 
 Explicit **要約する** / **再要約する** on the source detail page starts a job that asks Cursor to summarize the **stored body**. It does not re-fetch the URL and does not re-read R2. The button is shown only when `body` is non-empty. Paste and PDF register still do not auto-summarize.
 
-Explicit **質問する** on the source detail page starts an `ask_source` job that asks Cursor to answer from the **stored body** only. It writes `qa_answers` / `qa_citations` and does not replace source-level `citations` or `summary`. Finished turns (succeeded or failed jobs) can be deleted from the detail page; in-flight asks cannot. Multi-source picker is out of scope. Summarize and ask prompts share a body budget (`MAX_CURSOR_BODY_CHARS` = 100_000); longer stored bodies are truncated for the Cursor prompt only. Fetch persist truncates to `MAX_SOURCE_BODY_CHARS` (200_000) like paste/PDF and marks `partial` when cut.
+Explicit **質問する** on the source detail page starts an `ask_source` job that asks Cursor to answer from the **stored body** only. It writes `qa_answers` / `qa_citations` and does not replace source-level `citations` or `summary`. Finished turns (succeeded or failed jobs) can be deleted from the detail page; in-flight asks cannot. Multi-source picker is out of scope. Summarize and ask prompts share a body budget (`MAX_CURSOR_BODY_CHARS` = 100_000); longer stored bodies are truncated for the Cursor prompt only. Fetch persist truncates to `MAX_SOURCE_BODY_CHARS` (200_000) like paste/PDF and marks `partial` when cut. **Markdownを書き出す** on the detail page downloads the loaded title, memo, summary, citations, Q&A, and body as a `.md` file (client-side; no new server route).
 
 Title and body search uses SQLite `LIKE` with escaped wildcards, not FTS5. Unicode `LIKE` is good enough for Japanese substrings. FTS5 without a Japanese tokenizer would miss queries that `LIKE` hits. Vectorize is still out of scope.
 
@@ -165,7 +165,7 @@ Production without `CURSOR_API_KEY`: the job fails with `cursor_not_configured` 
 - FTS5 / Vectorize: title and body search uses `LIKE`. Vectorize is not in this slice.
 - Playwright E2E: upcoming.
 - X/Twitter authenticated fetch.
-- Backup / export.
+- Full notebook / R2 zip backup. A single source can be exported as Markdown from the detail page (current summary, citations, Q&A, and body).
 
 ## Tooling substitutions
 
