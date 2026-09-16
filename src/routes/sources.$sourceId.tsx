@@ -18,7 +18,7 @@ import {
   userFacingError,
 } from '~/lib/utils'
 import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
-import { getSource, pasteSource, retrySource, summarizeSource } from '~/server/functions/sources'
+import { getSource, pasteSource, retrySource, askSource, summarizeSource } from '~/server/functions/sources'
 
 export const Route = createFileRoute('/sources/$sourceId')({
   loader: ({ context, params }) =>
@@ -40,6 +40,7 @@ function SourceDetailPage() {
   const queryClient = useQueryClient()
   const [pasteTitle, setPasteTitle] = useState('')
   const [pasteBody, setPasteBody] = useState('')
+  const [questionDraft, setQuestionDraft] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [selectedNotebookId, setSelectedNotebookId] = useState('')
   const [tagDraft, setTagDraft] = useState('')
@@ -86,6 +87,21 @@ function SourceDetailPage() {
     mutationFn: () => summarizeSource({ data: { sourceId } }),
     onSuccess: async () => {
       setActionError(null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
+        queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
+      ])
+    },
+    onError: (error) => {
+      setActionError(userFacingError(error))
+    },
+  })
+
+  const ask = useMutation({
+    mutationFn: () => askSource({ data: { sourceId, question: questionDraft } }),
+    onSuccess: async () => {
+      setActionError(null)
+      setQuestionDraft('')
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
         queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
@@ -337,6 +353,66 @@ function SourceDetailPage() {
                   <a href="#source-body" className="mt-1 inline-block text-sm underline">
                     本文の該当箇所へ
                   </a>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+      <Card>
+        <h2 className="mb-2 font-medium">質問</h2>
+        {storedBodyText(source.body) ? (
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault()
+              ask.mutate()
+            }}
+          >
+            <Textarea
+              name="question"
+              required
+              value={questionDraft}
+              onChange={(event) => setQuestionDraft(event.target.value)}
+              placeholder="このソースについて質問"
+              aria-label="質問"
+              maxLength={4000}
+            />
+            <Button type="submit" disabled={retryBusy || ask.isPending || questionDraft.trim() === ''}>
+              質問する
+            </Button>
+            {retryBusy ? (
+              <p className="text-sm text-zinc-500">処理中のため質問できません。</p>
+            ) : (
+              <p className="text-sm text-zinc-500">保存済みの本文だけを使って答えます。複数ソースはまだ選べません。</p>
+            )}
+          </form>
+        ) : (
+          <p className="text-sm text-zinc-500">本文があるときだけ質問できます。</p>
+        )}
+        {source.qaAnswers.length === 0 ? (
+          <p className="mt-4 text-sm text-zinc-500">まだ質問はありません</p>
+        ) : (
+          <ul className="mt-4 space-y-4">
+            {source.qaAnswers.map((turn) => (
+              <li key={turn.id} className="space-y-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
+                <p className="text-sm text-zinc-500">質問</p>
+                <p className="whitespace-pre-wrap">{turn.question}</p>
+                <p className="text-sm text-zinc-500">回答</p>
+                <p className="whitespace-pre-wrap">{turn.answer ?? '回答待ち…'}</p>
+                {turn.citations.length > 0 ? (
+                  <ul className="space-y-2">
+                    {turn.citations.map((citation) => (
+                      <li key={citation.id}>
+                        <blockquote className="whitespace-pre-wrap text-sm">{citation.excerpt}</blockquote>
+                        {citation.bodySpan ? (
+                          <a href="#source-body" className="mt-1 inline-block text-sm underline">
+                            本文の該当箇所へ
+                          </a>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
               </li>
             ))}

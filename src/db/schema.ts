@@ -102,3 +102,35 @@ export const citations = sqliteTable('citations', {
   excerpt: text('excerpt').notNull(),
   createdAt: integer('created_at').notNull(),
 })
+
+export const qaAnswers = sqliteTable(
+  'qa_answers',
+  {
+    id: text('id').primaryKey(),
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => sources.id),
+    jobId: text('job_id')
+      .notNull()
+      .references(() => jobs.id),
+    question: text('question').notNull(),
+    answer: text('answer'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [index('qa_answers_source_created_idx').on(table.sourceId, table.createdAt)],
+)
+
+export const qaCitations = sqliteTable(
+  'qa_citations',
+  {
+    id: text('id').primaryKey(),
+    qaAnswerId: text('qa_answer_id')
+      .notNull()
+      .references(() => qaAnswers.id, { onDelete: 'cascade' }),
+    locator: text('locator').notNull(),
+    excerpt: text('excerpt').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [index('qa_citations_answer_created_idx').on(table.qaAnswerId, table.createdAt)],
+)

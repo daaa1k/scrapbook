@@ -21,6 +21,13 @@ export const summarizeResultSchema = z.object({
 
 export type SummarizeResult = z.infer<typeof summarizeResultSchema>
 
+export const askResultSchema = z.object({
+  answer: z.string().min(1),
+  citations: citationListSchema,
+})
+
+export type AskResult = z.infer<typeof askResultSchema>
+
 export function stripMarkdownFences(text: string): string {
   const trimmed = text.trim()
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/i)
@@ -46,6 +53,10 @@ export function parseIngestResultJson(raw: string): IngestResult {
 
 export function parseSummarizeResultJson(raw: string): SummarizeResult {
   return summarizeResultSchema.parse(parseJsonObject(raw))
+}
+
+export function parseAskResultJson(raw: string): AskResult {
+  return askResultSchema.parse(parseJsonObject(raw))
 }
 
 export function storedBodyText(body: string | null | undefined): string | null {

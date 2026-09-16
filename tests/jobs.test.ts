@@ -57,15 +57,21 @@ describe('job transitions', () => {
       'Cursor による要約が失敗しました: Cursor run ended: ERROR',
     )
     expect(jobErrorReason('timeout', null, 'summarize_body')).toBe('要約が時間切れになりました')
-    expect(jobErrorReason('source_has_no_body', null)).toBe('このソースには要約できる本文がありません')
+    expect(jobErrorReason('source_has_no_body', null)).toBe('このソースには使える本文がありません')
+    expect(jobErrorReason('cursor_run_failed', 'Cursor run ended: ERROR', 'ask_source')).toBe(
+      'Cursor による回答が失敗しました: Cursor run ended: ERROR',
+    )
+    expect(jobErrorReason('timeout', null, 'ask_source')).toBe('質問が時間切れになりました')
   })
 
   it('maps source_has_no_body for user-facing errors', () => {
-    expect(userFacingError(new Error('source_has_no_body'))).toBe('このソースには要約できる本文がありません')
+    expect(userFacingError(new Error('source_has_no_body'))).toBe('このソースには使える本文がありません')
+    expect(userFacingError(new Error('question_empty'))).toBe('質問を入力してください')
   })
 
   it('labels in-flight summarize jobs as 要約中', () => {
     expect(jobStatusLabel('waiting_agent', 'fetch')).toBe('取得中')
     expect(jobStatusLabel('waiting_agent', 'summarize_body')).toBe('要約中')
+    expect(jobStatusLabel('waiting_agent', 'ask_source')).toBe('回答中')
   })
 })

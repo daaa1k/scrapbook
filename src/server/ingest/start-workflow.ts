@@ -12,6 +12,12 @@ export const ingestWorkflowParamsSchema = z.discriminatedUnion('mode', [
     jobId: z.string().min(1),
     sourceId: z.string().min(1),
   }),
+  z.object({
+    mode: z.literal('ask_source'),
+    jobId: z.string().min(1),
+    sourceId: z.string().min(1),
+    qaAnswerId: z.string().min(1),
+  }),
 ])
 
 export type IngestWorkflowParams = z.infer<typeof ingestWorkflowParamsSchema>

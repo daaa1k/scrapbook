@@ -150,6 +150,11 @@ export const MOCK_INGEST_JSON = {
   citations: [{ excerpt: 'モックの本文', start: 3, end: 9 }],
 }
 
+export const MOCK_ASK_JSON = {
+  answer: 'モック回答です。',
+  citations: [{ excerpt: 'モックの本文', start: 3, end: 9 }],
+}
+
 export function createMockCursorClient(options?: {
   runStatus?: CursorRun['status']
   result?: string
@@ -248,6 +253,23 @@ export function summarizePromptForBody(body: string): string {
       citations: [{ excerpt: 'string', start: 'number | null', end: 'number | null' }],
     }),
     'start and end are optional together and are 0-based half-open JavaScript indexes into body.',
+    'Body:',
+    body,
+  ].join('\n')
+}
+
+export function askPromptForBody(question: string, body: string): string {
+  return [
+    'Answer the question using only the following stored source body.',
+    'Do not fetch any URL. Do not read files or object storage.',
+    'Reply with ONLY JSON, no markdown commentary. Shape:',
+    JSON.stringify({
+      answer: 'string',
+      citations: [{ excerpt: 'string', start: 'number | null', end: 'number | null' }],
+    }),
+    'start and end are optional together and are 0-based half-open JavaScript indexes into body.',
+    'Cite short verbatim excerpts from the body that support the answer.',
+    `Question: ${question}`,
     'Body:',
     body,
   ].join('\n')

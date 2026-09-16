@@ -1,5 +1,12 @@
 import { and, desc, eq, exists, inArray, or, sql } from 'drizzle-orm'
-import { citations as citationsTable, notebooks, sources, sourceTags } from '~/db/schema'
+import {
+  citations as citationsTable,
+  notebooks,
+  qaAnswers,
+  qaCitations,
+  sources,
+  sourceTags,
+} from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { citationViewFromRow } from '~/domain/citations'
 import { jobKindSchema, jobStatusSchema, type JobStatus } from '~/domain/jobs'
@@ -138,7 +145,7 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
   if (!row) {
     throw new Error('source_not_found')
   }
-  const [job, tagsBySource, citationRows] = await Promise.all([
+  const [job, tagsBySource, citationRows, answerRows] = await Promise.all([
     latestJobForSource(db, row.id),
     listTagsBySourceIds(db, [row.id]),
     db
@@ -150,7 +157,40 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
       .from(citationsTable)
       .where(eq(citationsTable.sourceId, row.id))
       .orderBy(citationsTable.createdAt, sql`rowid`),
+    db
+      .select({
+        id: qaAnswers.id,
+        question: qaAnswers.question,
+        answer: qaAnswers.answer,
+      })
+      .from(qaAnswers)
+      .where(eq(qaAnswers.sourceId, row.id))
+      .orderBy(desc(qaAnswers.createdAt), desc(sql`rowid`)),
   ])
+  const qaCitationRows =
+    answerRows.length === 0
+      ? []
+      : await db
+          .select({
+            id: qaCitations.id,
+            qaAnswerId: qaCitations.qaAnswerId,
+            locator: qaCitations.locator,
+            excerpt: qaCitations.excerpt,
+          })
+          .from(qaCitations)
+          .where(
+            inArray(
+              qaCitations.qaAnswerId,
+              answerRows.map((answer) => answer.id),
+            ),
+          )
+          .orderBy(qaCitations.createdAt, sql`rowid`)
+  const citationsByAnswer = new Map<string, typeof qaCitationRows>()
+  for (const citationRow of qaCitationRows) {
+    const current = citationsByAnswer.get(citationRow.qaAnswerId)
+    if (current) current.push(citationRow)
+    else citationsByAnswer.set(citationRow.qaAnswerId, [citationRow])
+  }
   return sourceDetailSchema.parse({
     id: row.id,
     kind: row.kind,
@@ -176,5 +216,13 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
       memo: row.memo,
     },
     citations: citationRows.map((citationRow) => citationViewFromRow(citationRow, row.body)),
+    qaAnswers: answerRows.map((answer) => ({
+      id: answer.id,
+      question: answer.question,
+      answer: answer.answer,
+      citations: (citationsByAnswer.get(answer.id) ?? []).map((citationRow) =>
+        citationViewFromRow(citationRow, row.body),
+      ),
+    })),
   })
 }

@@ -40,5 +40,13 @@ export const sourceDetailSchema = z.object({
   job: sourceJobSchema.nullable(),
   organization: sourceOrganizationSchema,
   citations: z.array(citationViewSchema),
+  qaAnswers: z.array(
+    z.object({
+      id: z.string(),
+      question: z.string(),
+      answer: z.string().nullable(),
+      citations: z.array(citationViewSchema),
+    }),
+  ),
 })
 export type SourceDetail = z.infer<typeof sourceDetailSchema>

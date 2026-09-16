@@ -1,9 +1,15 @@
 import { Effect } from 'effect'
 import { eq } from 'drizzle-orm'
-import { citations as citationsTable, cursorRuns, jobs, sources } from '~/db/schema'
+import { citations as citationsTable, cursorRuns, jobs, qaAnswers, qaCitations, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { encodeLocator, type Citation } from '~/domain/citations'
-import { parseIngestResultJson, parseSummarizeResultJson, sha256Hex, storedBodyText } from '~/domain/ingest-result'
+import {
+  parseAskResultJson,
+  parseIngestResultJson,
+  parseSummarizeResultJson,
+  sha256Hex,
+  storedBodyText,
+} from '~/domain/ingest-result'
 import {
   assertTransitionEffect,
   IllegalJobTransitionError,
@@ -13,6 +19,7 @@ import {
 } from '~/domain/jobs'
 import { runPromiseFail } from '~/lib/effect-run'
 import {
+  askPromptForBody,
   createCursorClient,
   createMockCursorClient,
   ingestPromptForUrl,
@@ -125,6 +132,17 @@ async function promptForJob(db: AppDb, params: IngestWorkflowParams): Promise<st
       if (!body) throw new Error('source_has_no_body')
       return summarizePromptForBody(body)
     }
+    case 'ask_source': {
+      const [sourceRows, answerRows] = await Promise.all([
+        db.select({ body: sources.body }).from(sources).where(eq(sources.id, params.sourceId)).limit(1),
+        db.select({ question: qaAnswers.question }).from(qaAnswers).where(eq(qaAnswers.id, params.qaAnswerId)).limit(1),
+      ])
+      const body = storedBodyText(sourceRows[0]?.body)
+      if (!body) throw new Error('source_has_no_body')
+      const question = answerRows[0]?.question?.trim() ?? ''
+      if (!question) throw new Error('question_empty')
+      return askPromptForBody(question, body)
+    }
   }
 }
 
@@ -140,6 +158,25 @@ async function replaceSourceCitations(
     citations.map((citation) => ({
       id: crypto.randomUUID(),
       sourceId,
+      locator: encodeLocator(citation.locator),
+      excerpt: citation.excerpt,
+      createdAt: ts,
+    })),
+  )
+}
+
+async function replaceQaCitations(
+  db: AppDb,
+  qaAnswerId: string,
+  citations: readonly Citation[],
+  ts: number,
+): Promise<void> {
+  await db.delete(qaCitations).where(eq(qaCitations.qaAnswerId, qaAnswerId))
+  if (citations.length === 0) return
+  await db.insert(qaCitations).values(
+    citations.map((citation) => ({
+      id: crypto.randomUUID(),
+      qaAnswerId,
       locator: encodeLocator(citation.locator),
       excerpt: citation.excerpt,
       createdAt: ts,
@@ -192,12 +229,30 @@ async function persistIngestOutput(
       await replaceSourceCitations(db, params.sourceId, parsed.citations, ts)
       return
     }
+    case 'ask_source': {
+      const parsed = parseAskResultJson(raw)
+      await db
+        .update(qaAnswers)
+        .set({
+          answer: parsed.answer,
+          updatedAt: ts,
+        })
+        .where(eq(qaAnswers.id, params.qaAnswerId))
+      await replaceQaCitations(db, params.qaAnswerId, parsed.citations, ts)
+      return
+    }
   }
 }
 
 function failCodeForError(error: unknown): string {
   const message = error instanceof Error ? error.message : 'ingest_failed'
-  if (message === 'source_has_no_body' || message === 'ingest_result_not_json') return message
+  if (
+    message === 'source_has_no_body' ||
+    message === 'ingest_result_not_json' ||
+    message === 'question_empty'
+  ) {
+    return message
+  }
   return 'ingest_failed'
 }
 

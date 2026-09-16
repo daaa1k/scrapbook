@@ -39,6 +39,7 @@ const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
 export function jobStatusLabel(status: JobStatus | null, kind: JobKind | null = 'fetch'): string {
   if (!status) return '未処理'
   if (kind === 'summarize_body' && status === 'waiting_agent') return '要約中'
+  if (kind === 'ask_source' && status === 'waiting_agent') return '回答中'
   return JOB_STATUS_LABEL[status]
 }
 
