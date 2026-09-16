@@ -34,11 +34,13 @@ describe('organization', () => {
     const { db } = createTestDb()
     const inboxId = await ensureInboxNotebook(db)
 
-    await run(db, { type: 'create-notebook', title: '研究' })
-    await run(db, { type: 'create-notebook', title: '研究' })
+    const firstCreate = await run(db, { type: 'create-notebook', title: '研究' })
+    const secondCreate = await run(db, { type: 'create-notebook', title: '研究' })
     const created = await db.select().from(notebooks).where(eq(notebooks.title, '研究'))
     expect(created).toHaveLength(1)
     const researchId = created[0]!.id
+    expect(firstCreate).toEqual({ ok: true, notebookId: researchId })
+    expect(secondCreate).toEqual({ ok: true, notebookId: researchId })
 
     await expect(run(db, { type: 'create-notebook', title: '受信箱' })).rejects.toThrow(
       'notebook_title_reserved',

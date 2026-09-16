@@ -62,20 +62,27 @@ async function createNotebook(db: AppDb, title: NotebookTitle): Promise<Organiza
     throw new Error('notebook_title_reserved')
   }
   const existing = await notebookByTitle(db, title)
-  if (existing) return ACK
+  if (existing) {
+    return { ok: true, notebookId: notebookIdSchema.parse(existing.id) }
+  }
+  const id = crypto.randomUUID()
   const ts = nowMs()
   try {
     await db.insert(notebooks).values({
-      id: crypto.randomUUID(),
+      id,
       title,
       createdAt: ts,
       updatedAt: ts,
     })
   } catch (error) {
-    if (isUniqueConstraintError(error)) return ACK
+    if (isUniqueConstraintError(error)) {
+      const raced = await notebookByTitle(db, title)
+      if (raced) return { ok: true, notebookId: notebookIdSchema.parse(raced.id) }
+      throw error
+    }
     throw error
   }
-  return ACK
+  return { ok: true, notebookId: notebookIdSchema.parse(id) }
 }
 
 async function renameNotebook(
