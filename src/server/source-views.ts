@@ -1,6 +1,7 @@
 import { and, desc, eq, exists, inArray, or, sql } from 'drizzle-orm'
-import { notebooks, sources, sourceTags } from '~/db/schema'
+import { citations as citationsTable, notebooks, sources, sourceTags } from '~/db/schema'
 import type { AppDb } from '~/db/types'
+import { citationViewFromRow } from '~/domain/citations'
 import { jobKindSchema, jobStatusSchema, type JobStatus } from '~/domain/jobs'
 import {
   INBOX_NOTEBOOK_TITLE,
@@ -137,9 +138,18 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
   if (!row) {
     throw new Error('source_not_found')
   }
-  const [job, tagsBySource] = await Promise.all([
+  const [job, tagsBySource, citationRows] = await Promise.all([
     latestJobForSource(db, row.id),
     listTagsBySourceIds(db, [row.id]),
+    db
+      .select({
+        id: citationsTable.id,
+        locator: citationsTable.locator,
+        excerpt: citationsTable.excerpt,
+      })
+      .from(citationsTable)
+      .where(eq(citationsTable.sourceId, row.id))
+      .orderBy(citationsTable.createdAt, sql`rowid`),
   ])
   return sourceDetailSchema.parse({
     id: row.id,
@@ -165,5 +175,6 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
       tags: tagsBySource.get(row.id) ?? [],
       memo: row.memo,
     },
+    citations: citationRows.map((citationRow) => citationViewFromRow(citationRow, row.body)),
   })
 }

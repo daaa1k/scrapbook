@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { citationViewSchema } from '~/domain/citations'
 import { jobKindSchema, jobStatusSchema } from '~/domain/jobs'
 import { notebookRefSchema, sourceOrganizationSchema, tagNameSchema } from '~/domain/organization'
 import { acquiredViaSchema } from '~/domain/url'
@@ -38,5 +39,6 @@ export const sourceDetailSchema = z.object({
   body: z.string().nullable(),
   job: sourceJobSchema.nullable(),
   organization: sourceOrganizationSchema,
+  citations: z.array(citationViewSchema),
 })
 export type SourceDetail = z.infer<typeof sourceDetailSchema>

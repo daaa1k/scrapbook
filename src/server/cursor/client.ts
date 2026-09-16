@@ -147,6 +147,7 @@ export const MOCK_INGEST_JSON = {
   summary: 'モック要約',
   fetchStatus: 'full' as const,
   failureReason: null,
+  citations: [{ excerpt: 'モックの本文', start: 3, end: 9 }],
 }
 
 export function createMockCursorClient(options?: {
@@ -225,7 +226,9 @@ export function ingestPromptForUrl(url: string): string {
       summary: 'string',
       fetchStatus: 'full | partial | failed',
       failureReason: 'string | null',
+      citations: [{ excerpt: 'string', start: 'number | null', end: 'number | null' }],
     }),
+    'start and end are optional together and are 0-based half-open JavaScript indexes into body.',
   ]
   if (sourceKindFromUrl(url) === 'x') {
     lines.push(
@@ -240,7 +243,11 @@ export function summarizePromptForBody(body: string): string {
     'Summarize the following stored source body.',
     'Do not fetch any URL. Do not read files or object storage.',
     'Reply with ONLY JSON, no markdown commentary. Shape:',
-    JSON.stringify({ summary: 'string' }),
+    JSON.stringify({
+      summary: 'string',
+      citations: [{ excerpt: 'string', start: 'number | null', end: 'number | null' }],
+    }),
+    'start and end are optional together and are 0-based half-open JavaScript indexes into body.',
     'Body:',
     body,
   ].join('\n')

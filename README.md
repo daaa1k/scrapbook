@@ -37,11 +37,13 @@ Worker  src/server.ts
 | `source_tags` | Labels on sources. Primary key `(source_id, tag_name)`. No separate tags table. |
 | `jobs` | Per-ingest state machine. `source_id` FK → `sources.id`. `kind` is `fetch` or `summarize_body`. |
 | `cursor_runs` | Cursor run snapshots. `job_id` FK → `jobs.id`. |
-| `citations` | Schema only; no UI in this slice. `source_id` FK → `sources.id`. |
+| `citations` | Latest quote snapshot for one source. `source_id` FK → `sources.id`. Written on successful Cursor persist and shown on the source detail page. |
 
 **notebook ↔ source:** many sources belong to one notebook (`sources.notebook_id`). A source can move. Duplicate URLs are still one row globally, not one row per notebook. Many-to-many notebooks remain out of scope.
 
 The list filter is `{ q, notebookId, tagName }` combined with AND. Empty `q` means no text predicate. Tag attach is create-if-missing. Organization writes go through `runOrganizationCommand`. Ingest persist, paste, and PDF extract do not write `memo` or `notebook_id`.
+
+Successful persist of `fetch` or `summarize_body` deletes every `citations` row for that `source_id`, then inserts the parsed list. An omitted `citations` key and `[]` both persist as zero rows. A failed Cursor run, paste, and PDF extract do not write this table.
 
 `normalized_url` is unique when present (duplicate URL detection). `acquired_via` is `fetch`, `paste`, or `upload`. `content_hash` is SHA-256 of `body` after a successful fetch, paste, or PDF extract. Do not log `body`, PDF bytes, or API keys.
 
@@ -136,13 +138,16 @@ If the flag is set in production config, auth still requires a valid Access JWT.
   "body": "string",
   "summary": "string",
   "fetchStatus": "full | partial | failed",
-  "failureReason": "string | null"
+  "failureReason": "string | null",
+  "citations": [{ "excerpt": "string", "start": "number | null", "end": "number | null" }]
 }
 ```
 
+`start` and `end` are optional together. They are 0-based half-open JavaScript indexes into `body`.
+
 The Workflow polls `GET /v1/agents/{id}/runs/{runId}`, strips markdown fences from `result`, and Zod-parses that object. There is no separate OpenAI key.
 
-Summarize-from-body uses the same agent API with a different prompt. The agent is given the stored body and must reply with `{ "summary": "string" }` only. Persist writes `summary` and `updatedAt`. It does not write `body` or `memo`.
+Summarize-from-body uses the same agent API with a different prompt. The agent is given the stored body and must reply with `{ "summary": "string", "citations": [{ "excerpt": "string", "start": "number | null", "end": "number | null" }] }`. Persist writes `summary` and `updatedAt`, and replaces citation rows for that source. It does not write `body` or `memo`.
 
 X/Twitter URLs are stored as `kind: 'x'`. The Cursor prompt adds a note that fetch is unauthenticated. Logged-in X scraping is **not** implemented (unproven without auth).
 
@@ -151,7 +156,6 @@ Production without `CURSOR_API_KEY`: the job fails with `cursor_not_configured` 
 ## What is stubbed / out of scope
 
 - PDF R2 path: upload stores the original privately, extracts text with unpdf, serves bytes only through Access-authenticated GET `/assets/sources/:id`. Cursor is not started for PDFs. Scanned PDFs use paste.
-- Citations table exists; no UI.
 - FTS5 / Vectorize: title and body search uses `LIKE`. Vectorize is not in this slice.
 - Playwright E2E: upcoming.
 - X/Twitter authenticated fetch.

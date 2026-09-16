@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { citationListSchema } from '~/domain/citations'
 
 export const ingestResultSchema = z.object({
   title: z.string(),
@@ -8,12 +9,14 @@ export const ingestResultSchema = z.object({
   summary: z.string(),
   fetchStatus: z.enum(['full', 'partial', 'failed']),
   failureReason: z.string().nullable(),
+  citations: citationListSchema,
 })
 
 export type IngestResult = z.infer<typeof ingestResultSchema>
 
 export const summarizeResultSchema = z.object({
   summary: z.string().min(1),
+  citations: citationListSchema,
 })
 
 export type SummarizeResult = z.infer<typeof summarizeResultSchema>
