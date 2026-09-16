@@ -30,6 +30,22 @@ export const EMPTY_SOURCE_LIST_FILTER: SourceListFilter = {
   tagName: null,
 }
 
+export function parseSourcesPageSearch(search: unknown): { notebookId?: NotebookId } {
+  const bag = z.object({ notebookId: z.unknown().optional() }).safeParse(search)
+  if (!bag.success) return {}
+  const parsed = notebookIdSchema.safeParse(bag.data.notebookId)
+  return parsed.success ? { notebookId: parsed.data } : {}
+}
+
+export function sourceListFilterFromSourcesPageSearch(search: {
+  notebookId?: NotebookId
+}): SourceListFilter {
+  return {
+    ...EMPTY_SOURCE_LIST_FILTER,
+    notebookId: search.notebookId ?? null,
+  }
+}
+
 export const notebookRefSchema = z.object({
   id: notebookIdSchema,
   title: notebookTitleSchema,
