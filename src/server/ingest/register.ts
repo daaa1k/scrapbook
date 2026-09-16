@@ -1,10 +1,11 @@
-import { desc, eq, sql } from 'drizzle-orm'
-import { jobs, qaAnswers, sources } from '~/db/schema'
+import { desc, eq, inArray, sql } from 'drizzle-orm'
+import { citations, cursorRuns, jobs, qaAnswers, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { sha256Hex, storedBodyText } from '~/domain/ingest-result'
 import { assertTransition, canStartCursorJob, isTerminalJobStatus, jobKindSchema, jobStatusSchema, sanitizeErrorMessage } from '~/domain/jobs'
 import { parseAndNormalizeUrl } from '~/domain/url'
 import { startIngestWorkflow, type WorkflowBinding } from '~/server/ingest/start-workflow'
+import type { AssetsPort, R2ObjectKey } from '~/server/ingest/pdf'
 import { ensureInboxNotebook } from '~/server/organization'
 
 export type RegisterResult = {
@@ -169,6 +170,44 @@ export async function deleteQaAnswer(
     throw new Error('qa_answer_in_progress')
   }
   await db.delete(qaAnswers).where(eq(qaAnswers.id, input.qaAnswerId))
+  return { deleted: true }
+}
+
+export async function deleteSource(
+  db: AppDb,
+  sourceId: string,
+  assets: AssetsPort | undefined,
+): Promise<{ deleted: true }> {
+  const rows = await db.select().from(sources).where(eq(sources.id, sourceId)).limit(1)
+  const source = rows[0]
+  if (!source) {
+    throw new Error('source_not_found')
+  }
+  const latest = await latestJobForSource(db, sourceId)
+  const latestStatus = latest ? jobStatusSchema.parse(latest.status) : null
+  if (!canStartCursorJob(latestStatus)) {
+    throw new Error('source_in_progress')
+  }
+
+  const jobRows = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.sourceId, sourceId))
+  const jobIds = jobRows.map((row) => row.id)
+
+  await db.delete(qaAnswers).where(eq(qaAnswers.sourceId, sourceId))
+  await db.delete(citations).where(eq(citations.sourceId, sourceId))
+  if (jobIds.length > 0) {
+    await db.delete(cursorRuns).where(inArray(cursorRuns.jobId, jobIds))
+    await db.delete(jobs).where(eq(jobs.sourceId, sourceId))
+  }
+  await db.delete(sources).where(eq(sources.id, sourceId))
+
+  if (source.r2Key && assets) {
+    try {
+      await assets.delete(source.r2Key as R2ObjectKey)
+    } catch {
+      // Best-effort: D1 row is already gone.
+    }
+  }
+
   return { deleted: true }
 }
 
