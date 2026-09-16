@@ -84,6 +84,8 @@ export const JOB_ERROR_LABEL: Record<string, string> = {
   source_has_no_url: 'このソースには再取得できるURLがありません',
   source_has_no_body: 'このソースには使える本文がありません',
   question_empty: '質問を入力してください',
+  qa_answer_not_found: '質問が見つかりません',
+  qa_answer_in_progress: '処理中の質問は削除できません',
   job_in_progress: '処理中です。完了してから貼り付けてください',
   pdf_not_pdf: 'PDFファイルを選んでください',
   pdf_too_large: 'PDFは8MB以下にしてください',

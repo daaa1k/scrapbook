@@ -45,6 +45,7 @@ export const sourceDetailSchema = z.object({
       id: z.string(),
       question: z.string(),
       answer: z.string().nullable(),
+      canDelete: z.boolean(),
       citations: z.array(citationViewSchema),
     }),
   ),
