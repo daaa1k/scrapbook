@@ -109,5 +109,11 @@ export type OrganizationCommand = z.output<typeof organizationCommandSchema>
 
 export const organizationMutationAckSchema = z.object({
   ok: z.literal(true),
+  notebookId: notebookIdSchema.optional(),
 })
 export type OrganizationMutationAck = z.infer<typeof organizationMutationAckSchema>
+
+/** Home create → source modal flow. Idle until create returns a notebook id. */
+export type HomeCreateFlow =
+  | { status: 'idle' }
+  | { status: 'awaiting-source'; notebookId: NotebookId }

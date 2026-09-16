@@ -1,13 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { SourceModal } from '~/components/source-modal'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { Input } from '~/components/ui/input'
+import {
+  type HomeCreateFlow,
+  type OrganizationCatalog,
+  notebookIdSchema,
+} from '~/domain/organization'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { userFacingError } from '~/lib/utils'
 import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
-import type { OrganizationCatalog } from '~/domain/organization'
 
 export const Route = createFileRoute('/')({
   loader: ({ context }) =>
@@ -20,8 +25,10 @@ export const Route = createFileRoute('/')({
 
 function HomePage() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [createTitle, setCreateTitle] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
+  const [createFlow, setCreateFlow] = useState<HomeCreateFlow>({ status: 'idle' })
 
   const catalog = useQuery({
     queryKey: organizationKeys.catalog,
@@ -31,9 +38,13 @@ function HomePage() {
   const run = useMutation({
     mutationFn: (data: Parameters<typeof runOrganizationCommand>[0]['data']) =>
       runOrganizationCommand({ data }),
-    onSuccess: async (_ack, variables) => {
+    onSuccess: async (ack, variables) => {
       setFormError(null)
-      if (variables.type === 'create-notebook') setCreateTitle('')
+      if (variables.type === 'create-notebook') {
+        setCreateTitle('')
+        const notebookId = notebookIdSchema.parse(ack.notebookId)
+        setCreateFlow({ status: 'awaiting-source', notebookId })
+      }
       const tasks = [queryClient.invalidateQueries({ queryKey: organizationKeys.catalog })]
       if (variables.type === 'rename-notebook') {
         tasks.push(queryClient.invalidateQueries({ queryKey: sourceKeys.all }))
@@ -46,6 +57,8 @@ function HomePage() {
   })
 
   const notebooks = catalog.data?.notebooks ?? []
+  const modalOpen = createFlow.status === 'awaiting-source'
+  const modalNotebookId = createFlow.status === 'awaiting-source' ? createFlow.notebookId : null
 
   return (
     <div className="space-y-8">
@@ -97,6 +110,18 @@ function HomePage() {
           </ul>
         )}
       </section>
+      {modalNotebookId ? (
+        <SourceModal
+          notebookId={modalNotebookId}
+          open={modalOpen}
+          onClose={() => setCreateFlow({ status: 'idle' })}
+          onSourceAdded={async () => {
+            const notebookId = modalNotebookId
+            setCreateFlow({ status: 'idle' })
+            await navigate({ to: '/sources', search: { notebookId } })
+          }}
+        />
+      ) : null}
     </div>
   )
 }
