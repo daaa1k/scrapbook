@@ -32,13 +32,16 @@ Worker  src/server.ts
 
 | Table | Role |
 |---|---|
-| `notebooks` | Containers. A default notebook titled `受信箱` is created on first use. |
-| `sources` | Ingested URLs / future PDFs. `notebook_id` FK → `notebooks.id`. |
+| `notebooks` | Containers. Title is unique. A default notebook titled `受信箱` is created on first use and cannot be renamed or deleted. |
+| `sources` | Ingested URLs / PDFs / pasted bodies. `notebook_id` FK → `notebooks.id`. `summary` is ingest output. `memo` is the user's note. |
+| `source_tags` | Labels on sources. Primary key `(source_id, tag_name)`. No separate tags table. |
 | `jobs` | Per-ingest state machine. `source_id` FK → `sources.id`. |
 | `cursor_runs` | Cursor run snapshots. `job_id` FK → `jobs.id`. |
 | `citations` | Schema only; no UI in this slice. `source_id` FK → `sources.id`. |
 
-**notebook ↔ source:** many sources belong to one notebook (`sources.notebook_id`). Many-to-many via a join table is an open later decision, not this slice.
+**notebook ↔ source:** many sources belong to one notebook (`sources.notebook_id`). A source can move. Duplicate URLs are still one row globally, not one row per notebook. Many-to-many notebooks remain out of scope.
+
+The list filter is `{ q, notebookId, tagName }` combined with AND. Empty `q` means no text predicate. Tag attach is create-if-missing. Organization writes go through `runOrganizationCommand`. Ingest persist, paste, and PDF extract do not write `memo` or `notebook_id`.
 
 `normalized_url` is unique when present (duplicate URL detection). `acquired_via` is `fetch`, `paste`, or `upload`. `content_hash` is SHA-256 of `body` after a successful fetch, paste, or PDF extract. Do not log `body`, PDF bytes, or API keys.
 
