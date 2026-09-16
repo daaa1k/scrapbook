@@ -1,4 +1,6 @@
+import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
+import { sources } from '../src/db/schema'
 import { likeContainsPattern } from '../src/domain/search'
 import { EMPTY_SOURCE_LIST_FILTER, organizationCommandSchema, tagNameSchema } from '../src/domain/organization'
 import { pasteSourceBody } from '../src/server/ingest/register'
@@ -15,9 +17,13 @@ describe('source views', () => {
 
   it('returns all sources when q is empty', async () => {
     const { db } = createTestDb()
-    await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話' })
-    await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物' })
-    await pasteSourceBody(db, { title: '無関係', body: '天気の話' })
+    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話' })
+    const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物' })
+    const other = await pasteSourceBody(db, { title: '無関係', body: '天気の話' })
+    const tiedAt = 1_700_000_000_000
+    for (const id of [apple.sourceId, orange.sourceId, other.sourceId]) {
+      await db.update(sources).set({ createdAt: tiedAt }).where(eq(sources.id, id))
+    }
 
     const all = await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)
     expect(all.map((row) => row.title)).toEqual(['無関係', 'ミカン便り', 'リンゴの記事'])
