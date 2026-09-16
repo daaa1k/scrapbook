@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '~/components/ui/button'
-import { Input, controlClassName } from '~/components/ui/input'
+import { Input } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
 import type { NotebookId } from '~/domain/organization'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
@@ -18,6 +18,7 @@ type SourceModalProps = {
 
 export function SourceModal({ notebookId, open, onClose, onSourceAdded }: SourceModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const ignoreNextCloseEvent = useRef(false)
   const queryClient = useQueryClient()
   const [url, setUrl] = useState('')
   const [urlError, setUrlError] = useState<string | null>(null)
@@ -28,17 +29,25 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [pdfError, setPdfError] = useState<string | null>(null)
 
+  function closeWithoutDismiss(dialog: HTMLDialogElement) {
+    ignoreNextCloseEvent.current = true
+    dialog.close()
+  }
+
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return
     if (open) {
       if (!dialog.open) dialog.showModal()
     } else if (dialog.open) {
-      dialog.close()
+      closeWithoutDismiss(dialog)
+    }
+    return () => {
+      if (dialog.open) closeWithoutDismiss(dialog)
     }
   }, [open])
 
-  async function afterIngest(sourceId: string) {
+  async function ingestIntoNotebook(sourceId: string) {
     await runOrganizationCommand({
       data: { type: 'move-source', sourceId, notebookId },
     })
@@ -46,54 +55,77 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
       queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
       queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
     ])
-    onSourceAdded(sourceId)
+    return sourceId
   }
 
   const register = useMutation({
-    mutationFn: (value: string) => registerSource({ data: { url: value } }),
-    onSuccess: async (result) => {
+    mutationFn: async (value: string) => {
+      const result = await registerSource({ data: { url: value } })
+      return ingestIntoNotebook(result.sourceId)
+    },
+    onSuccess: (sourceId) => {
       setUrlError(null)
-      await afterIngest(result.sourceId)
+      onSourceAdded(sourceId)
     },
     onError: (error) => setUrlError(userFacingError(error)),
   })
 
   const paste = useMutation({
-    mutationFn: () =>
-      pasteSource({
+    mutationFn: async () => {
+      const result = await pasteSource({
         data: {
           title: pasteTitle,
           body: pasteBody,
           url: pasteUrl.trim() ? pasteUrl : undefined,
         },
-      }),
-    onSuccess: async (result) => {
+      })
+      return ingestIntoNotebook(result.sourceId)
+    },
+    onSuccess: (sourceId) => {
       setPasteError(null)
-      await afterIngest(result.sourceId)
+      onSourceAdded(sourceId)
     },
     onError: (error) => setPasteError(userFacingError(error)),
   })
 
   const uploadPdf = useMutation({
-    mutationFn: (file: File) => {
+    mutationFn: async (file: File) => {
       const data = new FormData()
       data.set('file', file)
-      return registerPdf({ data })
+      const result = await registerPdf({ data })
+      return ingestIntoNotebook(result.sourceId)
     },
-    onSuccess: async (result) => {
+    onSuccess: (sourceId) => {
       setPdfError(null)
-      await afterIngest(result.sourceId)
+      onSourceAdded(sourceId)
     },
     onError: (error) => setPdfError(userFacingError(error)),
   })
 
   const busy = register.isPending || paste.isPending || uploadPdf.isPending
 
+  function closeDialog() {
+    dialogRef.current?.close()
+  }
+
   return (
     <dialog
       ref={dialogRef}
-      className="w-[min(100%,32rem)] max-h-[90vh] overflow-y-auto rounded-lg border border-zinc-200 bg-white p-0 text-zinc-900 shadow-lg backdrop:bg-zinc-950/40 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-      onClose={onClose}
+      className="m-auto w-[min(100%,32rem)] max-h-[90vh] overflow-y-auto rounded-lg border border-zinc-200 bg-white p-0 text-zinc-900 shadow-lg backdrop:bg-zinc-950/40 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+      onCancel={(event) => {
+        if (busy) event.preventDefault()
+      }}
+      onClose={() => {
+        if (ignoreNextCloseEvent.current) {
+          ignoreNextCloseEvent.current = false
+          return
+        }
+        if (!busy) onClose()
+      }}
+      onClick={(event) => {
+        if (busy || event.target !== event.currentTarget) return
+        closeDialog()
+      }}
       aria-labelledby="source-modal-title"
     >
       <div className="space-y-6 p-5">
@@ -106,7 +138,7 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
               URL・PDF・貼り付けから最初のソースを追加します。スキップしてもノートブックは残ります。
             </p>
           </div>
-          <Button type="button" disabled={busy} onClick={onClose}>
+          <Button type="button" className="shrink-0 whitespace-nowrap" disabled={busy} onClick={closeDialog}>
             閉じる
           </Button>
         </div>
@@ -131,7 +163,7 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
               aria-label="URL"
               disabled={busy}
             />
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" className="shrink-0 whitespace-nowrap" disabled={busy}>
               URLを登録
             </Button>
           </form>
@@ -140,6 +172,7 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
 
         <section>
           <h3 className="mb-2 text-sm font-medium">PDF</h3>
+          <p className="mb-3 text-sm text-zinc-500">原本は非公開のまま保存します。8MBまでです。</p>
           <form
             className="flex flex-col gap-3 sm:flex-row sm:items-end"
             onSubmit={(event) => {
@@ -156,12 +189,11 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
               name="modal-pdf"
               type="file"
               accept="application/pdf,.pdf"
-              className={controlClassName}
               onChange={(event) => setPdfFile(event.target.files?.[0] ?? null)}
               aria-label="PDFファイル"
               disabled={busy}
             />
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" className="shrink-0 whitespace-nowrap" disabled={busy}>
               PDFを登録
             </Button>
           </form>
@@ -181,7 +213,6 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
             <Input
               name="modal-paste-title"
               required
-              maxLength={200}
               placeholder="タイトル"
               value={pasteTitle}
               onChange={(event) => setPasteTitle(event.target.value)}
@@ -200,7 +231,6 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
             <Textarea
               name="modal-paste-body"
               required
-              rows={6}
               placeholder="本文"
               value={pasteBody}
               onChange={(event) => setPasteBody(event.target.value)}
