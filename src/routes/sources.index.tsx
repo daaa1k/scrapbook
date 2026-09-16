@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
+import { NoteShell } from '~/components/note-shell'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { Input, controlClassName } from '~/components/ui/input'
@@ -32,8 +33,16 @@ export const Route = createFileRoute('/sources/')({
       }),
     ])
   },
-  component: SourcesPage,
+  component: SourcesRoute,
 })
+
+function SourcesRoute() {
+  const search = Route.useSearch()
+  if (search.notebookId) {
+    return <NoteShell notebookId={search.notebookId} sourceId={search.sourceId} />
+  }
+  return <SourcesPage />
+}
 
 function SourcesPage() {
   const search = Route.useSearch()
