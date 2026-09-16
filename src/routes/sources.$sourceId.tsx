@@ -6,7 +6,7 @@ import { Card } from '~/components/ui/card'
 import { Input, controlClassName } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
 import { pdfTextHelp, sourceOriginalPath } from '~/domain/pdf'
-import { storedBodyText } from '~/domain/ingest-result'
+import { MAX_CURSOR_BODY_CHARS, storedBodyText } from '~/domain/ingest-result'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import {
   acquiredViaLabel,
@@ -166,6 +166,11 @@ function SourceDetailPage() {
   const jobStatus = source.job?.status ?? null
   const canRetry = Boolean(source.url) && (jobStatus === null || isTerminalJobStatus(jobStatus))
   const retryBusy = Boolean(jobStatus && !isTerminalJobStatus(jobStatus))
+  const bodyForCursor = storedBodyText(source.body)
+  const cursorBodyTruncated = Boolean(bodyForCursor && bodyForCursor.length > MAX_CURSOR_BODY_CHARS)
+  const cursorBudgetNote = cursorBodyTruncated
+    ? `Cursor には本文の先頭 ${MAX_CURSOR_BODY_CHARS.toLocaleString('ja-JP')} 文字だけを渡します。`
+    : null
 
   return (
     <div className="space-y-6">
@@ -322,7 +327,7 @@ function SourceDetailPage() {
       <Card>
         <h2 className="mb-2 font-medium">要約</h2>
         <p className="whitespace-pre-wrap">{source.summary ?? 'まだありません'}</p>
-        {storedBodyText(source.body) ? (
+        {bodyForCursor ? (
           <div className="mt-4">
             <Button
               disabled={retryBusy || summarize.isPending}
@@ -337,6 +342,7 @@ function SourceDetailPage() {
                 保存済みの本文を要約します。URLの再取得やPDFの再読み込みはしません。
               </p>
             )}
+            {cursorBudgetNote ? <p className="mt-2 text-sm text-zinc-500">{cursorBudgetNote}</p> : null}
           </div>
         ) : null}
       </Card>
@@ -361,7 +367,7 @@ function SourceDetailPage() {
       </Card>
       <Card>
         <h2 className="mb-2 font-medium">質問</h2>
-        {storedBodyText(source.body) ? (
+        {bodyForCursor ? (
           <form
             className="space-y-3"
             onSubmit={(event) => {
@@ -386,6 +392,7 @@ function SourceDetailPage() {
             ) : (
               <p className="text-sm text-zinc-500">保存済みの本文だけを使って答えます。複数ソースはまだ選べません。</p>
             )}
+            {cursorBudgetNote ? <p className="text-sm text-zinc-500">{cursorBudgetNote}</p> : null}
           </form>
         ) : (
           <p className="text-sm text-zinc-500">本文があるときだけ質問できます。</p>

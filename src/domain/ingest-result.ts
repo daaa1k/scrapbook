@@ -64,6 +64,15 @@ export function storedBodyText(body: string | null | undefined): string | null {
   return trimmed === '' ? null : trimmed
 }
 
+export const MAX_CURSOR_BODY_CHARS = 100_000
+
+export function truncateBodyForCursorPrompt(body: string): { text: string; truncated: boolean } {
+  if (body.length <= MAX_CURSOR_BODY_CHARS) {
+    return { text: body, truncated: false }
+  }
+  return { text: body.slice(0, MAX_CURSOR_BODY_CHARS), truncated: true }
+}
+
 export async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')

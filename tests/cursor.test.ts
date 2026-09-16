@@ -8,6 +8,7 @@ import {
   ingestPromptForUrl,
   summarizePromptForBody,
 } from '../src/server/cursor/client'
+import { MAX_CURSOR_BODY_CHARS } from '../src/domain/ingest-result'
 import { runPromiseFail } from '../src/lib/effect-run'
 
 const createFixture = {
@@ -113,5 +114,22 @@ describe('Cursor client', () => {
     expect(prompt).toContain('"answer"')
     expect(prompt).toContain('Do not fetch any URL')
     expect(prompt).not.toContain('Fetch the URL')
+  })
+
+  it('truncates long bodies in summarize and ask prompts', () => {
+    const longBody = `${'あ'.repeat(MAX_CURSOR_BODY_CHARS)}ZZZ`
+    const summarize = summarizePromptForBody(longBody)
+    expect(summarize).toContain(`first ${MAX_CURSOR_BODY_CHARS} characters`)
+    expect(summarize).toContain('あ'.repeat(MAX_CURSOR_BODY_CHARS))
+    expect(summarize).not.toContain('ZZZ')
+
+    const ask = askPromptForBody('何？', longBody)
+    expect(ask).toContain(`first ${MAX_CURSOR_BODY_CHARS} characters`)
+    expect(ask).toContain('あ'.repeat(MAX_CURSOR_BODY_CHARS))
+    expect(ask).not.toContain('ZZZ')
+
+    const short = summarizePromptForBody('短い本文')
+    expect(short).not.toContain('truncated')
+    expect(short).toContain('短い本文')
   })
 })

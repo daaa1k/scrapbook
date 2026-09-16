@@ -1,5 +1,6 @@
 import { Data, Effect } from 'effect'
 import { sourceKindFromUrl } from '~/domain/url'
+import { MAX_CURSOR_BODY_CHARS, truncateBodyForCursorPrompt } from '~/domain/ingest-result'
 import {
   createAgentResponseSchema,
   createFollowUpResponseSchema,
@@ -244,7 +245,8 @@ export function ingestPromptForUrl(url: string): string {
 }
 
 export function summarizePromptForBody(body: string): string {
-  return [
+  const { text, truncated } = truncateBodyForCursorPrompt(body)
+  const lines = [
     'Summarize the following stored source body.',
     'Do not fetch any URL. Do not read files or object storage.',
     'Reply with ONLY JSON, no markdown commentary. Shape:',
@@ -253,13 +255,19 @@ export function summarizePromptForBody(body: string): string {
       citations: [{ excerpt: 'string', start: 'number | null', end: 'number | null' }],
     }),
     'start and end are optional together and are 0-based half-open JavaScript indexes into body.',
-    'Body:',
-    body,
-  ].join('\n')
+  ]
+  if (truncated) {
+    lines.push(
+      `Note: body was truncated to the first ${MAX_CURSOR_BODY_CHARS} characters for this prompt. Citation offsets must index into this truncated body only.`,
+    )
+  }
+  lines.push('Body:', text)
+  return lines.join('\n')
 }
 
 export function askPromptForBody(question: string, body: string): string {
-  return [
+  const { text, truncated } = truncateBodyForCursorPrompt(body)
+  const lines = [
     'Answer the question using only the following stored source body.',
     'Do not fetch any URL. Do not read files or object storage.',
     'Reply with ONLY JSON, no markdown commentary. Shape:',
@@ -270,7 +278,12 @@ export function askPromptForBody(question: string, body: string): string {
     'start and end are optional together and are 0-based half-open JavaScript indexes into body.',
     'Cite short verbatim excerpts from the body that support the answer.',
     `Question: ${question}`,
-    'Body:',
-    body,
-  ].join('\n')
+  ]
+  if (truncated) {
+    lines.push(
+      `Note: body was truncated to the first ${MAX_CURSOR_BODY_CHARS} characters for this prompt. Citation offsets must index into this truncated body only.`,
+    )
+  }
+  lines.push('Body:', text)
+  return lines.join('\n')
 }

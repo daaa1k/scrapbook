@@ -10,6 +10,7 @@ import {
   sha256Hex,
   storedBodyText,
 } from '~/domain/ingest-result'
+import { persistablePdfBody } from '~/domain/pdf'
 import {
   assertTransitionEffect,
   IllegalJobTransitionError,
@@ -193,22 +194,29 @@ async function persistIngestOutput(
   switch (params.mode) {
     case 'fetch': {
       const parsed = parseIngestResultJson(raw)
-      const hash = parsed.body ? await sha256Hex(parsed.body) : null
+      const stored = persistablePdfBody(parsed.body)
+      const hash = stored.body ? await sha256Hex(stored.body) : null
       let publishedAt: number | null = null
       if (parsed.publishedAt) {
         const ms = Date.parse(parsed.publishedAt)
         publishedAt = Number.isNaN(ms) ? null : ms
       }
+      const fetchStatus =
+        parsed.fetchStatus === 'failed'
+          ? 'failed'
+          : stored.fetchStatus === 'partial'
+            ? 'partial'
+            : parsed.fetchStatus
       await db
         .update(sources)
         .set({
           title: parsed.title,
           author: parsed.author,
           publishedAt,
-          body: parsed.body,
+          body: stored.body,
           summary: parsed.summary,
           contentHash: hash,
-          fetchStatus: parsed.fetchStatus,
+          fetchStatus,
           acquiredVia: 'fetch',
           fetchedAt: ts,
           updatedAt: ts,
