@@ -234,6 +234,7 @@ export function ingestPromptForUrl(url: string): string {
       failureReason: 'string | null',
       citations: [{ excerpt: 'string', start: 'number | null', end: 'number | null' }],
     }),
+    'Write the summary field in Japanese.',
     'start and end are optional together and are 0-based half-open JavaScript indexes into body.',
   ]
   if (sourceKindFromUrl(url) === 'x') {
@@ -254,6 +255,7 @@ export function summarizePromptForBody(body: string): string {
       summary: 'string',
       citations: [{ excerpt: 'string', start: 'number | null', end: 'number | null' }],
     }),
+    'Write the summary field in Japanese.',
     'start and end are optional together and are 0-based half-open JavaScript indexes into body.',
   ]
   if (truncated) {
@@ -275,6 +277,7 @@ export function askPromptForBody(question: string, body: string): string {
       answer: 'string',
       citations: [{ excerpt: 'string', start: 'number | null', end: 'number | null' }],
     }),
+    'Write the answer field in Japanese.',
     'start and end are optional together and are 0-based half-open JavaScript indexes into body.',
     'Cite short verbatim excerpts from the body that support the answer.',
     `Question: ${question}`,
