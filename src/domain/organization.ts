@@ -30,11 +30,27 @@ export const EMPTY_SOURCE_LIST_FILTER: SourceListFilter = {
   tagName: null,
 }
 
-export function parseSourcesPageSearch(search: unknown): { notebookId?: NotebookId } {
-  const bag = z.object({ notebookId: z.unknown().optional() }).safeParse(search)
-  if (!bag.success) return {}
-  const parsed = notebookIdSchema.safeParse(bag.data.notebookId)
-  return parsed.success ? { notebookId: parsed.data } : {}
+export type SourcesPageSearch = {
+  notebookId?: NotebookId
+  sourceId?: string
+}
+
+export function parseSourcesPageSearch(search: unknown): SourcesPageSearch {
+  const bag = z
+    .object({
+      notebookId: z.unknown().optional(),
+      sourceId: z.unknown().optional(),
+    })
+    .safeParse(search)
+  // Router merges this onto the URL bag, so dropped keys must be explicit undefined.
+  if (!bag.success) return { notebookId: undefined, sourceId: undefined }
+  const notebookId = notebookIdSchema.safeParse(bag.data.notebookId)
+  if (!notebookId.success) return { notebookId: undefined, sourceId: undefined }
+  const sourceId =
+    typeof bag.data.sourceId === 'string' && bag.data.sourceId.trim() !== ''
+      ? bag.data.sourceId.trim()
+      : undefined
+  return { notebookId: notebookId.data, sourceId }
 }
 
 export function sourceListFilterFromSourcesPageSearch(search: {

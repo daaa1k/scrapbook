@@ -135,7 +135,7 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
               ソースを追加
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              URL・PDF・貼り付けから最初のソースを追加します。スキップしてもノートブックは残ります。
+              URL・PDF・貼り付けからソースを追加します。閉じてもノートブックは残ります。
             </p>
           </div>
           <Button type="button" className="shrink-0 whitespace-nowrap" disabled={busy} onClick={closeDialog}>
