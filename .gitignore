@@ -61,3 +61,7 @@ dist
 
 # bun
 *.tgz
+
+# verify-scrapbook helper install
+.cursor/skills/verify-scrapbook/helpers/node_modules/
+
