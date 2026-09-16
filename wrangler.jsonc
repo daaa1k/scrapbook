@@ -39,8 +39,8 @@
       "vars": {
         "ENVIRONMENT": "production",
         "ALLOW_INSECURE_AUTH_BYPASS": "false",
-        "ACCESS_TEAM_DOMAIN": "https://example.cloudflareaccess.com",
-        "ACCESS_AUD": "replace-me",
+        "ACCESS_TEAM_DOMAIN": "https://super-tree-21f6.cloudflareaccess.com",
+        "ACCESS_AUD": "723f77f033f512a7fd9c5329cfb90d670a813d55f5c2744088dc2a265cc9544e",
         "ACCESS_ALLOWED_EMAILS": "dd41kk@gmail.com"
       },
       "d1_databases": [
