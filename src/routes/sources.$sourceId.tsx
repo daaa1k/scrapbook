@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
@@ -18,7 +18,7 @@ import {
   userFacingError,
 } from '~/lib/utils'
 import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
-import { getSource, pasteSource, retrySource, askSource, deleteSourceQaAnswer, summarizeSource } from '~/server/functions/sources'
+import { getSource, pasteSource, retrySource, askSource, deleteSourceQaAnswer, deleteRegisteredSource, summarizeSource } from '~/server/functions/sources'
 
 export const Route = createFileRoute('/sources/$sourceId')({
   loader: ({ context, params }) =>
@@ -37,6 +37,7 @@ export const Route = createFileRoute('/sources/$sourceId')({
 
 function SourceDetailPage() {
   const { sourceId } = Route.useParams()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [pasteTitle, setPasteTitle] = useState('')
   const [pasteBody, setPasteBody] = useState('')
@@ -123,6 +124,21 @@ function SourceDetailPage() {
     },
   })
 
+  const removeSource = useMutation({
+    mutationFn: () => deleteRegisteredSource({ data: { sourceId } }),
+    onSuccess: async () => {
+      setActionError(null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
+        queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
+      ])
+      await navigate({ to: '/' })
+    },
+    onError: (error) => {
+      setActionError(userFacingError(error))
+    },
+  })
+
   const paste = useMutation({
     mutationFn: () =>
       pasteSource({
@@ -177,6 +193,7 @@ function SourceDetailPage() {
   const jobStatus = source.job?.status ?? null
   const canRetry = Boolean(source.url) && (jobStatus === null || isTerminalJobStatus(jobStatus))
   const retryBusy = Boolean(jobStatus && !isTerminalJobStatus(jobStatus))
+  const canDeleteSource = !retryBusy
   const bodyForCursor = storedBodyText(source.body)
   const cursorBodyTruncated = Boolean(bodyForCursor && bodyForCursor.length > MAX_CURSOR_BODY_CHARS)
   const cursorBudgetNote = cursorBodyTruncated
@@ -211,6 +228,19 @@ function SourceDetailPage() {
             </a>
           </p>
         ) : null}
+        <div className="mt-4">
+          <Button
+            disabled={!canDeleteSource || removeSource.isPending}
+            onClick={() => removeSource.mutate()}
+          >
+            ソースを削除
+          </Button>
+          {retryBusy ? (
+            <p className="mt-2 text-sm text-zinc-500">処理中のため削除できません。</p>
+          ) : (
+            <p className="mt-2 text-sm text-zinc-500">引用・質問・ジョブもまとめて消します。元に戻せません。</p>
+          )}
+        </div>
       </div>
       <Card>
         <h2 className="mb-3 font-medium">整理</h2>

@@ -86,6 +86,7 @@ export const JOB_ERROR_LABEL: Record<string, string> = {
   question_empty: '質問を入力してください',
   qa_answer_not_found: '質問が見つかりません',
   qa_answer_in_progress: '処理中の質問は削除できません',
+  source_in_progress: '処理中のソースは削除できません',
   job_in_progress: '処理中です。完了してから貼り付けてください',
   pdf_not_pdf: 'PDFファイルを選んでください',
   pdf_too_large: 'PDFは8MB以下にしてください',

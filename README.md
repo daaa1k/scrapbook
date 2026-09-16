@@ -49,7 +49,7 @@ Successful persist of `fetch` or `summarize_body` deletes every `citations` row 
 
 `normalized_url` is unique when present (duplicate URL detection). `acquired_via` is `fetch`, `paste`, or `upload`. `content_hash` is SHA-256 of `body` after a successful fetch, paste, or PDF extract. Do not log `body`, PDF bytes, or API keys.
 
-Re-registering a URL that already has a job returns that job and does **not** start Cursor. Explicit **再取得** on a terminal job (`succeeded` or `failed`) inserts a new job. At most one non-terminal job per source (`jobs_one_active_per_source`). Viewing a source never starts Cursor.
+Re-registering a URL that already has a job returns that job and does **not** start Cursor. Explicit **再取得** on a terminal job (`succeeded` or `failed`) inserts a new job. At most one non-terminal job per source (`jobs_one_active_per_source`). Viewing a source never starts Cursor. Idle sources (no non-terminal job) can be deleted from the detail page; that removes citations, Q&A turns, jobs, and any R2 PDF original.
 
 PDF upload writes the original to private R2 at `pdf/{sourceId}/original.pdf`, inserts `kind: 'pdf'` with `acquired_via = upload`, and extracts text in the Worker with `unpdf`. It does **not** start Cursor. Empty extract (scanned PDF) keeps the original, leaves `fetchStatus = failed`, and the detail page asks you to paste. Bytes are served only from authenticated GET `/assets/sources/:id` (add `?download=1` for attachment). There is no public R2 URL. Cap is 8 MiB. Magic bytes must be `%PDF`.
 
