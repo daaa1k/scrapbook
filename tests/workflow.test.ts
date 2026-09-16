@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { jobs, notebooks, sources } from '../src/db/schema'
+import { MAX_SOURCE_BODY_CHARS } from '../src/domain/pdf'
 import { organizationCommandSchema } from '../src/domain/organization'
 import { MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
 import { registerUrlSource } from '../src/server/ingest/register'
@@ -124,5 +125,34 @@ describe('ingest workflow', () => {
     const job = (await db.select().from(jobs).where(eq(jobs.id, registered.jobId)))[0]
     expect(job?.status).toBe('failed')
     expect(job?.errorCode).toBe('cursor_not_configured')
+  })
+
+  it('truncates oversized fetch bodies to the source cap and marks partial', async () => {
+    const { db } = createTestDb()
+    const registered = await registerUrlSource(db, { url: 'https://example.com/huge' }, {
+      create: async () => ({ id: 'wf' }),
+    })
+    const hugeBody = `${'x'.repeat(MAX_SOURCE_BODY_CHARS)}TAIL`
+
+    await runIngestWorkflow({
+      params: {
+        mode: 'fetch',
+        jobId: registered.jobId,
+        sourceId: registered.sourceId,
+        url: 'https://example.com/huge',
+      },
+      db,
+      step: createImmediateStep(),
+      cursor: createMockCursorClient({
+        result: JSON.stringify({ ...MOCK_INGEST_JSON, body: hugeBody, fetchStatus: 'full' }),
+      }),
+      maxPolls: 2,
+      pollSleep: 0,
+    })
+
+    const source = (await db.select().from(sources).where(eq(sources.id, registered.sourceId)))[0]
+    expect(source?.body).toHaveLength(MAX_SOURCE_BODY_CHARS)
+    expect(source?.body?.endsWith('TAIL')).toBe(false)
+    expect(source?.fetchStatus).toBe('partial')
   })
 })
