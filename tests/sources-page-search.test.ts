@@ -13,17 +13,15 @@ import { listSourceViews } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'
 
 describe('sources page search', () => {
+  const dropped = { notebookId: undefined, sourceId: undefined }
+
   it('keeps a valid notebookId and drops anything that is not a notebook id', () => {
     const notebookId = '550e8400-e29b-41d4-a716-446655440000'
-    const sourceId = 'source-focus-1'
-    expect(parseSourcesPageSearch({ notebookId })).toEqual({ notebookId })
-    expect(parseSourcesPageSearch({ notebookId, sourceId })).toEqual({ notebookId, sourceId })
-    expect(parseSourcesPageSearch({ notebookId, sourceId: '  ' })).toEqual({ notebookId })
-    expect(parseSourcesPageSearch({ sourceId })).toEqual({})
-    expect(parseSourcesPageSearch({ notebookId: '受信箱' })).toEqual({})
-    expect(parseSourcesPageSearch({ notebookId: '' })).toEqual({})
-    expect(parseSourcesPageSearch({})).toEqual({})
-    expect(parseSourcesPageSearch(null)).toEqual({})
+    expect(parseSourcesPageSearch({ notebookId })).toEqual({ notebookId, sourceId: undefined })
+    expect(parseSourcesPageSearch({ notebookId: '受信箱' })).toEqual(dropped)
+    expect(parseSourcesPageSearch({ notebookId: '' })).toEqual(dropped)
+    expect(parseSourcesPageSearch({})).toEqual(dropped)
+    expect(parseSourcesPageSearch(null)).toEqual(dropped)
     expect(sourceListFilterFromSourcesPageSearch({})).toEqual(EMPTY_SOURCE_LIST_FILTER)
     expect(
       sourceListFilterFromSourcesPageSearch(parseSourcesPageSearch({ notebookId })),
@@ -44,12 +42,20 @@ describe('sources page search', () => {
       notebookId,
       sourceId: 'src-1',
     })
-    expect(parseSourcesPageSearch({ notebookId, sourceId: '' })).toEqual({ notebookId })
-    expect(parseSourcesPageSearch({ notebookId, sourceId: '   ' })).toEqual({ notebookId })
-    expect(parseSourcesPageSearch({ sourceId: 'src-1' })).toEqual({})
+    expect(parseSourcesPageSearch({ notebookId, sourceId: '' })).toEqual({
+      notebookId,
+      sourceId: undefined,
+    })
+    expect(parseSourcesPageSearch({ notebookId, sourceId: '   ' })).toEqual({
+      notebookId,
+      sourceId: undefined,
+    })
+    expect(parseSourcesPageSearch({ sourceId: 'src-1' })).toEqual(dropped)
     expect(parseSourcesPageSearch({ notebookId: 'not-a-notebook-id', sourceId: 'src-1' })).toEqual(
-      {},
+      dropped,
     )
+    const fromUrl = { notebookId: 'not-a-notebook-id', sourceId: 'src-1' }
+    expect({ ...fromUrl, ...parseSourcesPageSearch(fromUrl) }).toEqual(dropped)
   })
 
   it('lists only that notebook when the page search has notebookId', async () => {

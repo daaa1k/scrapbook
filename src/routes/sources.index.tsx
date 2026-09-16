@@ -6,6 +6,7 @@ import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { Input, controlClassName } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
+import { resolveNoteShellView } from '~/domain/note-shell'
 import {
   parseSourcesPageSearch,
   sourceListFilterFromSourcesPageSearch,
@@ -15,14 +16,14 @@ import {
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { acquiredViaLabel, isTerminalJobStatus, jobStatusLabel, sourceKindLabel, userFacingError } from '~/lib/utils'
 import { getOrganizationCatalog } from '~/server/functions/organization'
-import { deleteRegisteredSource, listSources, pasteSource, registerPdf, registerSource } from '~/server/functions/sources'
+import { deleteRegisteredSource, getSource, listSources, pasteSource, registerPdf, registerSource } from '~/server/functions/sources'
 
 export const Route = createFileRoute('/sources/')({
   validateSearch: parseSourcesPageSearch,
-  loaderDeps: ({ search }) => ({ notebookId: search.notebookId }),
-  loader: ({ context, deps }) => {
+  loaderDeps: ({ search }) => ({ notebookId: search.notebookId, sourceId: search.sourceId }),
+  loader: async ({ context, deps }) => {
     const filter = sourceListFilterFromSourcesPageSearch(deps)
-    return Promise.all([
+    const [sources, catalog] = await Promise.all([
       context.queryClient.ensureQueryData({
         queryKey: sourceKeys.list(filter),
         queryFn: () => listSources({ data: filter }),
@@ -32,6 +33,17 @@ export const Route = createFileRoute('/sources/')({
         queryFn: () => getOrganizationCatalog(),
       }),
     ])
+    if (!deps.notebookId) return
+    const view = resolveNoteShellView(
+      { notebookId: deps.notebookId, sourceId: deps.sourceId },
+      catalog,
+      sources,
+    )
+    if (view.status !== 'ready') return
+    await context.queryClient.ensureQueryData({
+      queryKey: sourceKeys.detail(view.focusSourceId),
+      queryFn: () => getSource({ data: { sourceId: view.focusSourceId } }),
+    })
   },
   component: SourcesRoute,
 })
