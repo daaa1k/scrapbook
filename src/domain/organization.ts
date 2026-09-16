@@ -30,11 +30,26 @@ export const EMPTY_SOURCE_LIST_FILTER: SourceListFilter = {
   tagName: null,
 }
 
-export function parseSourcesPageSearch(search: unknown): { notebookId?: NotebookId } {
-  const bag = z.object({ notebookId: z.unknown().optional() }).safeParse(search)
+export type SourcesPageSearch = {
+  notebookId?: NotebookId
+  sourceId?: string
+}
+
+export function parseSourcesPageSearch(search: unknown): SourcesPageSearch {
+  const bag = z
+    .object({
+      notebookId: z.unknown().optional(),
+      sourceId: z.unknown().optional(),
+    })
+    .safeParse(search)
   if (!bag.success) return {}
-  const parsed = notebookIdSchema.safeParse(bag.data.notebookId)
-  return parsed.success ? { notebookId: parsed.data } : {}
+  const notebookId = notebookIdSchema.safeParse(bag.data.notebookId)
+  if (!notebookId.success) return {}
+  const sourceId =
+    typeof bag.data.sourceId === 'string' && bag.data.sourceId.trim() !== ''
+      ? bag.data.sourceId.trim()
+      : undefined
+  return sourceId ? { notebookId: notebookId.data, sourceId } : { notebookId: notebookId.data }
 }
 
 export function sourceListFilterFromSourcesPageSearch(search: {
