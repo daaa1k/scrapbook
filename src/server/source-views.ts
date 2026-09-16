@@ -85,7 +85,7 @@ export async function listSourceViews(db: AppDb, filter: SourceListFilter): Prom
     .from(sources)
     .innerJoin(notebooks, eq(sources.notebookId, notebooks.id))
     .where(sourceFilterWhere(db, filter))
-    .orderBy(desc(sources.createdAt))
+    .orderBy(desc(sources.createdAt), desc(sql`${sources}."rowid"`))
 
   const tagsBySource = await listTagsBySourceIds(
     db,
