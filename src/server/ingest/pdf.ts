@@ -10,7 +10,7 @@ import {
   type ParsedPdfUpload,
 } from '~/domain/pdf'
 import { authenticateAccessRequest, type AccessEnv } from '~/server/auth/access'
-import { ensureDefaultNotebook } from '~/server/ingest/register'
+import { ensureInboxNotebook } from '~/server/organization'
 
 export type R2ObjectKey = string & { readonly __brand: 'R2ObjectKey' }
 
@@ -71,7 +71,7 @@ export async function registerPdfSource(
   const key = pdfOriginalKey(sourceId)
   await assets.put(key, upload.bytes)
 
-  const notebookId = await ensureDefaultNotebook(db)
+  const notebookId = await ensureInboxNotebook(db)
   const ts = Date.now()
   try {
     await db.insert(sources).values({

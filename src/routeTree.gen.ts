@@ -10,12 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as NotebooksRouteImport } from './routes/notebooks'
 import { Route as SourcesSourceIdRouteImport } from './routes/sources.$sourceId'
 import { Route as AssetsSourcesSourceIdRouteImport } from './routes/assets.sources.$sourceId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotebooksRoute = NotebooksRouteImport.update({
+  id: '/notebooks',
+  path: '/notebooks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SourcesSourceIdRoute = SourcesSourceIdRouteImport.update({
@@ -31,30 +37,40 @@ const AssetsSourcesSourceIdRoute = AssetsSourcesSourceIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/notebooks': typeof NotebooksRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/assets/sources/$sourceId': typeof AssetsSourcesSourceIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/notebooks': typeof NotebooksRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/assets/sources/$sourceId': typeof AssetsSourcesSourceIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/notebooks': typeof NotebooksRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/assets/sources/$sourceId': typeof AssetsSourcesSourceIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/sources/$sourceId' | '/assets/sources/$sourceId'
+  fullPaths:
+    '/' | '/notebooks' | '/sources/$sourceId' | '/assets/sources/$sourceId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/sources/$sourceId' | '/assets/sources/$sourceId'
-  id: '__root__' | '/' | '/sources/$sourceId' | '/assets/sources/$sourceId'
+  to: '/' | '/notebooks' | '/sources/$sourceId' | '/assets/sources/$sourceId'
+  id:
+    | '__root__'
+    | '/'
+    | '/notebooks'
+    | '/sources/$sourceId'
+    | '/assets/sources/$sourceId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  NotebooksRoute: typeof NotebooksRoute
   SourcesSourceIdRoute: typeof SourcesSourceIdRoute
   AssetsSourcesSourceIdRoute: typeof AssetsSourcesSourceIdRoute
 }
@@ -66,6 +82,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notebooks': {
+      id: '/notebooks'
+      path: '/notebooks'
+      fullPath: '/notebooks'
+      preLoaderRoute: typeof NotebooksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sources/$sourceId': {
@@ -87,6 +110,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  NotebooksRoute: NotebooksRoute,
   SourcesSourceIdRoute: SourcesSourceIdRoute,
   AssetsSourcesSourceIdRoute: AssetsSourcesSourceIdRoute,
 }

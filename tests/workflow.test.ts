@@ -1,8 +1,10 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { jobs, sources } from '../src/db/schema'
+import { jobs, notebooks, sources } from '../src/db/schema'
+import { organizationCommandSchema } from '../src/domain/organization'
 import { MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
 import { registerUrlSource } from '../src/server/ingest/register'
+import { applyOrganizationCommand } from '../src/server/organization'
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import { createTestDb } from './helpers/db'
 
@@ -31,6 +33,49 @@ describe('ingest workflow', () => {
     expect(source?.fetchStatus).toBe('full')
     expect(source?.acquiredVia).toBe('fetch')
     expect(source?.contentHash).toBeTruthy()
+  })
+
+  it('does not overwrite memo or notebook_id when persisting ingest output', async () => {
+    const { db } = createTestDb()
+    const registered = await registerUrlSource(db, { url: 'https://example.com/keep-org' }, {
+      create: async () => ({ id: 'wf' }),
+    })
+    await applyOrganizationCommand(
+      db,
+      organizationCommandSchema.parse({ type: 'create-notebook', title: '研究' }),
+    )
+    const researchId = (await db.select().from(notebooks).where(eq(notebooks.title, '研究')))[0]!.id
+    await applyOrganizationCommand(
+      db,
+      organizationCommandSchema.parse({
+        type: 'move-source',
+        sourceId: registered.sourceId,
+        notebookId: researchId,
+      }),
+    )
+    await applyOrganizationCommand(
+      db,
+      organizationCommandSchema.parse({
+        type: 'set-memo',
+        sourceId: registered.sourceId,
+        memo: '残すメモ',
+      }),
+    )
+
+    await runIngestWorkflow({
+      params: { jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/keep-org' },
+      db,
+      step: createImmediateStep(),
+      cursor: createMockCursorClient(),
+      maxPolls: 2,
+      pollSleep: 0,
+    })
+
+    const source = (await db.select().from(sources).where(eq(sources.id, registered.sourceId)))[0]
+    expect(source?.memo).toBe('残すメモ')
+    expect(source?.notebookId).toBe(researchId)
+    expect(source?.summary).toBe(MOCK_INGEST_JSON.summary)
+    expect(source?.body).toBe(MOCK_INGEST_JSON.body)
   })
 
   it('fails the job with a UI-facing error and does not require a body', async () => {

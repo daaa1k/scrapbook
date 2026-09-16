@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { likeContainsPattern } from '../src/domain/search'
+import { EMPTY_SOURCE_LIST_FILTER } from '../src/domain/organization'
 import { pasteSourceBody } from '../src/server/ingest/register'
-import { findSourcesByQuery } from '../src/server/ingest/search'
+import { listSourceViews } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'
 
 describe('source search', () => {
@@ -17,19 +18,19 @@ describe('source search', () => {
     await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物' })
     await pasteSourceBody(db, { title: '無関係', body: '天気の話' })
 
-    const byTitle = await findSourcesByQuery(db, 'リンゴ')
+    const byTitle = await listSourceViews(db, { q: 'リンゴ', notebookId: null, tagName: null })
     expect(byTitle.map((row) => row.title)).toEqual(['リンゴの記事'])
 
-    const byBody = await findSourcesByQuery(db, 'オレンジ色')
+    const byBody = await listSourceViews(db, { q: 'オレンジ色', notebookId: null, tagName: null })
     expect(byBody.map((row) => row.title)).toEqual(['ミカン便り'])
 
-    const empty = await findSourcesByQuery(db, '   ')
-    expect(empty).toHaveLength(3)
+    const empty = await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)
+    expect(empty.map((row) => row.title)).toEqual(['無関係', 'ミカン便り', 'リンゴの記事'])
 
-    const none = await findSourcesByQuery(db, 'バナナ')
+    const none = await listSourceViews(db, { q: 'バナナ', notebookId: null, tagName: null })
     expect(none).toHaveLength(0)
 
-    const wildcard = await findSourcesByQuery(db, '%')
+    const wildcard = await listSourceViews(db, { q: '%', notebookId: null, tagName: null })
     expect(wildcard).toHaveLength(0)
   })
 })

@@ -15,6 +15,13 @@
       "when": 1789516457924,
       "tag": "0001_magical_master_mold",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789523281418,
+      "tag": "0002_notebooks_tags_memo",
+      "breakpoints": true
     }
   ]
 }
