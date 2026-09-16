@@ -11,9 +11,9 @@ import {
   type SourceListFilter,
 } from '~/domain/organization'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
-import { acquiredViaLabel, jobStatusLabel, sourceKindLabel, userFacingError } from '~/lib/utils'
+import { acquiredViaLabel, isTerminalJobStatus, jobStatusLabel, sourceKindLabel, userFacingError } from '~/lib/utils'
 import { getOrganizationCatalog } from '~/server/functions/organization'
-import { listSources, pasteSource, registerPdf, registerSource } from '~/server/functions/sources'
+import { deleteRegisteredSource, listSources, pasteSource, registerPdf, registerSource } from '~/server/functions/sources'
 
 export const Route = createFileRoute('/')({
   loader: ({ context }) =>
@@ -45,6 +45,7 @@ function HomePage() {
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [pdfError, setPdfError] = useState<string | null>(null)
+  const [listError, setListError] = useState<string | null>(null)
 
   const catalog = useQuery({
     queryKey: organizationKeys.catalog,
@@ -104,6 +105,20 @@ function HomePage() {
     },
     onError: (error) => {
       setPdfError(userFacingError(error))
+    },
+  })
+
+  const removeSource = useMutation({
+    mutationFn: (sourceId: string) => deleteRegisteredSource({ data: { sourceId } }),
+    onSuccess: async () => {
+      setListError(null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
+        queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
+      ])
+    },
+    onError: (error) => {
+      setListError(userFacingError(error))
     },
   })
 
@@ -266,6 +281,7 @@ function HomePage() {
           </select>
           <Button type="submit">検索</Button>
         </form>
+        {listError ? <p className="mb-3 text-sm text-red-600">{listError}</p> : null}
         {sources.length === 0 ? (
           <Card>
             <p>
@@ -276,30 +292,49 @@ function HomePage() {
           </Card>
         ) : (
           <ul className="space-y-3">
-            {sources.map((source) => (
-              <li key={source.id}>
-                <Link to="/sources/$sourceId" params={{ sourceId: source.id }}>
+            {sources.map((source) => {
+              const canDelete =
+                source.jobStatus === null || isTerminalJobStatus(source.jobStatus)
+              return (
+                <li key={source.id}>
                   <Card className="hover:border-zinc-400">
-                    <p className="font-medium">{source.title ?? source.url ?? source.id}</p>
-                    <p className="text-sm text-zinc-500">
-                      {source.kind === 'pdf' ? 'PDF' : source.url}
-                    </p>
-                    <p className="mt-1 text-sm text-zinc-500">{source.notebook.title}</p>
-                    {source.tags.length > 0 ? (
-                      <p className="text-sm text-zinc-500">{source.tags.join(' · ')}</p>
+                    <div className="flex items-start gap-3">
+                      <Link
+                        to="/sources/$sourceId"
+                        params={{ sourceId: source.id }}
+                        className="min-w-0 flex-1"
+                      >
+                        <p className="font-medium">{source.title ?? source.url ?? source.id}</p>
+                        <p className="text-sm text-zinc-500">
+                          {source.kind === 'pdf' ? 'PDF' : source.url}
+                        </p>
+                        <p className="mt-1 text-sm text-zinc-500">{source.notebook.title}</p>
+                        {source.tags.length > 0 ? (
+                          <p className="text-sm text-zinc-500">{source.tags.join(' · ')}</p>
+                        ) : null}
+                        <p className="mt-1 text-sm">
+                          種類: {sourceKindLabel(source.kind)}
+                          {source.kind === 'pdf' && source.jobStatus === null
+                            ? null
+                            : ` / 処理状況: ${jobStatusLabel(source.jobStatus, source.jobKind)}`}
+                          {' / 取得経路: '}
+                          {acquiredViaLabel(source.acquiredVia)}
+                        </p>
+                      </Link>
+                      <Button
+                        disabled={!canDelete || removeSource.isPending}
+                        onClick={() => removeSource.mutate(source.id)}
+                      >
+                        削除
+                      </Button>
+                    </div>
+                    {!canDelete ? (
+                      <p className="mt-2 text-sm text-zinc-500">処理中のため削除できません。</p>
                     ) : null}
-                    <p className="mt-1 text-sm">
-                      種類: {sourceKindLabel(source.kind)}
-                      {source.kind === 'pdf' && source.jobStatus === null
-                        ? null
-                        : ` / 処理状況: ${jobStatusLabel(source.jobStatus, source.jobKind)}`}
-                      {' / 取得経路: '}
-                      {acquiredViaLabel(source.acquiredVia)}
-                    </p>
                   </Card>
-                </Link>
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>
