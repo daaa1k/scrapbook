@@ -23,7 +23,7 @@ export type NoteShellView =
 export function resolveNoteShellView(
   search: NoteShellSearch,
   catalog: OrganizationCatalog,
-  sources: SourceListItem[],
+  sources: readonly SourceListItem[],
 ): NoteShellView {
   const notebook = catalog.notebooks.find((row) => row.id === search.notebookId)
   if (!notebook) {
@@ -39,7 +39,7 @@ export function resolveNoteShellView(
   return {
     status: 'ready',
     notebook,
-    sources,
+    sources: [...sources],
     focusSourceId,
   }
 }
