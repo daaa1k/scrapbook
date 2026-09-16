@@ -1,8 +1,11 @@
-pre-commit:
+# Local CI gate. Runs on every push (including branch push before a PR).
+pre-push:
   commands:
     typecheck:
       run: bun run typecheck
     test:
       run: bun run test
+    build:
+      run: bun run build
     secrets:
       run: bun run secrets
