@@ -107,6 +107,16 @@ describe('Cursor client', () => {
     expect(prompt).not.toContain('Fetch the URL')
   })
 
+  it('requires Japanese for summarize and ingest summary fields', () => {
+    const summarize = summarizePromptForBody('手入力の本文です。')
+    expect(summarize).toContain('Write the summary field in Japanese.')
+    expect(summarize).toContain('"summary":"string"')
+
+    const ingest = ingestPromptForUrl('https://example.com/a')
+    expect(ingest).toContain('Write the summary field in Japanese.')
+    expect(ingest).toContain('"summary":"string"')
+  })
+
   it('asks Cursor to answer a question from the stored body', () => {
     const prompt = askPromptForBody('要点は？', '手入力の本文です。')
     expect(prompt).toContain('Question: 要点は？')
@@ -114,6 +124,12 @@ describe('Cursor client', () => {
     expect(prompt).toContain('"answer"')
     expect(prompt).toContain('Do not fetch any URL')
     expect(prompt).not.toContain('Fetch the URL')
+  })
+
+  it('requires Japanese for ask answers', () => {
+    const prompt = askPromptForBody('要点は？', '手入力の本文です。')
+    expect(prompt).toContain('Write the answer field in Japanese.')
+    expect(prompt).toContain('"answer":"string"')
   })
 
   it('truncates long bodies in summarize and ask prompts', () => {
