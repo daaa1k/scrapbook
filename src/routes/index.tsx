@@ -40,16 +40,19 @@ function HomePage() {
       runOrganizationCommand({ data }),
     onSuccess: async (ack, variables) => {
       setFormError(null)
-      if (variables.type === 'create-notebook') {
-        setCreateTitle('')
-        const notebookId = notebookIdSchema.parse(ack.notebookId)
-        setCreateFlow({ status: 'awaiting-source', notebookId })
-      }
       const tasks = [queryClient.invalidateQueries({ queryKey: organizationKeys.catalog })]
       if (variables.type === 'rename-notebook') {
         tasks.push(queryClient.invalidateQueries({ queryKey: sourceKeys.all }))
       }
       await Promise.all(tasks)
+      if (variables.type !== 'create-notebook') return
+      setCreateTitle('')
+      const notebookId = notebookIdSchema.safeParse(ack.notebookId)
+      if (!notebookId.success) {
+        setFormError('ノートブックの作成に失敗しました')
+        return
+      }
+      setCreateFlow({ status: 'awaiting-source', notebookId: notebookId.data })
     },
     onError: (error) => {
       setFormError(userFacingError(error))
@@ -81,8 +84,9 @@ function HomePage() {
             value={createTitle}
             onChange={(event) => setCreateTitle(event.target.value)}
             aria-label="ノートブック名"
+            disabled={createFlow.status === 'awaiting-source'}
           />
-          <Button type="submit" disabled={run.isPending}>
+          <Button type="submit" disabled={run.isPending || createFlow.status === 'awaiting-source'}>
             作成
           </Button>
         </form>

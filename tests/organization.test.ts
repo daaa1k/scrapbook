@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { notebooks, sources, sourceTags } from '../src/db/schema'
 import {
   INBOX_NOTEBOOK_TITLE,
+  notebookIdSchema,
   organizationCommandSchema,
+  organizationMutationAckSchema,
   type OrganizationCommand,
 } from '../src/domain/organization'
 import { pasteSourceBody } from '../src/server/ingest/register'
@@ -59,7 +61,9 @@ describe('organization', () => {
     )
 
     await run(db, { type: 'rename-notebook', notebookId: researchId, title: '論文' })
-    await run(db, { type: 'rename-notebook', notebookId: created[0]!.id, title: '論文' })
+    expect(
+      await run(db, { type: 'rename-notebook', notebookId: created[0]!.id, title: '論文' }),
+    ).toEqual({ ok: true })
     expect((await db.select().from(notebooks).where(eq(notebooks.id, researchId)))[0]?.title).toBe(
       '論文',
     )
@@ -88,6 +92,24 @@ describe('organization', () => {
     )
     expect((await db.select().from(notebooks).where(eq(notebooks.id, fullId)))[0]?.title).toBe(
       '中身あり',
+    )
+  })
+
+  it('moves a pasted inbox source into the notebookId returned by create', async () => {
+    const { db } = createTestDb()
+    const created = organizationMutationAckSchema.parse(
+      await run(db, { type: 'create-notebook', title: '研究' }),
+    )
+    const notebookId = notebookIdSchema.parse(created.notebookId)
+    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文' })
+    const inboxId = await ensureInboxNotebook(db)
+    expect((await db.select().from(sources).where(eq(sources.id, pasted.sourceId)))[0]?.notebookId).toBe(
+      inboxId,
+    )
+
+    await run(db, { type: 'move-source', sourceId: pasted.sourceId, notebookId })
+    expect((await db.select().from(sources).where(eq(sources.id, pasted.sourceId)))[0]?.notebookId).toBe(
+      notebookId,
     )
   })
 
