@@ -1,12 +1,16 @@
 import { sql } from 'drizzle-orm'
-import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
-export const notebooks = sqliteTable('notebooks', {
-  id: text('id').primaryKey(),
-  title: text('title').notNull(),
-  createdAt: integer('created_at').notNull(),
-  updatedAt: integer('updated_at').notNull(),
-})
+export const notebooks = sqliteTable(
+  'notebooks',
+  {
+    id: text('id').primaryKey(),
+    title: text('title').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [uniqueIndex('notebooks_title_unique').on(table.title)],
+)
 
 export const sources = sqliteTable(
   'sources',
@@ -24,6 +28,7 @@ export const sources = sqliteTable(
     fetchedAt: integer('fetched_at'),
     body: text('body'),
     summary: text('summary'),
+    memo: text('memo'),
     contentHash: text('content_hash'),
     fetchStatus: text('fetch_status').notNull(),
     acquiredVia: text('acquired_via').notNull().default('fetch'),
@@ -31,7 +36,24 @@ export const sources = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (table) => [uniqueIndex('sources_normalized_url_unique').on(table.normalizedUrl)],
+  (table) => [
+    uniqueIndex('sources_normalized_url_unique').on(table.normalizedUrl),
+    index('sources_notebook_created_idx').on(table.notebookId, table.createdAt),
+  ],
+)
+
+export const sourceTags = sqliteTable(
+  'source_tags',
+  {
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => sources.id, { onDelete: 'cascade' }),
+    tagName: text('tag_name').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sourceId, table.tagName] }),
+    index('source_tags_tag_source_idx').on(table.tagName, table.sourceId),
+  ],
 )
 
 export const jobs = sqliteTable(

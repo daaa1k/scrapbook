@@ -1,8 +1,14 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { jobs, sources } from '../src/db/schema'
+import { jobs, notebooks, sources, sourceTags } from '../src/db/schema'
+import { organizationCommandSchema } from '../src/domain/organization'
 import { pasteSourceBody, registerUrlSource, retrySourceIngest } from '../src/server/ingest/register'
+import { applyOrganizationCommand } from '../src/server/organization'
 import { createTestDb } from './helpers/db'
+
+async function organize(db: ReturnType<typeof createTestDb>['db'], input: unknown) {
+  return applyOrganizationCommand(db, organizationCommandSchema.parse(input))
+}
 
 describe('register ingest', () => {
   it('creates a default notebook, source, and queued job', async () => {
@@ -30,6 +36,9 @@ describe('register ingest', () => {
     const rows = await db.select().from(sources)
     expect(rows).toHaveLength(1)
     expect(rows[0]?.notebookId).toBeTruthy()
+    const book = (await db.select().from(notebooks).where(eq(notebooks.id, rows[0]!.notebookId)))[0]
+    expect(book?.title).toBe('受信箱')
+    expect(rows[0]?.memo).toBeNull()
     expect(rows[0]?.fetchStatus).toBe('none')
     expect(rows[0]?.kind).toBe('url')
     expect(rows[0]?.acquiredVia).toBe('fetch')
@@ -49,6 +58,26 @@ describe('register ingest', () => {
     expect(rows).toHaveLength(1)
   })
 
+  it('keeps notebook, memo, and tags when the same URL is registered again', async () => {
+    const { db } = createTestDb()
+    const workflow = { create: async () => ({ id: 'wf' }) }
+    const first = await registerUrlSource(db, { url: 'https://example.com/keep-org' }, workflow)
+    await organize(db, { type: 'create-notebook', title: '研究' })
+    const researchId = (await db.select().from(notebooks).where(eq(notebooks.title, '研究')))[0]!.id
+    await organize(db, { type: 'move-source', sourceId: first.sourceId, notebookId: researchId })
+    await organize(db, { type: 'set-memo', sourceId: first.sourceId, memo: '残すメモ' })
+    await organize(db, { type: 'attach-tag', sourceId: first.sourceId, tagName: '論文' })
+
+    const second = await registerUrlSource(db, { url: 'https://example.com/keep-org' }, workflow)
+    expect(second.duplicate).toBe(true)
+    expect(second.sourceId).toBe(first.sourceId)
+    const row = (await db.select().from(sources).where(eq(sources.id, first.sourceId)))[0]
+    expect(row?.notebookId).toBe(researchId)
+    expect(row?.memo).toBe('残すメモ')
+    const tags = await db.select().from(sourceTags).where(eq(sourceTags.sourceId, first.sourceId))
+    expect(tags.map((tag) => tag.tagName)).toEqual(['論文'])
+  })
+
   it('does not start a second Cursor job while one is in flight', async () => {
     const { db } = createTestDb()
     const created: unknown[] = []
@@ -62,6 +91,49 @@ describe('register ingest', () => {
     const second = await retrySourceIngest(db, first.sourceId, workflow)
     expect(second.started).toBe(false)
     expect(second.jobId).toBe(first.jobId)
+    expect(created).toHaveLength(1)
+  })
+
+  it('does not start a second job when a later job shares createdAt with a failed one', async () => {
+    const { db } = createTestDb()
+    const created: unknown[] = []
+    const workflow = {
+      create: async (options: { params: unknown }) => {
+        created.push(options.params)
+        return { id: `wf-${created.length}` }
+      },
+    }
+    const first = await registerUrlSource(db, { url: 'https://example.com/same-created-at' }, workflow)
+    const firstJob = (await db.select().from(jobs).where(eq(jobs.id, first.jobId)))[0]!
+    await db
+      .update(jobs)
+      .set({
+        status: 'failed',
+        errorCode: 'cursor_run_failed',
+        errorMessage: 'Cursor run ended: ERROR',
+        finishedAt: firstJob.createdAt,
+        updatedAt: firstJob.createdAt,
+      })
+      .where(eq(jobs.id, first.jobId))
+
+    const queuedId = crypto.randomUUID()
+    await db.insert(jobs).values({
+      id: queuedId,
+      sourceId: first.sourceId,
+      status: 'queued',
+      cursorAgentId: null,
+      errorCode: null,
+      errorMessage: null,
+      attemptCount: 1,
+      createdAt: firstJob.createdAt,
+      updatedAt: firstJob.createdAt,
+      startedAt: null,
+      finishedAt: null,
+    })
+
+    const again = await retrySourceIngest(db, first.sourceId, workflow)
+    expect(again.started).toBe(false)
+    expect(again.jobId).toBe(queuedId)
     expect(created).toHaveLength(1)
   })
 

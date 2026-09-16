@@ -64,6 +64,11 @@ export const JOB_ERROR_LABEL: Record<string, string> = {
   pdf_too_large: 'PDFは8MB以下にしてください',
   pdf_empty_file: 'ファイルが空です',
   expected_form_data: 'アップロードの形式が不正です',
+  notebook_not_found: 'ノートブックが見つかりません',
+  notebook_not_empty: 'ソースがあるノートブックは削除できません',
+  notebook_title_taken: '同じ名前のノートブックがあります',
+  notebook_title_reserved: '「受信箱」は予約された名前です',
+  inbox_notebook_immutable: '受信箱の名前変更や削除はできません',
 }
 
 export function jobErrorReason(code: string | null, message: string | null): string {

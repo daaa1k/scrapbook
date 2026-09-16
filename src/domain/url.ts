@@ -57,9 +57,7 @@ export const pasteSourceInputSchema = z.object({
   url: z.string().optional(),
 })
 
-export const listSourcesInputSchema = z.object({
-  q: z.string().optional(),
-})
+export { sourceListFilterSchema as listSourcesInputSchema } from '~/domain/organization'
 
 export function parseAndNormalizeUrl(url: string): {
   original: string

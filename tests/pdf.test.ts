@@ -124,6 +124,7 @@ describe('pdf register', () => {
     expect(row?.normalizedUrl).toBeNull()
     expect(row?.body).toBe('抽出本文')
     expect(row?.summary).toBeNull()
+    expect(row?.memo).toBeNull()
     expect(row?.fetchStatus).toBe('full')
     expect(row?.contentHash).toBeTruthy()
     expect(row?.r2Key).toBe(`pdf/${result.sourceId}/original.pdf`)

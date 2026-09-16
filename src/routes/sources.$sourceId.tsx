@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
-import { Input } from '~/components/ui/input'
+import { Input, controlClassName } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
 import { pdfTextHelp, sourceOriginalPath } from '~/domain/pdf'
+import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import {
   acquiredViaLabel,
   fetchStatusLabel,
@@ -15,14 +16,21 @@ import {
   sourceKindLabel,
   userFacingError,
 } from '~/lib/utils'
+import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
 import { getSource, pasteSource, retrySource } from '~/server/functions/sources'
 
 export const Route = createFileRoute('/sources/$sourceId')({
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData({
-      queryKey: ['source', params.sourceId],
-      queryFn: () => getSource({ data: { sourceId: params.sourceId } }),
-    }),
+    Promise.all([
+      context.queryClient.ensureQueryData({
+        queryKey: sourceKeys.detail(params.sourceId),
+        queryFn: () => getSource({ data: { sourceId: params.sourceId } }),
+      }),
+      context.queryClient.ensureQueryData({
+        queryKey: organizationKeys.catalog,
+        queryFn: () => getOrganizationCatalog(),
+      }),
+    ]),
   component: SourceDetailPage,
 })
 
@@ -32,9 +40,12 @@ function SourceDetailPage() {
   const [pasteTitle, setPasteTitle] = useState('')
   const [pasteBody, setPasteBody] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
+  const [selectedNotebookId, setSelectedNotebookId] = useState('')
+  const [tagDraft, setTagDraft] = useState('')
+  const [memoDraft, setMemoDraft] = useState('')
 
   const query = useQuery({
-    queryKey: ['source', sourceId],
+    queryKey: sourceKeys.detail(sourceId),
     queryFn: () => getSource({ data: { sourceId } }),
     refetchInterval: (current) => {
       const status = current.state.data?.job?.status
@@ -43,12 +54,27 @@ function SourceDetailPage() {
     },
   })
 
+  const catalog = useQuery({
+    queryKey: organizationKeys.catalog,
+    queryFn: () => getOrganizationCatalog(),
+  })
+
+  const source = query.data
+
+  useEffect(() => {
+    if (!source) return
+    setSelectedNotebookId(source.organization.notebook.id)
+    setMemoDraft(source.organization.memo ?? '')
+  }, [source?.organization.notebook.id, source?.organization.memo])
+
   const retry = useMutation({
     mutationFn: () => retrySource({ data: { sourceId } }),
     onSuccess: async () => {
       setActionError(null)
-      await queryClient.invalidateQueries({ queryKey: ['source', sourceId] })
-      await queryClient.invalidateQueries({ queryKey: ['sources'] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
+        queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
+      ])
     },
     onError: (error) => {
       setActionError(userFacingError(error))
@@ -68,15 +94,39 @@ function SourceDetailPage() {
       setActionError(null)
       setPasteTitle('')
       setPasteBody('')
-      await queryClient.invalidateQueries({ queryKey: ['source', sourceId] })
-      await queryClient.invalidateQueries({ queryKey: ['sources'] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
+        queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
+      ])
     },
     onError: (error) => {
       setActionError(userFacingError(error))
     },
   })
 
-  const source = query.data
+  const organize = useMutation({
+    mutationFn: (data: Parameters<typeof runOrganizationCommand>[0]['data']) =>
+      runOrganizationCommand({ data }),
+    onSuccess: async (_ack, variables) => {
+      setActionError(null)
+      if (variables.type === 'attach-tag' || variables.type === 'detach-tag') {
+        setTagDraft('')
+      }
+      if (variables.type === 'set-memo') {
+        await queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) })
+        return
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
+        queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
+        queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
+      ])
+    },
+    onError: (error) => {
+      setActionError(userFacingError(error))
+    },
+  })
+
   if (!source) {
     return <p>読み込み中…</p>
   }
@@ -115,6 +165,101 @@ function SourceDetailPage() {
           </p>
         ) : null}
       </div>
+      <Card>
+        <h2 className="mb-3 font-medium">整理</h2>
+        <form
+          className="flex flex-col gap-3 sm:flex-row sm:items-end"
+          onSubmit={(event) => {
+            event.preventDefault()
+            organize.mutate({ type: 'move-source', sourceId, notebookId: selectedNotebookId })
+          }}
+        >
+          <label className="block min-w-0 flex-1">
+            <span className="mb-1 block text-sm text-zinc-500">ノートブック</span>
+            <select
+              className={controlClassName}
+              value={selectedNotebookId}
+              onChange={(event) => setSelectedNotebookId(event.target.value)}
+              aria-label="ノートブック"
+            >
+              {catalog.data?.notebooks.map((notebook) => (
+                <option key={notebook.id} value={notebook.id}>
+                  {notebook.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button type="submit" disabled={organize.isPending}>
+            移動する
+          </Button>
+        </form>
+        <div className="mt-4">
+          <p className="mb-2 text-sm text-zinc-500">タグ</p>
+          {source.organization.tags.length === 0 ? (
+            <p className="text-sm text-zinc-500">まだありません</p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {source.organization.tags.map((tag) => (
+                <li key={tag} className="flex items-center gap-2 rounded-md border border-zinc-200 px-2 py-1 text-sm dark:border-zinc-700">
+                  <span>{tag}</span>
+                  <Button
+                    disabled={organize.isPending}
+                    onClick={() => organize.mutate({ type: 'detach-tag', sourceId, tagName: tag })}
+                  >
+                    はずす
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form
+            className="mt-3 flex flex-col gap-3 sm:flex-row"
+            onSubmit={(event) => {
+              event.preventDefault()
+              organize.mutate({ type: 'attach-tag', sourceId, tagName: tagDraft })
+            }}
+          >
+            <Input
+              name="tag"
+              list="organization-tags"
+              value={tagDraft}
+              onChange={(event) => setTagDraft(event.target.value)}
+              placeholder="タグ名"
+              aria-label="タグ"
+              maxLength={50}
+            />
+            <datalist id="organization-tags">
+              {catalog.data?.tags.map((tag) => (
+                <option key={tag} value={tag} />
+              ))}
+            </datalist>
+            <Button type="submit" disabled={organize.isPending || tagDraft.trim() === ''}>
+              付ける
+            </Button>
+          </form>
+        </div>
+      </Card>
+      <Card>
+        <h2 className="mb-2 font-medium">自分のメモ</h2>
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            organize.mutate({ type: 'set-memo', sourceId, memo: memoDraft })
+          }}
+        >
+          <Textarea
+            name="memo"
+            value={memoDraft}
+            onChange={(event) => setMemoDraft(event.target.value)}
+            aria-label="自分のメモ"
+            maxLength={20_000}
+          />
+          <Button type="submit" disabled={organize.isPending}>
+            メモを保存
+          </Button>
+        </form>
+      </Card>
       {source.kind === 'pdf' ? null : (
       <Card>
         <h2 className="mb-2 font-medium">処理状況</h2>

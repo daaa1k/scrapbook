@@ -3,17 +3,30 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
-import { Input } from '~/components/ui/input'
+import { Input, controlClassName } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
+import {
+  EMPTY_SOURCE_LIST_FILTER,
+  sourceListFilterSchema,
+  type SourceListFilter,
+} from '~/domain/organization'
+import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { acquiredViaLabel, jobStatusLabel, sourceKindLabel, userFacingError } from '~/lib/utils'
+import { getOrganizationCatalog } from '~/server/functions/organization'
 import { listSources, pasteSource, registerPdf, registerSource } from '~/server/functions/sources'
 
 export const Route = createFileRoute('/')({
   loader: ({ context }) =>
-    context.queryClient.ensureQueryData({
-      queryKey: ['sources', ''],
-      queryFn: () => listSources({ data: { q: '' } }),
-    }),
+    Promise.all([
+      context.queryClient.ensureQueryData({
+        queryKey: sourceKeys.list(EMPTY_SOURCE_LIST_FILTER),
+        queryFn: () => listSources({ data: EMPTY_SOURCE_LIST_FILTER }),
+      }),
+      context.queryClient.ensureQueryData({
+        queryKey: organizationKeys.catalog,
+        queryFn: () => getOrganizationCatalog(),
+      }),
+    ]),
   component: HomePage,
 })
 
@@ -23,7 +36,9 @@ function HomePage() {
   const [url, setUrl] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [submittedQuery, setSubmittedQuery] = useState('')
+  const [notebookDraft, setNotebookDraft] = useState('')
+  const [tagDraft, setTagDraft] = useState('')
+  const [submitted, setSubmitted] = useState<SourceListFilter>(EMPTY_SOURCE_LIST_FILTER)
   const [pasteTitle, setPasteTitle] = useState('')
   const [pasteBody, setPasteBody] = useState('')
   const [pasteUrl, setPasteUrl] = useState('')
@@ -31,15 +46,27 @@ function HomePage() {
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [pdfError, setPdfError] = useState<string | null>(null)
 
-  const sourcesQuery = useQuery({
-    queryKey: ['sources', submittedQuery],
-    queryFn: () => listSources({ data: { q: submittedQuery } }),
+  const catalog = useQuery({
+    queryKey: organizationKeys.catalog,
+    queryFn: () => getOrganizationCatalog(),
   })
+
+  const sourcesQuery = useQuery({
+    queryKey: sourceKeys.list(submitted),
+    queryFn: () => listSources({ data: submitted }),
+  })
+
+  async function invalidateAfterIngest() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
+      queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
+    ])
+  }
 
   const register = useMutation({
     mutationFn: (value: string) => registerSource({ data: { url: value } }),
     onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ['sources'] })
+      await invalidateAfterIngest()
       await navigate({ to: '/sources/$sourceId', params: { sourceId: result.sourceId } })
     },
     onError: (error) => {
@@ -57,7 +84,7 @@ function HomePage() {
         },
       }),
     onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ['sources'] })
+      await invalidateAfterIngest()
       await navigate({ to: '/sources/$sourceId', params: { sourceId: result.sourceId } })
     },
     onError: (error) => {
@@ -72,7 +99,7 @@ function HomePage() {
       return registerPdf({ data })
     },
     onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ['sources'] })
+      await invalidateAfterIngest()
       await navigate({ to: '/sources/$sourceId', params: { sourceId: result.sourceId } })
     },
     onError: (error) => {
@@ -81,6 +108,7 @@ function HomePage() {
   })
 
   const sources = sourcesQuery.data ?? []
+  const filterActive = submitted.q !== '' || submitted.notebookId !== null || submitted.tagName !== null
 
   return (
     <div className="space-y-8">
@@ -190,10 +218,16 @@ function HomePage() {
       <section>
         <h2 className="mb-4 text-xl font-semibold">ソース一覧</h2>
         <form
-          className="mb-4 flex flex-col gap-3 sm:flex-row"
+          className="mb-4 grid gap-3 sm:grid-cols-[1fr_12rem_12rem_auto]"
           onSubmit={(event) => {
             event.preventDefault()
-            setSubmittedQuery(search)
+            setSubmitted(
+              sourceListFilterSchema.parse({
+                q: search,
+                notebookId: notebookDraft === '' ? null : notebookDraft,
+                tagName: tagDraft === '' ? null : tagDraft,
+              }),
+            )
           }}
         >
           <Input
@@ -204,12 +238,38 @@ function HomePage() {
             onChange={(event) => setSearch(event.target.value)}
             aria-label="ソースを検索"
           />
+          <select
+            className={controlClassName}
+            value={notebookDraft}
+            onChange={(event) => setNotebookDraft(event.target.value)}
+            aria-label="ノートブック"
+          >
+            <option value="">すべてのノートブック</option>
+            {catalog.data?.notebooks.map((notebook) => (
+              <option key={notebook.id} value={notebook.id}>
+                {notebook.title}
+              </option>
+            ))}
+          </select>
+          <select
+            className={controlClassName}
+            value={tagDraft}
+            onChange={(event) => setTagDraft(event.target.value)}
+            aria-label="タグ"
+          >
+            <option value="">すべてのタグ</option>
+            {catalog.data?.tags.map((tag) => (
+              <option key={tag} value={tag}>
+                {tag}
+              </option>
+            ))}
+          </select>
           <Button type="submit">検索</Button>
         </form>
         {sources.length === 0 ? (
           <Card>
             <p>
-              {submittedQuery
+              {filterActive
                 ? '一致するソースがありません。'
                 : 'まだソースがありません。URLを登録するか、PDFをアップロードするか、本文を貼り付けてください。'}
             </p>
@@ -224,6 +284,10 @@ function HomePage() {
                     <p className="text-sm text-zinc-500">
                       {source.kind === 'pdf' ? 'PDF' : source.url}
                     </p>
+                    <p className="mt-1 text-sm text-zinc-500">{source.notebook.title}</p>
+                    {source.tags.length > 0 ? (
+                      <p className="text-sm text-zinc-500">{source.tags.join(' · ')}</p>
+                    ) : null}
                     <p className="mt-1 text-sm">
                       種類: {sourceKindLabel(source.kind)}
                       {source.kind === 'pdf' ? null : ` / 処理状況: ${jobStatusLabel(source.jobStatus)}`}

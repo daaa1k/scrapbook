@@ -1,12 +1,11 @@
-import { desc, eq } from 'drizzle-orm'
-import { jobs, notebooks, sources } from '~/db/schema'
+import { desc, eq, sql } from 'drizzle-orm'
+import { jobs, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { sha256Hex } from '~/domain/ingest-result'
 import { assertTransition, canStartCursorJob, jobStatusSchema, sanitizeErrorMessage } from '~/domain/jobs'
 import { parseAndNormalizeUrl } from '~/domain/url'
+import { ensureInboxNotebook } from '~/server/organization'
 import { startIngestWorkflow, type WorkflowBinding } from '~/server/ingest/start-workflow'
-
-export const DEFAULT_NOTEBOOK_TITLE = '受信箱'
 
 export type RegisterResult = {
   sourceId: string
@@ -33,27 +32,12 @@ function isActiveJobUniqueError(error: unknown): boolean {
   return /UNIQUE constraint failed/i.test(message)
 }
 
-export async function ensureDefaultNotebook(db: AppDb): Promise<string> {
-  const existing = await db.select().from(notebooks).where(eq(notebooks.title, DEFAULT_NOTEBOOK_TITLE)).limit(1)
-  const row = existing[0]
-  if (row) return row.id
-  const id = crypto.randomUUID()
-  const ts = nowMs()
-  await db.insert(notebooks).values({
-    id,
-    title: DEFAULT_NOTEBOOK_TITLE,
-    createdAt: ts,
-    updatedAt: ts,
-  })
-  return id
-}
-
 export async function latestJobForSource(db: AppDb, sourceId: string) {
   const rows = await db
     .select()
     .from(jobs)
     .where(eq(jobs.sourceId, sourceId))
-    .orderBy(desc(jobs.createdAt))
+    .orderBy(desc(jobs.createdAt), desc(sql`rowid`))
     .limit(1)
   return rows[0] ?? null
 }
@@ -75,7 +59,7 @@ export async function registerUrlSource(
     return { ...queued, duplicate: true }
   }
 
-  const notebookId = await ensureDefaultNotebook(db)
+  const notebookId = await ensureInboxNotebook(db)
   const sourceId = crypto.randomUUID()
   const ts = nowMs()
 
@@ -191,7 +175,7 @@ export async function pasteSourceBody(
     }
   }
 
-  const notebookId = await ensureDefaultNotebook(db)
+  const notebookId = await ensureInboxNotebook(db)
   const sourceId = crypto.randomUUID()
   await db.insert(sources).values({
     id: sourceId,

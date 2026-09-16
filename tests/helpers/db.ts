@@ -19,6 +19,7 @@ function migrationSql(): string {
 
 export function createTestDb(): { db: AppDb; sqlite: Database.Database } {
   const sqlite = new Database(':memory:')
+  sqlite.pragma('foreign_keys = ON')
   sqlite.exec(migrationSql())
   const db = drizzle(sqlite, { schema }) as unknown as AppDb
   return { db, sqlite }
