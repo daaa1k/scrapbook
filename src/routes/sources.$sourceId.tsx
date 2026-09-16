@@ -204,7 +204,7 @@ function SourceDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link to="/" className="text-sm text-zinc-500 hover:underline">
+      <Link to="/sources" className="text-sm text-zinc-500 hover:underline">
         ← ソース一覧
       </Link>
       <div>
