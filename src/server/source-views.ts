@@ -1,6 +1,7 @@
 import { and, desc, eq, exists, inArray, or, sql } from 'drizzle-orm'
 import {
   citations as citationsTable,
+  jobs,
   notebooks,
   qaAnswers,
   qaCitations,
@@ -9,7 +10,7 @@ import {
 } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { citationViewFromRow } from '~/domain/citations'
-import { jobKindSchema, jobStatusSchema, type JobStatus } from '~/domain/jobs'
+import { isTerminalJobStatus, jobKindSchema, jobStatusSchema, type JobStatus } from '~/domain/jobs'
 import {
   INBOX_NOTEBOOK_TITLE,
   notebookIdSchema,
@@ -162,10 +163,12 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
         id: qaAnswers.id,
         question: qaAnswers.question,
         answer: qaAnswers.answer,
+        jobStatus: jobs.status,
       })
       .from(qaAnswers)
+      .innerJoin(jobs, eq(qaAnswers.jobId, jobs.id))
       .where(eq(qaAnswers.sourceId, row.id))
-      .orderBy(desc(qaAnswers.createdAt), desc(sql`rowid`)),
+      .orderBy(desc(qaAnswers.createdAt), desc(sql`${qaAnswers}."rowid"`)),
   ])
   const qaCitationRows =
     answerRows.length === 0
@@ -220,6 +223,7 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
       id: answer.id,
       question: answer.question,
       answer: answer.answer,
+      canDelete: isTerminalJobStatus(jobStatusSchema.parse(answer.jobStatus)),
       citations: (citationsByAnswer.get(answer.id) ?? []).map((citationRow) =>
         citationViewFromRow(citationRow, row.body),
       ),

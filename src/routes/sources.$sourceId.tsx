@@ -18,7 +18,7 @@ import {
   userFacingError,
 } from '~/lib/utils'
 import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
-import { getSource, pasteSource, retrySource, askSource, summarizeSource } from '~/server/functions/sources'
+import { getSource, pasteSource, retrySource, askSource, deleteSourceQaAnswer, summarizeSource } from '~/server/functions/sources'
 
 export const Route = createFileRoute('/sources/$sourceId')({
   loader: ({ context, params }) =>
@@ -106,6 +106,17 @@ function SourceDetailPage() {
         queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
         queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
       ])
+    },
+    onError: (error) => {
+      setActionError(userFacingError(error))
+    },
+  })
+
+  const deleteQa = useMutation({
+    mutationFn: (qaAnswerId: string) => deleteSourceQaAnswer({ data: { sourceId, qaAnswerId } }),
+    onSuccess: async () => {
+      setActionError(null)
+      await queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) })
     },
     onError: (error) => {
       setActionError(userFacingError(error))
@@ -403,10 +414,23 @@ function SourceDetailPage() {
           <ul className="mt-4 space-y-4">
             {source.qaAnswers.map((turn) => (
               <li key={turn.id} className="space-y-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
-                <p className="text-sm text-zinc-500">質問</p>
-                <p className="whitespace-pre-wrap">{turn.question}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-sm text-zinc-500">質問</p>
+                    <p className="whitespace-pre-wrap">{turn.question}</p>
+                  </div>
+                  <Button
+                    disabled={!turn.canDelete || deleteQa.isPending}
+                    onClick={() => deleteQa.mutate(turn.id)}
+                  >
+                    削除
+                  </Button>
+                </div>
                 <p className="text-sm text-zinc-500">回答</p>
                 <p className="whitespace-pre-wrap">{turn.answer ?? '回答待ち…'}</p>
+                {!turn.canDelete ? (
+                  <p className="text-sm text-zinc-500">処理中のため削除できません。</p>
+                ) : null}
                 {turn.citations.length > 0 ? (
                   <ul className="space-y-2">
                     {turn.citations.map((citation) => (

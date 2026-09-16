@@ -2,7 +2,7 @@ import { desc, eq, sql } from 'drizzle-orm'
 import { jobs, qaAnswers, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { sha256Hex, storedBodyText } from '~/domain/ingest-result'
-import { assertTransition, canStartCursorJob, jobKindSchema, jobStatusSchema, sanitizeErrorMessage } from '~/domain/jobs'
+import { assertTransition, canStartCursorJob, isTerminalJobStatus, jobKindSchema, jobStatusSchema, sanitizeErrorMessage } from '~/domain/jobs'
 import { parseAndNormalizeUrl } from '~/domain/url'
 import { startIngestWorkflow, type WorkflowBinding } from '~/server/ingest/start-workflow'
 import { ensureInboxNotebook } from '~/server/organization'
@@ -149,6 +149,27 @@ export async function askSourceQuestion(
     throw new Error('source_has_no_body')
   }
   return startOrReuseJob(db, sourceId, workflow, { mode: 'ask_source', question: trimmed })
+}
+
+export async function deleteQaAnswer(
+  db: AppDb,
+  input: { sourceId: string; qaAnswerId: string },
+): Promise<{ deleted: true }> {
+  const rows = await db.select().from(qaAnswers).where(eq(qaAnswers.id, input.qaAnswerId)).limit(1)
+  const row = rows[0]
+  if (!row || row.sourceId !== input.sourceId) {
+    throw new Error('qa_answer_not_found')
+  }
+  const jobRows = await db.select().from(jobs).where(eq(jobs.id, row.jobId)).limit(1)
+  const job = jobRows[0]
+  if (!job) {
+    throw new Error('qa_answer_not_found')
+  }
+  if (!isTerminalJobStatus(jobStatusSchema.parse(job.status))) {
+    throw new Error('qa_answer_in_progress')
+  }
+  await db.delete(qaAnswers).where(eq(qaAnswers.id, input.qaAnswerId))
+  return { deleted: true }
 }
 
 type EnqueueParams =

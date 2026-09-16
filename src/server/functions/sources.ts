@@ -6,7 +6,7 @@ import { sourceListFilterSchema } from '~/domain/organization'
 import { parseRegisterPdfForm, parsePdfUpload } from '~/domain/pdf'
 import { pasteSourceInputSchema, registerUrlInputSchema, retrySourceInputSchema } from '~/domain/url'
 import { authMiddleware } from '~/server/auth/middleware'
-import { pasteSourceBody, registerUrlSource, retrySourceIngest, askSourceQuestion, summarizeSourceBody } from '~/server/ingest/register'
+import { pasteSourceBody, registerUrlSource, retrySourceIngest, askSourceQuestion, deleteQaAnswer, summarizeSourceBody } from '~/server/ingest/register'
 import { extractPdfTextWithUnpdf, registerPdfSource, workerAssets } from '~/server/ingest/pdf'
 import { listSourceViews, readSourceDetail } from '~/server/source-views'
 
@@ -65,6 +65,19 @@ export const askSource = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const db = createDb(env.DB)
     return askSourceQuestion(db, data.sourceId, data.question, env.INGEST_WORKFLOW)
+  })
+
+export const deleteSourceQaAnswer = createServerFn({ method: 'POST' })
+  .middleware([authMiddleware])
+  .validator(
+    z.object({
+      sourceId: z.string().min(1),
+      qaAnswerId: z.string().min(1),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const db = createDb(env.DB)
+    return deleteQaAnswer(db, data)
   })
 
 export const pasteSource = createServerFn({ method: 'POST' })

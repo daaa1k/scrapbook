@@ -5,6 +5,7 @@ import { parseAskResultJson } from '../src/domain/ingest-result'
 import { MOCK_ASK_JSON, MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
 import {
   askSourceQuestion,
+  deleteQaAnswer,
   pasteSourceBody,
   registerUrlSource,
   summarizeSourceBody,
@@ -81,8 +82,88 @@ describe('ask source from stored body', () => {
     const detail = await readSourceDetail(db, pasted.sourceId)
     expect(detail.qaAnswers).toHaveLength(1)
     expect(detail.qaAnswers[0]?.answer).toBe(MOCK_ASK_JSON.answer)
+    expect(detail.qaAnswers[0]?.canDelete).toBe(true)
     expect(detail.qaAnswers[0]?.citations[0]?.bodySpan).toEqual({ start: 3, end: 9 })
     expect(detail.citations).toHaveLength(1)
+  })
+
+  it('deletes a terminal turn and its citations; rejects in-flight deletes', async () => {
+    const { db } = createTestDb()
+    const pasted = await pasteSourceBody(db, {
+      title: '手入力タイトル',
+      body: 'これはモックの本文です。',
+    })
+    const created: unknown[] = []
+    const started = await askSourceQuestion(db, pasted.sourceId, '消す質問', {
+      create: async (options) => {
+        created.push(options.params)
+        return { id: 'wf-ask-del' }
+      },
+    })
+    const qaAnswerId = (created[0] as { qaAnswerId: string }).qaAnswerId
+
+    await expect(
+      deleteQaAnswer(db, { sourceId: pasted.sourceId, qaAnswerId }),
+    ).rejects.toThrow('qa_answer_in_progress')
+
+    const detailInFlight = await readSourceDetail(db, pasted.sourceId)
+    expect(detailInFlight.qaAnswers[0]?.canDelete).toBe(false)
+
+    await runIngestWorkflow({
+      params: {
+        mode: 'ask_source',
+        jobId: started.jobId,
+        sourceId: pasted.sourceId,
+        qaAnswerId,
+      },
+      db,
+      step: createImmediateStep(),
+      cursor: createMockCursorClient({ result: JSON.stringify(MOCK_ASK_JSON) }),
+      maxPolls: 2,
+      pollSleep: 0,
+    })
+
+    await deleteQaAnswer(db, { sourceId: pasted.sourceId, qaAnswerId })
+    expect(await db.select().from(qaAnswers)).toHaveLength(0)
+    expect(await db.select().from(qaCitations)).toHaveLength(0)
+
+    const after = await askSourceQuestion(db, pasted.sourceId, '次の質問', {
+      create: async () => ({ id: 'wf-ask-next' }),
+    })
+    expect(after.started).toBe(true)
+  })
+
+  it('rejects delete for the wrong source or unknown id', async () => {
+    const { db } = createTestDb()
+    const pasted = await pasteSourceBody(db, { title: 't', body: 'これはモックの本文です。' })
+    const created: unknown[] = []
+    const started = await askSourceQuestion(db, pasted.sourceId, '質問', {
+      create: async (options) => {
+        created.push(options.params)
+        return { id: 'wf' }
+      },
+    })
+    const qaAnswerId = (created[0] as { qaAnswerId: string }).qaAnswerId
+    await runIngestWorkflow({
+      params: {
+        mode: 'ask_source',
+        jobId: started.jobId,
+        sourceId: pasted.sourceId,
+        qaAnswerId,
+      },
+      db,
+      step: createImmediateStep(),
+      cursor: createMockCursorClient({ result: JSON.stringify(MOCK_ASK_JSON) }),
+      maxPolls: 2,
+      pollSleep: 0,
+    })
+
+    await expect(deleteQaAnswer(db, { sourceId: 'missing', qaAnswerId })).rejects.toThrow(
+      'qa_answer_not_found',
+    )
+    await expect(
+      deleteQaAnswer(db, { sourceId: pasted.sourceId, qaAnswerId: 'missing' }),
+    ).rejects.toThrow('qa_answer_not_found')
   })
 
   it('parses ask JSON and rejects empty questions without a job', async () => {
