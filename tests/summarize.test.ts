@@ -59,7 +59,10 @@ describe('summarize from stored body', () => {
   })
 
   it('keeps extra keys on mock ingest JSON when parsing a summary', () => {
-    expect(parseSummarizeResultJson(JSON.stringify(MOCK_INGEST_JSON))).toEqual({ summary: 'モック要約' })
+    expect(parseSummarizeResultJson(JSON.stringify(MOCK_INGEST_JSON))).toEqual({
+      summary: 'モック要約',
+      citations: [{ excerpt: 'モックの本文', locator: { kind: 'offsets', start: 3, end: 9 } }],
+    })
   })
 
   it('rejects an empty or whitespace body without inserting a job', async () => {

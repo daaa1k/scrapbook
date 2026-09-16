@@ -325,11 +325,30 @@ function SourceDetailPage() {
         ) : null}
       </Card>
       <Card>
+        <h2 className="mb-2 font-medium">引用</h2>
+        {source.citations.length === 0 ? (
+          <p className="text-sm text-zinc-500">まだありません</p>
+        ) : (
+          <ul className="space-y-3">
+            {source.citations.map((citation) => (
+              <li key={citation.id}>
+                <blockquote className="whitespace-pre-wrap">{citation.excerpt}</blockquote>
+                {citation.bodySpan ? (
+                  <a href="#source-body" className="mt-1 inline-block text-sm underline">
+                    本文の該当箇所へ
+                  </a>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+      <Card>
         <h2 className="mb-2 font-medium">本文</h2>
         {pdfTextHelp(source) ? (
           <p className="mb-2 text-sm text-red-600">{pdfTextHelp(source)}</p>
         ) : null}
-        <p className="whitespace-pre-wrap">{source.body ?? 'まだありません'}</p>
+        <p id="source-body" className="whitespace-pre-wrap">{source.body ?? 'まだありません'}</p>
       </Card>
       <Card>
         <h2 className="mb-3 font-medium">本文を手動で貼り付け</h2>

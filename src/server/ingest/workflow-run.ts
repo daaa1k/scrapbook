@@ -1,7 +1,8 @@
 import { Effect } from 'effect'
 import { eq } from 'drizzle-orm'
-import { cursorRuns, jobs, sources } from '~/db/schema'
+import { citations as citationsTable, cursorRuns, jobs, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
+import { encodeLocator, type Citation } from '~/domain/citations'
 import { parseIngestResultJson, parseSummarizeResultJson, sha256Hex, storedBodyText } from '~/domain/ingest-result'
 import {
   assertTransitionEffect,
@@ -127,6 +128,25 @@ async function promptForJob(db: AppDb, params: IngestWorkflowParams): Promise<st
   }
 }
 
+async function replaceSourceCitations(
+  db: AppDb,
+  sourceId: string,
+  citations: readonly Citation[],
+  ts: number,
+): Promise<void> {
+  await db.delete(citationsTable).where(eq(citationsTable.sourceId, sourceId))
+  if (citations.length === 0) return
+  await db.insert(citationsTable).values(
+    citations.map((citation) => ({
+      id: crypto.randomUUID(),
+      sourceId,
+      locator: encodeLocator(citation.locator),
+      excerpt: citation.excerpt,
+      createdAt: ts,
+    })),
+  )
+}
+
 async function persistIngestOutput(
   db: AppDb,
   params: IngestWorkflowParams,
@@ -157,6 +177,7 @@ async function persistIngestOutput(
           updatedAt: ts,
         })
         .where(eq(sources.id, params.sourceId))
+      await replaceSourceCitations(db, params.sourceId, parsed.citations, ts)
       return
     }
     case 'summarize_body': {
@@ -168,6 +189,7 @@ async function persistIngestOutput(
           updatedAt: ts,
         })
         .where(eq(sources.id, params.sourceId))
+      await replaceSourceCitations(db, params.sourceId, parsed.citations, ts)
       return
     }
   }
