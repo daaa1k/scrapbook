@@ -16,7 +16,7 @@ describe('ingest workflow', () => {
     })
 
     await runIngestWorkflow({
-      params: { jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/ok' },
+      params: { mode: 'fetch', jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/ok' },
       db,
       step: createImmediateStep(),
       cursor: createMockCursorClient(),
@@ -27,6 +27,7 @@ describe('ingest workflow', () => {
     const source = (await db.select().from(sources).where(eq(sources.id, registered.sourceId)))[0]
     const job = (await db.select().from(jobs).where(eq(jobs.id, registered.jobId)))[0]
     expect(job?.status).toBe('succeeded')
+    expect(job?.kind).toBe('fetch')
     expect(source?.title).toBe(MOCK_INGEST_JSON.title)
     expect(source?.summary).toBe(MOCK_INGEST_JSON.summary)
     expect(source?.body).toBe(MOCK_INGEST_JSON.body)
@@ -63,7 +64,7 @@ describe('ingest workflow', () => {
     )
 
     await runIngestWorkflow({
-      params: { jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/keep-org' },
+      params: { mode: 'fetch', jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/keep-org' },
       db,
       step: createImmediateStep(),
       cursor: createMockCursorClient(),
@@ -85,7 +86,7 @@ describe('ingest workflow', () => {
     })
 
     await runIngestWorkflow({
-      params: { jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/fail' },
+      params: { mode: 'fetch', jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/fail' },
       db,
       step: createImmediateStep(),
       cursor: createMockCursorClient({ runStatus: 'ERROR' }),
@@ -108,7 +109,7 @@ describe('ingest workflow', () => {
     })
 
     await runIngestWorkflow({
-      params: { jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/nokey' },
+      params: { mode: 'fetch', jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/nokey' },
       db,
       step: createImmediateStep(),
       env: {

@@ -35,7 +35,7 @@ Worker  src/server.ts
 | `notebooks` | Containers. Title is unique. A default notebook titled `受信箱` is created on first use and cannot be renamed or deleted. |
 | `sources` | Ingested URLs / PDFs / pasted bodies. `notebook_id` FK → `notebooks.id`. `summary` is ingest output. `memo` is the user's note. |
 | `source_tags` | Labels on sources. Primary key `(source_id, tag_name)`. No separate tags table. |
-| `jobs` | Per-ingest state machine. `source_id` FK → `sources.id`. |
+| `jobs` | Per-ingest state machine. `source_id` FK → `sources.id`. `kind` is `fetch` or `summarize_body`. |
 | `cursor_runs` | Cursor run snapshots. `job_id` FK → `jobs.id`. |
 | `citations` | Schema only; no UI in this slice. `source_id` FK → `sources.id`. |
 
@@ -50,6 +50,8 @@ Re-registering a URL that already has a job returns that job and does **not** st
 PDF upload writes the original to private R2 at `pdf/{sourceId}/original.pdf`, inserts `kind: 'pdf'` with `acquired_via = upload`, and extracts text in the Worker with `unpdf`. It does **not** start Cursor. Empty extract (scanned PDF) keeps the original, leaves `fetchStatus = failed`, and the detail page asks you to paste. Bytes are served only from authenticated GET `/assets/sources/:id` (add `?download=1` for attachment). There is no public R2 URL. Cap is 8 MiB. Magic bytes must be `%PDF`.
 
 Manual paste writes `title` and `body`, leaves `summary` null, sets `acquired_via = paste` and `fetchStatus = full`, and does not create a job. Paste on a PDF keeps `kind` and `r2_key`.
+
+Explicit **要約する** / **再要約する** on the source detail page starts a job that asks Cursor to summarize the **stored body**. It does not re-fetch the URL and does not re-read R2. The button is shown only when `body` is non-empty. Paste and PDF register still do not auto-summarize.
 
 Title and body search uses SQLite `LIKE` with escaped wildcards, not FTS5. Unicode `LIKE` is good enough for Japanese substrings. FTS5 without a Japanese tokenizer would miss queries that `LIKE` hits. Vectorize is still out of scope.
 
@@ -66,7 +68,7 @@ succeeded (terminal)
 failed (terminal)
 ```
 
-`waiting_agent → waiting_agent` is the poll loop. Production waits up to 20 sleeps of 15s, then `error_code: timeout`. Encoded in `JOB_TRANSITIONS` + `assertTransition()` (`src/domain/jobs.ts`).
+`waiting_agent → waiting_agent` is the poll loop. Production waits up to 20 sleeps of 15s, then `error_code: timeout`. Encoded in `JOB_TRANSITIONS` + `assertTransition()` (`src/domain/jobs.ts`). Fetch and summarize_body share this machine. They are distinguished by `jobs.kind` and by workflow params `mode`. At most one non-terminal job per source still applies across both kinds.
 
 ## Local commands
 
@@ -139,6 +141,8 @@ If the flag is set in production config, auth still requires a valid Access JWT.
 ```
 
 The Workflow polls `GET /v1/agents/{id}/runs/{runId}`, strips markdown fences from `result`, and Zod-parses that object. There is no separate OpenAI key.
+
+Summarize-from-body uses the same agent API with a different prompt. The agent is given the stored body and must reply with `{ "summary": "string" }` only. Persist writes `summary` and `updatedAt`. It does not write `body` or `memo`.
 
 X/Twitter URLs are stored as `kind: 'x'`. The Cursor prompt adds a note that fetch is unauthenticated. Logged-in X scraping is **not** implemented (unproven without auth).
 

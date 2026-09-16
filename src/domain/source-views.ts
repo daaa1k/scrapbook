@@ -1,11 +1,12 @@
 import { z } from 'zod'
-import { jobStatusSchema } from '~/domain/jobs'
+import { jobKindSchema, jobStatusSchema } from '~/domain/jobs'
 import { notebookRefSchema, sourceOrganizationSchema, tagNameSchema } from '~/domain/organization'
 import { acquiredViaSchema } from '~/domain/url'
 
 export const sourceJobSchema = z.object({
   id: z.string(),
   status: jobStatusSchema,
+  kind: jobKindSchema,
   errorCode: z.string().nullable(),
   errorMessage: z.string().nullable(),
 })
@@ -18,6 +19,7 @@ export const sourceListItemSchema = z.object({
   fetchStatus: z.string(),
   acquiredVia: acquiredViaSchema,
   jobStatus: jobStatusSchema.nullable(),
+  jobKind: jobKindSchema.nullable(),
   createdAt: z.number(),
   notebook: notebookRefSchema,
   tags: z.array(tagNameSchema),

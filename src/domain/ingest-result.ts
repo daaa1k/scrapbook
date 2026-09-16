@@ -12,6 +12,12 @@ export const ingestResultSchema = z.object({
 
 export type IngestResult = z.infer<typeof ingestResultSchema>
 
+export const summarizeResultSchema = z.object({
+  summary: z.string().min(1),
+})
+
+export type SummarizeResult = z.infer<typeof summarizeResultSchema>
+
 export function stripMarkdownFences(text: string): string {
   const trimmed = text.trim()
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```$/i)
@@ -21,15 +27,27 @@ export function stripMarkdownFences(text: string): string {
   return trimmed
 }
 
-export function parseIngestResultJson(raw: string): IngestResult {
+function parseJsonObject(raw: string): unknown {
   const stripped = stripMarkdownFences(raw)
   const start = stripped.indexOf('{')
   const end = stripped.lastIndexOf('}')
   if (start === -1 || end === -1 || end <= start) {
     throw new Error('ingest_result_not_json')
   }
-  const parsed: unknown = JSON.parse(stripped.slice(start, end + 1))
-  return ingestResultSchema.parse(parsed)
+  return JSON.parse(stripped.slice(start, end + 1)) as unknown
+}
+
+export function parseIngestResultJson(raw: string): IngestResult {
+  return ingestResultSchema.parse(parseJsonObject(raw))
+}
+
+export function parseSummarizeResultJson(raw: string): SummarizeResult {
+  return summarizeResultSchema.parse(parseJsonObject(raw))
+}
+
+export function storedBodyText(body: string | null | undefined): string | null {
+  const trimmed = body?.trim() ?? ''
+  return trimmed === '' ? null : trimmed
 }
 
 export async function sha256Hex(value: string): Promise<string> {

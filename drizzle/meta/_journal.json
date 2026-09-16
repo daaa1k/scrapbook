@@ -22,6 +22,13 @@
       "when": 1789523281418,
       "tag": "0002_notebooks_tags_memo",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789526465365,
+      "tag": "0003_fluffy_rockslide",
+      "breakpoints": true
     }
   ]
 }
