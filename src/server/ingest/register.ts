@@ -6,8 +6,9 @@ import { assertTransition, canStartCursorJob, isTerminalJobStatus, jobKindSchema
 import { parseAndNormalizeUrl, type PasteSourceInput } from '~/domain/url'
 import { notebookIdSchema, type NotebookId, type NotebookTarget } from '~/domain/organization'
 import { startIngestWorkflow, type WorkflowBinding } from '~/server/ingest/start-workflow'
+import { fetchUrlPageTitle } from '~/server/ingest/page-title'
 import type { AssetsPort, R2ObjectKey } from '~/server/ingest/pdf'
-import { withNotebookTarget } from '~/server/organization'
+import { applyFirstSourceNotebookTitle, withNotebookTarget } from '~/server/organization'
 
 export type RegisterResult = {
   sourceId: string
@@ -56,10 +57,15 @@ async function sourceByNormalizedUrl(db: AppDb, normalized: string) {
   return rows[0] ?? null
 }
 
+export type RegisterFetchOptions = {
+  fetchImpl?: typeof fetch
+}
+
 export async function registerUrlSource(
   db: AppDb,
   input: { url: string; notebook: NotebookTarget },
   workflow: WorkflowBinding | undefined,
+  options?: RegisterFetchOptions,
 ): Promise<RegisterResult> {
   const { original, normalized, kind } = parseAndNormalizeUrl(input.url)
   const existing = await sourceByNormalizedUrl(db, normalized)
@@ -78,7 +84,11 @@ export async function registerUrlSource(
     return { ...queued, notebookId, duplicate: true }
   }
 
-  return withNotebookTarget(db, input.notebook, new URL(normalized).hostname, async (notebookId) => {
+  const hostname = new URL(normalized).hostname
+  const pageTitle = await fetchUrlPageTitle(normalized, { fetchImpl: options?.fetchImpl })
+  const titleHint = pageTitle ?? hostname
+
+  return withNotebookTarget(db, input.notebook, titleHint, async (notebookId) => {
     const sourceId = crypto.randomUUID()
     const ts = nowMs()
 
@@ -88,7 +98,7 @@ export async function registerUrlSource(
       kind,
       url: original,
       normalizedUrl: normalized,
-      title: null,
+      title: pageTitle,
       author: null,
       publishedAt: null,
       fetchedAt: null,
@@ -101,6 +111,10 @@ export async function registerUrlSource(
       createdAt: ts,
       updatedAt: ts,
     })
+
+    if (input.notebook !== 'new') {
+      await applyFirstSourceNotebookTitle(db, notebookId, titleHint)
+    }
 
     const queued = await enqueueJob(db, workflow, 0, {
       mode: 'fetch',
@@ -367,6 +381,9 @@ export async function pasteSourceBody(db: AppDb, input: PasteSourceInput): Promi
       createdAt: ts,
       updatedAt: ts,
     })
+    if (input.notebook !== 'new') {
+      await applyFirstSourceNotebookTitle(db, notebookId, input.title)
+    }
     return { sourceId, notebookId }
   })
 }

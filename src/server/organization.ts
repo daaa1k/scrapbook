@@ -6,6 +6,7 @@ import {
   notebookTitleFromHint,
   notebookTitleSchema,
   organizationCatalogSchema,
+  isPlaceholderNotebookTitle,
   tagNameSchema,
   type NotebookId,
   type NotebookTarget,
@@ -95,6 +96,42 @@ export async function withNotebookTarget<T>(
     )
     throw error
   }
+}
+
+export async function applyFirstSourceNotebookTitle(
+  db: AppDb,
+  notebookId: NotebookId,
+  candidateTitle: string,
+): Promise<boolean> {
+  const trimmed = candidateTitle.trim()
+  if (!trimmed) return false
+
+  const countRows = await db
+    .select({ value: count() })
+    .from(sources)
+    .where(eq(sources.notebookId, notebookId))
+  if (Number(countRows[0]?.value ?? 0) !== 1) return false
+
+  const row = await notebookById(db, notebookId)
+  if (!row) throw new Error('notebook_not_found')
+  if (!isPlaceholderNotebookTitle(row.title)) return false
+
+  const base = notebookTitleFromHint(trimmed)
+  if (isPlaceholderNotebookTitle(base)) return false
+
+  for (let n = 1; n < 10_000; n += 1) {
+    const next = titleWithSuffix(base, n)
+    try {
+      await db
+        .update(notebooks)
+        .set({ title: next, updatedAt: nowMs() })
+        .where(eq(notebooks.id, notebookId))
+      return true
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error
+    }
+  }
+  throw new Error('notebook_title_taken')
 }
 
 export async function createNotebook(db: AppDb, title: NotebookTitle): Promise<OrganizationMutationAck> {
