@@ -58,22 +58,24 @@ async function pasteSource(argv) {
   await mkdir(out, { recursive: true })
 
   await withPage(async (page) => {
-    await page.goto(`${baseUrl}/sources`, { waitUntil: 'networkidle' })
-    await page.getByRole('heading', { name: '本文を手動で貼り付け' }).waitFor()
+    await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' })
+    await page.getByRole('button', { name: '新しいノート' }).first().click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('heading', { name: '新しいノート' }).waitFor()
     await page.screenshot({ path: resolve(out, 'before.png'), fullPage: true })
 
-    await page.getByRole('textbox', { name: 'タイトル' }).fill(title)
-    await page.getByRole('textbox', { name: '本文' }).fill(body)
-    await page.getByRole('button', { name: '本文を保存' }).click()
-    await page.waitForURL(/\/sources\/[^/]+$/, { timeout: 30_000 })
-    await page.getByRole('heading', { level: 1, name: title }).waitFor({ timeout: 30_000 })
+    await dialog.getByRole('textbox', { name: 'タイトル' }).fill(title)
+    await dialog.getByRole('textbox', { name: '本文' }).fill(body)
+    await dialog.getByRole('button', { name: '本文を保存' }).click()
+    await page.waitForURL(/\/notebooks\/[^/]+/, { timeout: 30_000 })
+    await page.getByText(title, { exact: true }).first().waitFor({ timeout: 30_000 })
 
     await page.screenshot({ path: resolve(out, 'after.png'), fullPage: true })
     const aria = await page.locator('body').ariaSnapshot()
     await writeFile(resolve(out, 'aria.txt'), `${aria}\n`)
     await writeMeta(out, {
       featureId: 'paste-source',
-      entryPoint: '/sources#paste',
+      entryPoint: '/#new-notebook-paste',
       resultUrl: page.url(),
       title,
     })
