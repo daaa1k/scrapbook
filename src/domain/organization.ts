@@ -1,12 +1,13 @@
 import { z } from 'zod'
 
-export const INBOX_NOTEBOOK_TITLE = '受信箱' as const
-
 export const notebookIdSchema = z.uuid().brand<'NotebookId'>()
 export type NotebookId = z.infer<typeof notebookIdSchema>
 
 export const notebookTitleSchema = z.string().trim().min(1).max(100).brand<'NotebookTitle'>()
 export type NotebookTitle = z.infer<typeof notebookTitleSchema>
+
+export const UNTITLED_NOTEBOOK_TITLE = '無題のノート'
+const NOTEBOOK_TITLE_MAX = 100
 
 export const tagNameSchema = z.string().trim().min(1).max(50).brand<'TagName'>()
 export type TagName = z.infer<typeof tagNameSchema>
@@ -65,12 +66,12 @@ export function sourceListFilterFromSourcesPageSearch(search: {
 export const notebookRefSchema = z.object({
   id: notebookIdSchema,
   title: notebookTitleSchema,
-  isInbox: z.boolean(),
 })
 export type NotebookRef = z.infer<typeof notebookRefSchema>
 
 export const notebookSummarySchema = notebookRefSchema.extend({
   sourceCount: z.number().int().nonnegative(),
+  updatedAt: z.number().int(),
 })
 
 export const organizationCatalogSchema = z.object({
@@ -132,3 +133,40 @@ export type OrganizationMutationAck = z.infer<typeof organizationMutationAckSche
 export type HomeCreateFlow =
   | { status: 'idle' }
   | { status: 'awaiting-source'; notebookId: NotebookId }
+
+export function notebookTitleHint(input: {
+  sourceTitle?: string | null
+  pdfFilename?: string | null
+  url?: string | null
+}): string {
+  const sourceTitle = input.sourceTitle?.trim()
+  if (sourceTitle) return sourceTitle
+  const pdfFilename = input.pdfFilename?.trim()
+  if (pdfFilename) return pdfFilename
+  const rawUrl = input.url?.trim()
+  if (rawUrl) {
+    try {
+      const host = new URL(rawUrl).hostname.toLowerCase().replace(/^www\./, '')
+      if (host) return host
+    } catch {
+      // Invalid URL falls through to the untitled default.
+    }
+  }
+  return UNTITLED_NOTEBOOK_TITLE
+}
+
+export function uniqueNotebookTitle(
+  preferred: string,
+  existingTitles: readonly string[],
+): NotebookTitle {
+  const existing = new Set(existingTitles)
+  const trimmed = preferred.trim() || UNTITLED_NOTEBOOK_TITLE
+  const base = trimmed.slice(0, NOTEBOOK_TITLE_MAX)
+  if (!existing.has(base)) return notebookTitleSchema.parse(base)
+  for (let n = 2; n < 10_000; n += 1) {
+    const suffix = ` (${n})`
+    const title = `${base.slice(0, NOTEBOOK_TITLE_MAX - suffix.length)}${suffix}`
+    if (!existing.has(title)) return notebookTitleSchema.parse(title)
+  }
+  throw new Error('notebook_title_taken')
+}

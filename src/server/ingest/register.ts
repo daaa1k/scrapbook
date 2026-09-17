@@ -4,9 +4,10 @@ import type { AppDb } from '~/db/types'
 import { sha256Hex, storedBodyText } from '~/domain/ingest-result'
 import { assertTransition, canStartCursorJob, isTerminalJobStatus, jobKindSchema, jobStatusSchema, sanitizeErrorMessage } from '~/domain/jobs'
 import { parseAndNormalizeUrl } from '~/domain/url'
+import { notebookIdSchema, type NotebookId } from '~/domain/organization'
 import { startIngestWorkflow, type WorkflowBinding } from '~/server/ingest/start-workflow'
 import type { AssetsPort, R2ObjectKey } from '~/server/ingest/pdf'
-import { ensureInboxNotebook } from '~/server/organization'
+import { assertNotebookExists, touchNotebookForSource, touchNotebookUpdatedAt } from '~/server/organization'
 
 export type RegisterResult = {
   sourceId: string
@@ -45,7 +46,7 @@ export async function latestJobForSource(db: AppDb, sourceId: string) {
 
 export async function registerUrlSource(
   db: AppDb,
-  input: { url: string },
+  input: { url: string; notebookId: NotebookId },
   workflow: WorkflowBinding | undefined,
 ): Promise<RegisterResult> {
   const { original, normalized, kind } = parseAndNormalizeUrl(input.url)
@@ -64,7 +65,8 @@ export async function registerUrlSource(
     return { ...queued, duplicate: true }
   }
 
-  const notebookId = await ensureInboxNotebook(db)
+  await assertNotebookExists(db, input.notebookId)
+  const notebookId = input.notebookId
   const sourceId = crypto.randomUUID()
   const ts = nowMs()
 
@@ -87,6 +89,7 @@ export async function registerUrlSource(
     createdAt: ts,
     updatedAt: ts,
   })
+  await touchNotebookUpdatedAt(db, notebookId, ts)
 
   const queued = await enqueueJob(db, workflow, 0, {
     mode: 'fetch',
@@ -177,6 +180,7 @@ export async function deleteSource(
   db: AppDb,
   sourceId: string,
   assets: AssetsPort | undefined,
+  options?: { force?: boolean },
 ): Promise<{ deleted: true }> {
   const rows = await db.select().from(sources).where(eq(sources.id, sourceId)).limit(1)
   const source = rows[0]
@@ -185,7 +189,8 @@ export async function deleteSource(
   }
   const latest = await latestJobForSource(db, sourceId)
   const latestStatus = latest ? jobStatusSchema.parse(latest.status) : null
-  if (!canStartCursorJob(latestStatus)) {
+  // force: create-notebook rollback may need to drop a source whose fetch job is already queued.
+  if (!options?.force && !canStartCursorJob(latestStatus)) {
     throw new Error('source_in_progress')
   }
 
@@ -199,6 +204,7 @@ export async function deleteSource(
     await db.delete(jobs).where(eq(jobs.sourceId, sourceId))
   }
   await db.delete(sources).where(eq(sources.id, sourceId))
+  await touchNotebookUpdatedAt(db, notebookIdSchema.parse(source.notebookId))
 
   if (source.r2Key && assets) {
     try {
@@ -273,12 +279,13 @@ async function writePastedBody(
       updatedAt: ts,
     })
     .where(eq(sources.id, sourceId))
+  await touchNotebookForSource(db, sourceId, ts)
   return { sourceId }
 }
 
 export async function pasteSourceBody(
   db: AppDb,
-  input: { sourceId?: string; title: string; body: string; url?: string },
+  input: { sourceId?: string; title: string; body: string; url?: string; notebookId?: NotebookId },
 ): Promise<PasteResult> {
   const ts = nowMs()
   const hash = await sha256Hex(input.body)
@@ -300,7 +307,9 @@ export async function pasteSourceBody(
     }
   }
 
-  const notebookId = await ensureInboxNotebook(db)
+  if (!input.notebookId) throw new Error('notebook_not_found')
+  await assertNotebookExists(db, input.notebookId)
+  const notebookId = input.notebookId
   const sourceId = crypto.randomUUID()
   await db.insert(sources).values({
     id: sourceId,
@@ -321,6 +330,7 @@ export async function pasteSourceBody(
     createdAt: ts,
     updatedAt: ts,
   })
+  await touchNotebookUpdatedAt(db, notebookId, ts)
   return { sourceId }
 }
 

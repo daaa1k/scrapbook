@@ -32,6 +32,7 @@ import {
 import { FAILED_CURSOR_RUN_STATUSES } from '~/server/cursor/schemas'
 import { isInsecureAuthBypassEnabled } from '~/server/auth/access'
 import { ingestWorkflowParamsSchema, type IngestWorkflowParams } from '~/server/ingest/start-workflow'
+import { touchNotebookForSource } from '~/server/organization'
 
 export type IngestStep = {
   do: <T>(name: string, callback: () => Promise<T>) => Promise<T>
@@ -223,7 +224,7 @@ async function persistIngestOutput(
         })
         .where(eq(sources.id, params.sourceId))
       await replaceSourceCitations(db, params.sourceId, parsed.citations, ts)
-      return
+      break
     }
     case 'summarize_body': {
       const parsed = parseSummarizeResultJson(raw)
@@ -235,7 +236,7 @@ async function persistIngestOutput(
         })
         .where(eq(sources.id, params.sourceId))
       await replaceSourceCitations(db, params.sourceId, parsed.citations, ts)
-      return
+      break
     }
     case 'ask_source': {
       const parsed = parseAskResultJson(raw)
@@ -247,9 +248,10 @@ async function persistIngestOutput(
         })
         .where(eq(qaAnswers.id, params.qaAnswerId))
       await replaceQaCitations(db, params.qaAnswerId, parsed.citations, ts)
-      return
+      break
     }
   }
+  await touchNotebookForSource(db, params.sourceId, ts)
 }
 
 function failCodeForError(error: unknown): string {

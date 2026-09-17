@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
+import type { NotebookId } from '~/domain/organization'
 import { sha256Hex } from '~/domain/ingest-result'
 import {
   persistablePdfBody,
@@ -10,7 +11,7 @@ import {
   type ParsedPdfUpload,
 } from '~/domain/pdf'
 import { authenticateAccessRequest, type AccessEnv } from '~/server/auth/access'
-import { ensureInboxNotebook } from '~/server/organization'
+import { assertNotebookExists, touchNotebookUpdatedAt } from '~/server/organization'
 
 export type R2ObjectKey = string & { readonly __brand: 'R2ObjectKey' }
 
@@ -66,12 +67,13 @@ export async function registerPdfSource(
   assets: AssetsPort,
   upload: ParsedPdfUpload,
   extract: PdfExtractor,
+  notebookId: NotebookId,
 ): Promise<RegisterPdfResult> {
+  await assertNotebookExists(db, notebookId)
   const sourceId = crypto.randomUUID()
   const key = pdfOriginalKey(sourceId)
   await assets.put(key, upload.bytes)
 
-  const notebookId = await ensureInboxNotebook(db)
   const ts = Date.now()
   try {
     await db.insert(sources).values({
@@ -99,6 +101,7 @@ export async function registerPdfSource(
     } catch {}
     throw error
   }
+  await touchNotebookUpdatedAt(db, notebookId, ts)
 
   let extracted: PdfExtractResult
   try {

@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers'
 import { createDb } from '~/db/client'
 import { organizationCommandSchema } from '~/domain/organization'
 import { authMiddleware } from '~/server/auth/middleware'
+import { workerAssets } from '~/server/ingest/pdf'
 import { applyOrganizationCommand, readOrganizationCatalog } from '~/server/organization'
 
 export const getOrganizationCatalog = createServerFn({ method: 'GET' })
@@ -17,5 +18,5 @@ export const runOrganizationCommand = createServerFn({ method: 'POST' })
   .validator(organizationCommandSchema)
   .handler(async ({ data }) => {
     const db = createDb(env.DB)
-    return applyOrganizationCommand(db, data)
+    return applyOrganizationCommand(db, data, workerAssets(env.ASSETS))
   })

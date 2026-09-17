@@ -179,16 +179,16 @@ function NotebookCard({
           required
           maxLength={100}
           value={title}
-          disabled={notebook.isInbox}
+          disabled={busy}
           onChange={(event) => setTitle(event.target.value)}
           aria-label={`${notebook.title}の名前`}
         />
-        <Button type="submit" disabled={notebook.isInbox || busy}>
+        <Button type="submit" disabled={busy}>
           名前を変更
         </Button>
         <Button
           type="button"
-          disabled={notebook.isInbox || notebook.sourceCount > 0 || busy}
+          disabled={busy}
           onClick={onDelete}
         >
           削除
