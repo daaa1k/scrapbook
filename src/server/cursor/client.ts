@@ -37,6 +37,16 @@ export type CursorClientOptions = {
   baseUrl?: string
 }
 
+export type CursorAgentModelSelection = {
+  id: string
+  params: Array<{ id: string; value: string }>
+}
+
+export const CURSOR_AGENT_MODEL: CursorAgentModelSelection = {
+  id: 'composer-2.5',
+  params: [{ id: 'fast', value: 'true' }],
+}
+
 function missingKey(): CursorNotConfigured {
   return new CursorNotConfigured({ message: 'CURSOR_API_KEY is not configured' })
 }
@@ -111,7 +121,7 @@ export function createCursorClient(options: CursorClientOptions): CursorClient {
       return Effect.gen(function* () {
         const body = yield* request('/v1/agents', {
           method: 'POST',
-          body: JSON.stringify({ prompt: { text: promptText } }),
+          body: JSON.stringify({ prompt: { text: promptText }, model: CURSOR_AGENT_MODEL }),
         })
         return yield* parseWithZod(createAgentResponseSchema, body)
       })

@@ -132,7 +132,7 @@ If the flag is set in production config, auth still requires a valid Access JWT.
 
 ## Cursor no-repo prompt
 
-`createAgent` POSTs `{ prompt: { text } }` to `https://api.cursor.com/v1/agents` with `Authorization: Bearer $CURSOR_API_KEY`. **`repos` and `env` are omitted** (no-repo agent). The prompt tells the agent to fetch the URL (curl or equivalent) and reply with **only** JSON:
+`createAgent` POSTs `{ prompt: { text }, model: { id: "composer-2.5", params: [{ id: "fast", value: "true" }] } }` to `https://api.cursor.com/v1/agents` with `Authorization: Bearer $CURSOR_API_KEY`. **`repos` and `env` are omitted** (no-repo agent). The prompt tells the agent to fetch the URL (curl or equivalent) and reply with **only** JSON:
 
 ```json
 {

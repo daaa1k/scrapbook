@@ -51,13 +51,17 @@ describe('Cursor client', () => {
   })
 
   it('parses create and get-run fixtures via mock fetch', async () => {
-    const calls: Array<{ url: string; auth: string | null }> = []
+    const calls: Array<{ url: string; auth: string | null; body: string | null }> = []
     const client = createCursorClient({
       apiKey: 'test-key',
       fetch: async (input, init) => {
         const url = String(input)
         const headers = new Headers(init?.headers)
-        calls.push({ url, auth: headers.get('Authorization') })
+        calls.push({
+          url,
+          auth: headers.get('Authorization'),
+          body: typeof init?.body === 'string' ? init.body : null,
+        })
         if (url.endsWith('/v1/agents') && init?.method === 'POST') {
           return new Response(JSON.stringify(createFixture), { status: 200 })
         }
@@ -71,6 +75,13 @@ describe('Cursor client', () => {
     const created = await Effect.runPromise(client.createAgent('hello'))
     expect(created.agent.id).toBe(createFixture.agent.id)
     expect(created.run.status).toBe('CREATING')
+    expect(JSON.parse(calls[0]?.body ?? 'null')).toEqual({
+      prompt: { text: 'hello' },
+      model: {
+        id: 'composer-2.5',
+        params: [{ id: 'fast', value: 'true' }],
+      },
+    })
 
     const run = await Effect.runPromise(client.getRun(created.agent.id, created.run.id))
     expect(run.status).toBe('FINISHED')
