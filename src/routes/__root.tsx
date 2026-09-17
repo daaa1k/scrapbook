@@ -35,8 +35,8 @@ function RootDocument({ children }: { children: ReactNode }) {
             <Link to="/" className="text-xl font-semibold tracking-tight">
               Scrapbook
             </Link>
-            <Link to="/sources" className="text-sm text-zinc-700 hover:underline dark:text-zinc-300">
-              ソース
+            <Link to="/" className="text-sm text-zinc-700 hover:underline dark:text-zinc-300">
+              ノート
             </Link>
           </header>
           {children}

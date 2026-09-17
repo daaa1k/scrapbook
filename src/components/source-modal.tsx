@@ -3,19 +3,24 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
-import type { NotebookId } from '~/domain/organization'
+import type { NotebookId, NotebookTarget } from '~/domain/organization'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { userFacingError } from '~/lib/utils'
 import { pasteSource, registerPdf, registerSource } from '~/server/functions/sources'
 
-type SourceModalProps = {
+export type SourceAddedResult = {
+  sourceId: string
   notebookId: NotebookId
-  open: boolean
-  onClose: () => void
-  onSourceAdded: (sourceId: string) => void
 }
 
-export function SourceModal({ notebookId, open, onClose, onSourceAdded }: SourceModalProps) {
+type SourceModalProps = {
+  notebook: NotebookTarget
+  open: boolean
+  onClose: () => void
+  onSourceAdded: (result: SourceAddedResult) => void
+}
+
+export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const ignoreNextCloseEvent = useRef(false)
   const queryClient = useQueryClient()
@@ -27,6 +32,8 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [pdfError, setPdfError] = useState<string | null>(null)
+
+  const creatingNotebook = notebook === 'new'
 
   function closeWithoutDismiss(dialog: HTMLDialogElement) {
     ignoreNextCloseEvent.current = true
@@ -46,22 +53,22 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
     }
   }, [open])
 
-  async function invalidateAfterIngest(sourceId: string) {
+  async function invalidateAfterIngest(result: SourceAddedResult) {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
       queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
     ])
-    return sourceId
+    return result
   }
 
   const register = useMutation({
     mutationFn: async (value: string) => {
-      const result = await registerSource({ data: { url: value, notebook: notebookId } })
-      return invalidateAfterIngest(result.sourceId)
+      const result = await registerSource({ data: { url: value, notebook } })
+      return invalidateAfterIngest({ sourceId: result.sourceId, notebookId: result.notebookId })
     },
-    onSuccess: (sourceId) => {
+    onSuccess: (result) => {
       setUrlError(null)
-      onSourceAdded(sourceId)
+      onSourceAdded(result)
     },
     onError: (error) => setUrlError(userFacingError(error)),
   })
@@ -73,14 +80,14 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
           title: pasteTitle,
           body: pasteBody,
           url: pasteUrl.trim() ? pasteUrl : undefined,
-          notebook: notebookId,
+          notebook,
         },
       })
-      return invalidateAfterIngest(result.sourceId)
+      return invalidateAfterIngest({ sourceId: result.sourceId, notebookId: result.notebookId })
     },
-    onSuccess: (sourceId) => {
+    onSuccess: (result) => {
       setPasteError(null)
-      onSourceAdded(sourceId)
+      onSourceAdded(result)
     },
     onError: (error) => setPasteError(userFacingError(error)),
   })
@@ -89,13 +96,13 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
     mutationFn: async (file: File) => {
       const data = new FormData()
       data.set('file', file)
-      data.set('notebook', notebookId)
+      data.set('notebook', notebook)
       const result = await registerPdf({ data })
-      return invalidateAfterIngest(result.sourceId)
+      return invalidateAfterIngest({ sourceId: result.sourceId, notebookId: result.notebookId })
     },
-    onSuccess: (sourceId) => {
+    onSuccess: (result) => {
       setPdfError(null)
-      onSourceAdded(sourceId)
+      onSourceAdded(result)
     },
     onError: (error) => setPdfError(userFacingError(error)),
   })
@@ -130,10 +137,12 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 id="source-modal-title" className="text-lg font-semibold">
-              ソースを追加
+              {creatingNotebook ? '新しいノート' : 'ソースを追加'}
             </h2>
             <p className="mt-1 text-sm text-zinc-500">
-              URL・PDF・貼り付けからソースを追加します。閉じてもノートブックは残ります。
+              {creatingNotebook
+                ? '最初のソースを登録するとノートが作成されます。閉じても空のノートは残りません。'
+                : 'URL・PDF・貼り付けからソースを追加します。'}
             </p>
           </div>
           <Button type="button" className="shrink-0 whitespace-nowrap" disabled={busy} onClick={closeDialog}>
