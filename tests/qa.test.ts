@@ -13,13 +13,16 @@ import {
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import { readSourceDetail } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'
+import { seedNotebook } from './helpers/notebook'
 
 describe('ask source from stored body', () => {
   it('persists answer and qa citations without touching source citations', async () => {
     const { db } = createTestDb()
+    const notebook = await seedNotebook(db)
     const pasted = await pasteSourceBody(db, {
       title: '手入力タイトル',
       body: 'これはモックの本文です。',
+      notebook,
     })
     await db.insert(citations).values({
       id: 'cite-keep',
@@ -89,9 +92,11 @@ describe('ask source from stored body', () => {
 
   it('deletes a terminal turn and its citations; rejects in-flight deletes', async () => {
     const { db } = createTestDb()
+    const notebook = await seedNotebook(db)
     const pasted = await pasteSourceBody(db, {
       title: '手入力タイトル',
       body: 'これはモックの本文です。',
+      notebook,
     })
     const created: unknown[] = []
     const started = await askSourceQuestion(db, pasted.sourceId, '消す質問', {
@@ -135,7 +140,11 @@ describe('ask source from stored body', () => {
 
   it('rejects delete for the wrong source or unknown id', async () => {
     const { db } = createTestDb()
-    const pasted = await pasteSourceBody(db, { title: 't', body: 'これはモックの本文です。' })
+    const pasted = await pasteSourceBody(db, {
+      title: 't',
+      body: 'これはモックの本文です。',
+      notebook: await seedNotebook(db),
+    })
     const created: unknown[] = []
     const started = await askSourceQuestion(db, pasted.sourceId, '質問', {
       create: async (options) => {
@@ -173,7 +182,11 @@ describe('ask source from stored body', () => {
     })
 
     const { db } = createTestDb()
-    const pasted = await pasteSourceBody(db, { title: 't', body: 'body text' })
+    const pasted = await pasteSourceBody(db, {
+      title: 't',
+      body: 'body text',
+      notebook: await seedNotebook(db),
+    })
     await expect(
       askSourceQuestion(db, pasted.sourceId, '   ', { create: async () => ({ id: 'wf' }) }),
     ).rejects.toThrow('question_empty')
@@ -186,6 +199,7 @@ describe('ask source from stored body', () => {
     const pasted = await pasteSourceBody(db, {
       title: 't',
       body: 'これはモックの本文です。',
+      notebook: await seedNotebook(db),
     })
     await db.insert(citations).values({
       id: 'cite-keep-2',
@@ -234,7 +248,12 @@ describe('ask source from stored body', () => {
     const workflow = {
       create: async () => ({ id: 'wf' }),
     }
-    const registered = await registerUrlSource(db, { url: 'https://example.com/ask-busy' }, workflow)
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(
+      db,
+      { url: 'https://example.com/ask-busy', notebook },
+      workflow,
+    )
     await db.update(sources).set({ body: '下書き本文' }).where(eq(sources.id, registered.sourceId))
 
     const duringFetch = await askSourceQuestion(db, registered.sourceId, '今は無理？', workflow)
@@ -263,7 +282,11 @@ describe('ask source from stored body', () => {
 
   it('rejects ask without a body and does not confuse ask with summarize', async () => {
     const { db } = createTestDb()
-    const pasted = await pasteSourceBody(db, { title: '空', body: 'いったん' })
+    const pasted = await pasteSourceBody(db, {
+      title: '空',
+      body: 'いったん',
+      notebook: await seedNotebook(db),
+    })
     await db.update(sources).set({ body: null }).where(eq(sources.id, pasted.sourceId))
     await expect(
       askSourceQuestion(db, pasted.sourceId, '質問', { create: async () => ({ id: 'wf' }) }),

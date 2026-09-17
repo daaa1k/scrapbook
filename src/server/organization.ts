@@ -2,12 +2,13 @@ import { and, count, desc, eq, sql } from 'drizzle-orm'
 import { notebooks, sources, sourceTags } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import {
-  INBOX_NOTEBOOK_TITLE,
   notebookIdSchema,
+  notebookTitleFromHint,
   notebookTitleSchema,
   organizationCatalogSchema,
   tagNameSchema,
   type NotebookId,
+  type NotebookTarget,
   type NotebookTitle,
   type OrganizationCommand,
   type OrganizationMutationAck,
@@ -19,6 +20,7 @@ import {
 type OrganizationSourcePatch = { notebookId: NotebookId } | { memo: SourceMemo }
 
 const ACK: OrganizationMutationAck = { ok: true }
+const NOTEBOOK_TITLE_MAX = 100
 
 function nowMs(): number {
   return Date.now()
@@ -29,9 +31,10 @@ function isUniqueConstraintError(error: unknown): boolean {
   return /UNIQUE constraint failed/i.test(message)
 }
 
-function isForeignKeyError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error)
-  return /FOREIGN KEY constraint failed/i.test(message)
+function titleWithSuffix(base: NotebookTitle, n: number): NotebookTitle {
+  if (n === 1) return base
+  const suffix = ` (${n})`
+  return notebookTitleSchema.parse(`${base.slice(0, NOTEBOOK_TITLE_MAX - suffix.length)}${suffix}`)
 }
 
 async function notebookById(db: AppDb, notebookId: NotebookId) {
@@ -39,7 +42,7 @@ async function notebookById(db: AppDb, notebookId: NotebookId) {
   return rows[0] ?? null
 }
 
-async function notebookByTitle(db: AppDb, title: NotebookTitle | typeof INBOX_NOTEBOOK_TITLE) {
+async function notebookByTitle(db: AppDb, title: NotebookTitle) {
   const rows = await db.select().from(notebooks).where(eq(notebooks.title, title)).limit(1)
   return rows[0] ?? null
 }
@@ -49,18 +52,52 @@ async function sourceExists(db: AppDb, sourceId: string): Promise<boolean> {
   return Boolean(rows[0])
 }
 
-async function sourceCountForNotebook(db: AppDb, notebookId: NotebookId): Promise<number> {
-  const rows = await db
-    .select({ value: count(sources.id) })
-    .from(sources)
-    .where(eq(sources.notebookId, notebookId))
-  return Number(rows[0]?.value ?? 0)
+export async function withNotebookTarget<T>(
+  db: AppDb,
+  target: NotebookTarget,
+  titleHint: string,
+  work: (notebookId: NotebookId) => Promise<T>,
+): Promise<T> {
+  if (target !== 'new') {
+    const row = await notebookById(db, target)
+    if (!row) throw new Error('notebook_not_found')
+    return work(target)
+  }
+
+  const base = notebookTitleFromHint(titleHint)
+  const notebookId = notebookIdSchema.parse(crypto.randomUUID())
+  const ts = nowMs()
+  let inserted = false
+  for (let n = 1; n < 10_000; n += 1) {
+    try {
+      await db.insert(notebooks).values({
+        id: notebookId,
+        title: titleWithSuffix(base, n),
+        createdAt: ts,
+        updatedAt: ts,
+      })
+      inserted = true
+      break
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error
+    }
+  }
+  if (!inserted) throw new Error('notebook_title_taken')
+
+  try {
+    return await work(notebookId)
+  } catch (error) {
+    await db.delete(notebooks).where(
+      and(
+        eq(notebooks.id, notebookId),
+        sql`not exists (select 1 from sources where notebook_id = ${notebookId})`,
+      ),
+    )
+    throw error
+  }
 }
 
-async function createNotebook(db: AppDb, title: NotebookTitle): Promise<OrganizationMutationAck> {
-  if (title === INBOX_NOTEBOOK_TITLE) {
-    throw new Error('notebook_title_reserved')
-  }
+export async function createNotebook(db: AppDb, title: NotebookTitle): Promise<OrganizationMutationAck> {
   const existing = await notebookByTitle(db, title)
   if (existing) {
     return { ok: true, notebookId: notebookIdSchema.parse(existing.id) }
@@ -92,12 +129,6 @@ async function renameNotebook(
 ): Promise<OrganizationMutationAck> {
   const row = await notebookById(db, notebookId)
   if (!row) throw new Error('notebook_not_found')
-  if (row.title === INBOX_NOTEBOOK_TITLE) {
-    throw new Error('inbox_notebook_immutable')
-  }
-  if (title === INBOX_NOTEBOOK_TITLE) {
-    throw new Error('notebook_title_reserved')
-  }
   if (row.title === title) return ACK
   try {
     await db
@@ -106,24 +137,6 @@ async function renameNotebook(
       .where(eq(notebooks.id, notebookId))
   } catch (error) {
     if (isUniqueConstraintError(error)) throw new Error('notebook_title_taken')
-    throw error
-  }
-  return ACK
-}
-
-async function deleteNotebook(db: AppDb, notebookId: NotebookId): Promise<OrganizationMutationAck> {
-  const row = await notebookById(db, notebookId)
-  if (!row) return ACK
-  if (row.title === INBOX_NOTEBOOK_TITLE) {
-    throw new Error('inbox_notebook_immutable')
-  }
-  if ((await sourceCountForNotebook(db, notebookId)) > 0) {
-    throw new Error('notebook_not_empty')
-  }
-  try {
-    await db.delete(notebooks).where(eq(notebooks.id, notebookId))
-  } catch (error) {
-    if (isForeignKeyError(error)) throw new Error('notebook_not_empty')
     throw error
   }
   return ACK
@@ -169,40 +182,33 @@ async function detachTag(db: AppDb, sourceId: string, tagName: TagName): Promise
   return ACK
 }
 
-export async function ensureInboxNotebook(db: AppDb): Promise<NotebookId> {
-  const ts = nowMs()
-  await db
-    .insert(notebooks)
-    .values({
-      id: crypto.randomUUID(),
-      title: INBOX_NOTEBOOK_TITLE,
-      createdAt: ts,
-      updatedAt: ts,
-    })
-    .onConflictDoNothing()
-  const row = await notebookByTitle(db, INBOX_NOTEBOOK_TITLE)
-  if (!row) {
-    throw new Error('inbox_notebook_missing')
-  }
-  return notebookIdSchema.parse(row.id)
-}
+const catalogUpdatedAt = sql<number>`max(
+  ${notebooks.updatedAt},
+  coalesce(max(${sources.updatedAt}), 0),
+  coalesce(
+    (
+      select max(q.updated_at)
+      from qa_answers q
+      join sources s2 on s2.id = q.source_id
+      where s2.notebook_id = ${notebooks.id}
+    ),
+    0
+  )
+)`
 
 export async function readOrganizationCatalog(db: AppDb): Promise<OrganizationCatalog> {
-  await ensureInboxNotebook(db)
   const notebookRows = await db
     .select({
       id: notebooks.id,
       title: notebooks.title,
       createdAt: notebooks.createdAt,
+      updatedAt: catalogUpdatedAt,
       sourceCount: count(sources.id),
     })
     .from(notebooks)
     .leftJoin(sources, eq(sources.notebookId, notebooks.id))
     .groupBy(notebooks.id)
-    .orderBy(
-      sql`case when ${notebooks.title} = ${INBOX_NOTEBOOK_TITLE} then 0 else 1 end`,
-      desc(notebooks.createdAt),
-    )
+    .orderBy(desc(catalogUpdatedAt), desc(notebooks.createdAt))
   const tagRows = await db
     .selectDistinct({ tagName: sourceTags.tagName })
     .from(sourceTags)
@@ -212,8 +218,8 @@ export async function readOrganizationCatalog(db: AppDb): Promise<OrganizationCa
     notebooks: notebookRows.map((row) => ({
       id: notebookIdSchema.parse(row.id),
       title: notebookTitleSchema.parse(row.title),
-      isInbox: row.title === INBOX_NOTEBOOK_TITLE,
       sourceCount: Number(row.sourceCount),
+      updatedAt: row.updatedAt,
     })),
     tags: tagRows.map((row) => tagNameSchema.parse(row.tagName)),
   })
@@ -228,8 +234,6 @@ export async function applyOrganizationCommand(
       return createNotebook(db, command.title)
     case 'rename-notebook':
       return renameNotebook(db, command.notebookId, command.title)
-    case 'delete-notebook':
-      return deleteNotebook(db, command.notebookId)
     case 'move-source':
       return patchSourceOrganization(db, command.sourceId, { notebookId: command.notebookId })
     case 'set-memo':

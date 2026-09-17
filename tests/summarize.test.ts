@@ -4,17 +4,20 @@ import { jobs, sources } from '../src/db/schema'
 import { parseSummarizeResultJson } from '../src/domain/ingest-result'
 import { organizationCommandSchema } from '../src/domain/organization'
 import { MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
-import { pasteSourceBody, registerUrlSource, retrySourceIngest, summarizeSourceBody } from '../src/server/ingest/register'
+import { retrySourceIngest, summarizeSourceBody, pasteSourceBody, registerUrlSource } from '../src/server/ingest/register'
 import { applyOrganizationCommand } from '../src/server/organization'
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import { createTestDb } from './helpers/db'
+import { seedNotebook } from './helpers/notebook'
 
 describe('summarize from stored body', () => {
   it('writes summary from mock Cursor and leaves body and memo unchanged', async () => {
     const { db } = createTestDb()
+    const notebook = await seedNotebook(db)
     const pasted = await pasteSourceBody(db, {
       title: '手入力タイトル',
       body: '手入力の本文です。',
+      notebook,
     })
     await applyOrganizationCommand(
       db,
@@ -67,7 +70,8 @@ describe('summarize from stored body', () => {
 
   it('rejects an empty or whitespace body without inserting a job', async () => {
     const { db } = createTestDb()
-    const pasted = await pasteSourceBody(db, { title: '空', body: 'いったん本文' })
+    const notebook = await seedNotebook(db)
+    const pasted = await pasteSourceBody(db, { title: '空', body: 'いったん本文', notebook })
     await db.update(sources).set({ body: '   ' }).where(eq(sources.id, pasted.sourceId))
 
     await expect(
@@ -93,7 +97,8 @@ describe('summarize from stored body', () => {
       },
     }
 
-    const registered = await registerUrlSource(db, { url: 'https://example.com/busy-sum' }, workflow)
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/busy-sum', notebook }, workflow)
     await db.update(sources).set({ body: '取得前の下書き' }).where(eq(sources.id, registered.sourceId))
     const duringFetch = await summarizeSourceBody(db, registered.sourceId, workflow)
     expect(duringFetch.started).toBe(false)
@@ -121,7 +126,8 @@ describe('summarize from stored body', () => {
 
   it('does not treat summarize as URL retry', async () => {
     const { db } = createTestDb()
-    const pasted = await pasteSourceBody(db, { title: 'ノート', body: '手入力の本文' })
+    const notebook = await seedNotebook(db)
+    const pasted = await pasteSourceBody(db, { title: 'ノート', body: '手入力の本文', notebook })
     await expect(retrySourceIngest(db, pasted.sourceId, { create: async () => ({ id: 'wf' }) })).rejects.toThrow(
       'source_has_no_url',
     )

@@ -223,7 +223,7 @@ async function persistIngestOutput(
         })
         .where(eq(sources.id, params.sourceId))
       await replaceSourceCitations(db, params.sourceId, parsed.citations, ts)
-      return
+      break
     }
     case 'summarize_body': {
       const parsed = parseSummarizeResultJson(raw)
@@ -235,7 +235,7 @@ async function persistIngestOutput(
         })
         .where(eq(sources.id, params.sourceId))
       await replaceSourceCitations(db, params.sourceId, parsed.citations, ts)
-      return
+      break
     }
     case 'ask_source': {
       const parsed = parseAskResultJson(raw)
@@ -247,7 +247,7 @@ async function persistIngestOutput(
         })
         .where(eq(qaAnswers.id, params.qaAnswerId))
       await replaceQaCitations(db, params.qaAnswerId, parsed.citations, ts)
-      return
+      break
     }
   }
 }

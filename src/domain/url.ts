@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { notebookTargetSchema } from '~/domain/organization'
 
 export const sourceKindSchema = z.enum(['url', 'pdf', 'x'])
 export type SourceKind = z.infer<typeof sourceKindSchema>
@@ -44,18 +45,24 @@ export function sourceKindFromUrl(url: string): SourceKind {
 
 export const registerUrlInputSchema = z.object({
   url: z.url(),
+  notebook: notebookTargetSchema,
 })
 
 export const retrySourceInputSchema = z.object({
   sourceId: z.string().min(1),
 })
 
-export const pasteSourceInputSchema = z.object({
-  sourceId: z.string().min(1).optional(),
+const pasteBodySchema = z.object({
   title: z.string().trim().min(1).max(500),
   body: z.string().trim().min(1).max(200_000),
   url: z.string().optional(),
 })
+
+export const pasteSourceInputSchema = z.union([
+  pasteBodySchema.extend({ sourceId: z.string().min(1) }),
+  pasteBodySchema.extend({ notebook: notebookTargetSchema }),
+])
+export type PasteSourceInput = z.output<typeof pasteSourceInputSchema>
 
 export { sourceListFilterSchema as listSourcesInputSchema } from '~/domain/organization'
 

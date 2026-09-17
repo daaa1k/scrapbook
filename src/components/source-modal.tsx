@@ -6,7 +6,6 @@ import { Textarea } from '~/components/ui/textarea'
 import type { NotebookId } from '~/domain/organization'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { userFacingError } from '~/lib/utils'
-import { runOrganizationCommand } from '~/server/functions/organization'
 import { pasteSource, registerPdf, registerSource } from '~/server/functions/sources'
 
 type SourceModalProps = {
@@ -47,10 +46,7 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
     }
   }, [open])
 
-  async function ingestIntoNotebook(sourceId: string) {
-    await runOrganizationCommand({
-      data: { type: 'move-source', sourceId, notebookId },
-    })
+  async function invalidateAfterIngest(sourceId: string) {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
       queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
@@ -60,8 +56,8 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
 
   const register = useMutation({
     mutationFn: async (value: string) => {
-      const result = await registerSource({ data: { url: value } })
-      return ingestIntoNotebook(result.sourceId)
+      const result = await registerSource({ data: { url: value, notebook: notebookId } })
+      return invalidateAfterIngest(result.sourceId)
     },
     onSuccess: (sourceId) => {
       setUrlError(null)
@@ -77,9 +73,10 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
           title: pasteTitle,
           body: pasteBody,
           url: pasteUrl.trim() ? pasteUrl : undefined,
+          notebook: notebookId,
         },
       })
-      return ingestIntoNotebook(result.sourceId)
+      return invalidateAfterIngest(result.sourceId)
     },
     onSuccess: (sourceId) => {
       setPasteError(null)
@@ -92,8 +89,9 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
     mutationFn: async (file: File) => {
       const data = new FormData()
       data.set('file', file)
+      data.set('notebook', notebookId)
       const result = await registerPdf({ data })
-      return ingestIntoNotebook(result.sourceId)
+      return invalidateAfterIngest(result.sourceId)
     },
     onSuccess: (sourceId) => {
       setPdfError(null)

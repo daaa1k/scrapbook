@@ -10,6 +10,7 @@ import { pasteSourceBody, registerUrlSource, retrySourceIngest, summarizeSourceB
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import { readSourceDetail } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'
+import { seedNotebook } from './helpers/notebook'
 
 const workflow = { create: async () => ({ id: 'wf' }) }
 
@@ -28,7 +29,6 @@ const detailFixture = {
     notebook: {
       id: '11111111-1111-4111-8111-111111111111',
       title: '受信箱',
-      isInbox: true,
     },
     tags: [],
     memo: null,
@@ -51,7 +51,8 @@ describe('source citations', () => {
 
   it('persists the mock fetch citation and derives bodySpan on detail', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/ok' }, workflow)
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/ok', notebook }, workflow)
 
     await runIngestWorkflow({
       params: {
@@ -90,7 +91,8 @@ describe('source citations', () => {
 
   it('replaces the snapshot on a later summarize instead of appending', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/replace' }, workflow)
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/replace', notebook }, workflow)
 
     await runIngestWorkflow({
       params: {
@@ -134,7 +136,8 @@ describe('source citations', () => {
 
   it('clears rows when citations is [] or omitted after a success', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/clear' }, workflow)
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/clear', notebook }, workflow)
 
     await runIngestWorkflow({
       params: {
@@ -225,7 +228,8 @@ describe('source citations', () => {
 
   it('inserts an unanchored citation when body is empty and bodySpan stays null', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/empty-body' }, workflow)
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/empty-body', notebook }, workflow)
 
     await runIngestWorkflow({
       params: {
@@ -270,7 +274,8 @@ describe('source citations', () => {
 
   it('leaves seeded rows in place when the Cursor run errors', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/error' }, workflow)
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/error', notebook }, workflow)
     await db.insert(citations).values({
       id: 'seed-error',
       sourceId: registered.sourceId,
@@ -306,9 +311,11 @@ describe('source citations', () => {
 
   it('leaves seeded rows in place on paste and drops bodySpan when the body no longer matches', async () => {
     const { db } = createTestDb()
+    const notebook = await seedNotebook(db)
     const pasted = await pasteSourceBody(db, {
       title: '元',
       body: 'これはモックの本文です。',
+      notebook,
     })
     await db.insert(citations).values({
       id: 'seed-paste',
@@ -381,7 +388,6 @@ describe('source citations', () => {
       notebook: {
         id: '11111111-1111-4111-8111-111111111111',
         title: '受信箱',
-        isInbox: true,
       },
       tags: [],
     })

@@ -17,8 +17,7 @@ const base: SourceDetail = {
   organization: {
     notebook: {
       id: notebookIdSchema.parse('11111111-1111-4111-8111-111111111111'),
-      title: notebookTitleSchema.parse('受信箱'),
-      isInbox: true,
+      title: notebookTitleSchema.parse('研究'),
     },
     tags: [tagNameSchema.parse('メモ')],
     memo: null,

@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { jobs, notebooks, sources } from '../src/db/schema'
+import { jobs, sources } from '../src/db/schema'
 import { MAX_SOURCE_BODY_CHARS } from '../src/domain/pdf'
 import { organizationCommandSchema } from '../src/domain/organization'
 import { MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
@@ -8,11 +8,13 @@ import { registerUrlSource } from '../src/server/ingest/register'
 import { applyOrganizationCommand } from '../src/server/organization'
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import { createTestDb } from './helpers/db'
+import { seedNotebook } from './helpers/notebook'
 
 describe('ingest workflow', () => {
   it('persists body/summary and marks the job succeeded on FINISHED JSON', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/ok' }, {
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/ok', notebook }, {
       create: async () => ({ id: 'wf' }),
     })
 
@@ -39,14 +41,11 @@ describe('ingest workflow', () => {
 
   it('does not overwrite memo or notebook_id when persisting ingest output', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/keep-org' }, {
+    const originId = await seedNotebook(db, '元')
+    const registered = await registerUrlSource(db, { url: 'https://example.com/keep-org', notebook: originId }, {
       create: async () => ({ id: 'wf' }),
     })
-    await applyOrganizationCommand(
-      db,
-      organizationCommandSchema.parse({ type: 'create-notebook', title: '研究' }),
-    )
-    const researchId = (await db.select().from(notebooks).where(eq(notebooks.title, '研究')))[0]!.id
+    const researchId = await seedNotebook(db, '研究')
     await applyOrganizationCommand(
       db,
       organizationCommandSchema.parse({
@@ -82,7 +81,8 @@ describe('ingest workflow', () => {
 
   it('fails the job with a UI-facing error and does not require a body', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/fail' }, {
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/fail', notebook }, {
       create: async () => ({ id: 'wf' }),
     })
 
@@ -105,7 +105,8 @@ describe('ingest workflow', () => {
 
   it('fails with cursor_not_configured when production has no key', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/nokey' }, {
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/nokey', notebook }, {
       create: async () => ({ id: 'wf' }),
     })
 
@@ -129,7 +130,8 @@ describe('ingest workflow', () => {
 
   it('truncates oversized fetch bodies to the source cap and marks partial', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/huge' }, {
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/huge', notebook }, {
       create: async () => ({ id: 'wf' }),
     })
     const hugeBody = `${'x'.repeat(MAX_SOURCE_BODY_CHARS)}TAIL`

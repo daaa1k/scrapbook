@@ -7,12 +7,13 @@ import { Card } from '~/components/ui/card'
 import { Input } from '~/components/ui/input'
 import {
   type HomeCreateFlow,
+  type NotebookId,
   type OrganizationCatalog,
   notebookIdSchema,
 } from '~/domain/organization'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { userFacingError } from '~/lib/utils'
-import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
+import { getOrganizationCatalog, runOrganizationCommand, deleteNotebook } from '~/server/functions/organization'
 
 export const Route = createFileRoute('/')({
   loader: ({ context }) =>
@@ -53,6 +54,17 @@ function HomePage() {
         return
       }
       setCreateFlow({ status: 'awaiting-source', notebookId: notebookId.data })
+    },
+    onError: (error) => {
+      setFormError(userFacingError(error))
+    },
+  })
+
+  const removeNotebook = useMutation({
+    mutationFn: (notebookId: NotebookId) => deleteNotebook({ data: { notebookId } }),
+    onSuccess: async () => {
+      setFormError(null)
+      await queryClient.invalidateQueries({ queryKey: organizationKeys.catalog })
     },
     onError: (error) => {
       setFormError(userFacingError(error))
@@ -103,11 +115,11 @@ function HomePage() {
               <li key={notebook.id}>
                 <NotebookCard
                   notebook={notebook}
-                  busy={run.isPending}
+                  busy={run.isPending || removeNotebook.isPending}
                   onRename={(title) =>
                     run.mutate({ type: 'rename-notebook', notebookId: notebook.id, title })
                   }
-                  onDelete={() => run.mutate({ type: 'delete-notebook', notebookId: notebook.id })}
+                  onDelete={() => removeNotebook.mutate(notebook.id)}
                 />
               </li>
             ))}
@@ -179,16 +191,16 @@ function NotebookCard({
           required
           maxLength={100}
           value={title}
-          disabled={notebook.isInbox}
+          disabled={busy}
           onChange={(event) => setTitle(event.target.value)}
           aria-label={`${notebook.title}の名前`}
         />
-        <Button type="submit" disabled={notebook.isInbox || busy}>
+        <Button type="submit" disabled={busy}>
           名前を変更
         </Button>
         <Button
           type="button"
-          disabled={notebook.isInbox || notebook.sourceCount > 0 || busy}
+          disabled={notebook.sourceCount > 0 || busy}
           onClick={onDelete}
         >
           削除

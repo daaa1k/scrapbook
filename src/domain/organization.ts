@@ -1,12 +1,21 @@
 import { z } from 'zod'
 
-export const INBOX_NOTEBOOK_TITLE = '受信箱' as const
-
 export const notebookIdSchema = z.uuid().brand<'NotebookId'>()
 export type NotebookId = z.infer<typeof notebookIdSchema>
 
 export const notebookTitleSchema = z.string().trim().min(1).max(100).brand<'NotebookTitle'>()
 export type NotebookTitle = z.infer<typeof notebookTitleSchema>
+
+export const UNTITLED_NOTEBOOK_TITLE = '無題のノート'
+const NOTEBOOK_TITLE_MAX = 100
+
+export const notebookTargetSchema = z.union([notebookIdSchema, z.literal('new')])
+export type NotebookTarget = z.infer<typeof notebookTargetSchema>
+
+export function notebookTitleFromHint(hint: string): NotebookTitle {
+  const trimmed = hint.trim() || UNTITLED_NOTEBOOK_TITLE
+  return notebookTitleSchema.parse(trimmed.slice(0, NOTEBOOK_TITLE_MAX))
+}
 
 export const tagNameSchema = z.string().trim().min(1).max(50).brand<'TagName'>()
 export type TagName = z.infer<typeof tagNameSchema>
@@ -65,12 +74,12 @@ export function sourceListFilterFromSourcesPageSearch(search: {
 export const notebookRefSchema = z.object({
   id: notebookIdSchema,
   title: notebookTitleSchema,
-  isInbox: z.boolean(),
 })
 export type NotebookRef = z.infer<typeof notebookRefSchema>
 
 export const notebookSummarySchema = notebookRefSchema.extend({
   sourceCount: z.number().int().nonnegative(),
+  updatedAt: z.number().int(),
 })
 
 export const organizationCatalogSchema = z.object({
@@ -95,10 +104,6 @@ export const organizationCommandSchema = z.discriminatedUnion('type', [
     type: z.literal('rename-notebook'),
     notebookId: notebookIdSchema,
     title: notebookTitleSchema,
-  }),
-  z.object({
-    type: z.literal('delete-notebook'),
-    notebookId: notebookIdSchema,
   }),
   z.object({
     type: z.literal('move-source'),

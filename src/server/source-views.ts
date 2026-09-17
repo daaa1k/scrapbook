@@ -12,7 +12,6 @@ import type { AppDb } from '~/db/types'
 import { citationViewFromRow } from '~/domain/citations'
 import { isTerminalJobStatus, jobKindSchema, jobStatusSchema, type JobStatus } from '~/domain/jobs'
 import {
-  INBOX_NOTEBOOK_TITLE,
   notebookIdSchema,
   notebookTitleSchema,
   tagNameSchema,
@@ -32,7 +31,6 @@ function notebookRef(id: string, title: string) {
   return {
     id: notebookIdSchema.parse(id),
     title: notebookTitleSchema.parse(title),
-    isInbox: title === INBOX_NOTEBOOK_TITLE,
   }
 }
 

@@ -32,7 +32,7 @@ Worker  src/server.ts
 
 | Table | Role |
 |---|---|
-| `notebooks` | Containers. Title is unique. A default notebook titled `受信箱` is created on first use and cannot be renamed or deleted. |
+| `notebooks` | Containers. Title is unique. Catalog `updatedAt` is `max(notebooks.updated_at, sources.updated_at, qa_answers.updated_at)`. |
 | `sources` | Ingested URLs / PDFs / pasted bodies. `notebook_id` FK → `notebooks.id`. `summary` is ingest output. `memo` is the user's note. |
 | `source_tags` | Labels on sources. Primary key `(source_id, tag_name)`. No separate tags table. |
 | `jobs` | Per-ingest state machine. `source_id` FK → `sources.id`. `kind` is `fetch`, `summarize_body`, or `ask_source`. |
@@ -43,7 +43,7 @@ Worker  src/server.ts
 
 **notebook ↔ source:** many sources belong to one notebook (`sources.notebook_id`). A source can move. Duplicate URLs are still one row globally, not one row per notebook. Many-to-many notebooks remain out of scope.
 
-The list filter is `{ q, notebookId, tagName }` combined with AND. Empty `q` means no text predicate. Tag attach is create-if-missing. Organization writes go through `runOrganizationCommand`. Ingest persist, paste, and PDF extract do not write `memo` or `notebook_id`.
+The list filter is `{ q, notebookId, tagName }` combined with AND. Empty `q` means no text predicate. Tag attach is create-if-missing. Organization writes go through `runOrganizationCommand`. Notebook delete is `deleteNotebook`. URL, paste, and PDF ingest take `notebook` (`uuid` or `'new'`). Ingest persist, paste, and PDF extract do not write `memo` or `notebook_id`.
 
 Successful persist of `fetch` or `summarize_body` deletes every `citations` row for that `source_id`, then inserts the parsed list. An omitted `citations` key and `[]` both persist as zero rows. A failed Cursor run, paste, and PDF extract do not write this table.
 

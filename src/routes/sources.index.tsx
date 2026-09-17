@@ -8,9 +8,11 @@ import { Input, controlClassName } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
 import { resolveNoteShellView } from '~/domain/note-shell'
 import {
+  notebookIdSchema,
   parseSourcesPageSearch,
   sourceListFilterFromSourcesPageSearch,
   sourceListFilterSchema,
+  type NotebookId,
   type SourceListFilter,
 } from '~/domain/organization'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
@@ -92,8 +94,20 @@ function SourcesPage() {
     ])
   }
 
+  function notebookIdForIngest(): NotebookId | null {
+    if (submitted.notebookId) return submitted.notebookId
+    const parsed = notebookIdSchema.safeParse(notebookDraft)
+    return parsed.success ? parsed.data : null
+  }
+
   const register = useMutation({
-    mutationFn: (value: string) => registerSource({ data: { url: value } }),
+    mutationFn: (value: string) => {
+      const notebookId = notebookIdForIngest()
+      if (!notebookId) {
+        throw new Error('ソースを追加するノートブックを選んでください')
+      }
+      return registerSource({ data: { url: value, notebook: notebookId } })
+    },
     onSuccess: async (result) => {
       await invalidateAfterIngest()
       await navigate({ to: '/sources/$sourceId', params: { sourceId: result.sourceId } })
@@ -104,14 +118,20 @@ function SourcesPage() {
   })
 
   const paste = useMutation({
-    mutationFn: () =>
-      pasteSource({
+    mutationFn: () => {
+      const notebookId = notebookIdForIngest()
+      if (!notebookId) {
+        throw new Error('ソースを追加するノートブックを選んでください')
+      }
+      return pasteSource({
         data: {
           title: pasteTitle,
           body: pasteBody,
           url: pasteUrl.trim() ? pasteUrl : undefined,
+          notebook: notebookId,
         },
-      }),
+      })
+    },
     onSuccess: async (result) => {
       await invalidateAfterIngest()
       await navigate({ to: '/sources/$sourceId', params: { sourceId: result.sourceId } })
@@ -123,8 +143,13 @@ function SourcesPage() {
 
   const uploadPdf = useMutation({
     mutationFn: (file: File) => {
+      const notebookId = notebookIdForIngest()
+      if (!notebookId) {
+        throw new Error('ソースを追加するノートブックを選んでください')
+      }
       const data = new FormData()
       data.set('file', file)
+      data.set('notebook', notebookId)
       return registerPdf({ data })
     },
     onSuccess: async (result) => {
