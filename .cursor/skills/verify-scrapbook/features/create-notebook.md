@@ -1,21 +1,21 @@
 # Create a notebook
 
-Create notebook lets a user add a notebook from the home page, open its sources list, rename or delete empty non-inbox notebooks, and optionally add the first source through the post-create modal.
+Create notebook lets a user add a notebook from the home page, open its sources list, rename it, delete it when it has no sources, and optionally add the first source through the post-create modal.
 
 ## Sub-features
 
 - `notebook-create` creates a notebook from the home form.
 - `notebook-open` opens `/sources?notebookId=…` from the notebook title or `開く`.
-- `notebook-rename` renames a non-inbox notebook.
-- `notebook-delete` deletes an empty non-inbox notebook.
-- `notebook-create-modal` offers URL / PDF / paste in the `ソースを追加` dialog after create.
+- `notebook-rename` renames a notebook.
+- `notebook-delete` deletes an empty notebook. Non-empty cards keep `削除` disabled until the confirm dialog in a later phase.
+- `notebook-create-modal` offers URL / PDF / paste in the `ソースを追加` dialog after create. The modal sends `notebook` as the new notebook id.
 
 ## How to get to it (user POV)
 
 - Open `/` (header brand `Scrapbook`).
 - Enter a name in `ノートブック名` and choose `作成`.
 - Choose the notebook title or `開く` to reach its sources.
-- Use `名前を変更` or `削除` on the notebook card (disabled for `受信箱` / non-empty).
+- Use `名前を変更` or `削除` on the notebook card (`削除` is disabled when the notebook has sources).
 
 ## Driving it with Playwright
 
@@ -34,6 +34,5 @@ Preconditions:
 ## Gotchas
 
 - Creating a notebook opens the source modal immediately. Close or complete it before asserting the home list alone.
-- `受信箱` cannot be renamed or deleted.
-- Non-empty notebooks refuse delete. Clear sources first.
-- Modal paste/URL/PDF also moves the new source into the created notebook. That is a combined path; still record `create-notebook` plus the ingest feature if both matter.
+- Non-empty notebooks keep `削除` disabled. Clear sources first.
+- Modal URL / PDF / paste write into the created notebook directly. They do not call `move-source`.
