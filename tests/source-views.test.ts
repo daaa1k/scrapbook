@@ -19,9 +19,9 @@ describe('source views', () => {
   it('returns all sources when q is empty', async () => {
     const { db } = createTestDb()
     const notebookId = await seedNotebook(db)
-    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebookId })
-    const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物', notebookId })
-    const other = await pasteSourceBody(db, { title: '無関係', body: '天気の話', notebookId })
+    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebook: notebookId })
+    const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物', notebook: notebookId })
+    const other = await pasteSourceBody(db, { title: '無関係', body: '天気の話', notebook: notebookId })
     const tiedAt = 1_700_000_000_000
     for (const id of [apple.sourceId, orange.sourceId, other.sourceId]) {
       await db.update(sources).set({ createdAt: tiedAt }).where(eq(sources.id, id))
@@ -34,9 +34,9 @@ describe('source views', () => {
   it('composes q AND notebook AND tag', async () => {
     const { db } = createTestDb()
     const notebookId = await seedNotebook(db)
-    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebookId })
-    const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物', notebookId })
-    const weather = await pasteSourceBody(db, { title: '無関係', body: '天気の話', notebookId })
+    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebook: notebookId })
+    const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物', notebook: notebookId })
+    const weather = await pasteSourceBody(db, { title: '無関係', body: '天気の話', notebook: notebookId })
 
     await applyOrganizationCommand(
       db,
@@ -87,7 +87,7 @@ describe('source views', () => {
   it('rejects % as a LIKE wildcard', async () => {
     const { db } = createTestDb()
     const notebookId = await seedNotebook(db)
-    await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebookId })
+    await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebook: notebookId })
     const wildcard = await listSourceViews(db, { q: '%', notebookId: null, tagName: null })
     expect(wildcard).toEqual([])
   })
@@ -95,8 +95,8 @@ describe('source views', () => {
   it('returns tagged rows when q is empty', async () => {
     const { db } = createTestDb()
     const notebookId = await seedNotebook(db)
-    const tagged = await pasteSourceBody(db, { title: 'タグ付き', body: '本文', notebookId })
-    await pasteSourceBody(db, { title: 'なし', body: '本文', notebookId })
+    const tagged = await pasteSourceBody(db, { title: 'タグ付き', body: '本文', notebook: notebookId })
+    await pasteSourceBody(db, { title: 'なし', body: '本文', notebook: notebookId })
     await applyOrganizationCommand(
       db,
       organizationCommandSchema.parse({ type: 'attach-tag', sourceId: tagged.sourceId, tagName: '後で' }),

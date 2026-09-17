@@ -2,18 +2,19 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { notebooks, sources, sourceTags } from '../src/db/schema'
 import {
   notebookIdSchema,
-  notebookTitleHint,
+  notebookTitleFromHint,
   organizationCommandSchema,
   organizationMutationAckSchema,
-  uniqueNotebookTitle,
   type OrganizationCommand,
 } from '../src/domain/organization'
-import { pasteSourceBody, registerUrlSource } from '../src/server/ingest/register'
+import { MOCK_ASK_JSON, createMockCursorClient } from '../src/server/cursor/client'
+import { askSourceQuestion, deleteSource, pasteSourceBody } from '../src/server/ingest/register'
 import { applyOrganizationCommand, readOrganizationCatalog } from '../src/server/organization'
+import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import { createTestDb } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 
@@ -28,21 +29,16 @@ function migrateInboxSql(): string {
   ).replace(/--> statement-breakpoint/g, '')
 }
 
-describe('notebook titles', () => {
-  it('prefers source title, then pdf filename, then url host, then 無題のノート', () => {
-    expect(notebookTitleHint({ sourceTitle: '論文A', pdfFilename: 'x.pdf', url: 'https://example.com' })).toBe(
-      '論文A',
-    )
-    expect(notebookTitleHint({ pdfFilename: '講義.pdf', url: 'https://example.com' })).toBe('講義.pdf')
-    expect(notebookTitleHint({ url: 'https://www.example.com/a' })).toBe('example.com')
-    expect(notebookTitleHint({})).toBe('無題のノート')
-  })
+afterEach(() => {
+  vi.useRealTimers()
+})
 
-  it('adds a numeric suffix when the preferred title is taken', () => {
-    expect(uniqueNotebookTitle('研究', [])).toBe('研究')
-    expect(uniqueNotebookTitle('研究', ['研究'])).toBe('研究 (2)')
-    expect(uniqueNotebookTitle('研究', ['研究', '研究 (2)'])).toBe('研究 (3)')
-    expect(uniqueNotebookTitle('  ', ['無題のノート'])).toBe('無題のノート (2)')
+describe('notebook titles', () => {
+  it('trims, caps at 100 characters, and falls back to 無題のノート', () => {
+    expect(notebookTitleFromHint('論文A')).toBe('論文A')
+    expect(notebookTitleFromHint('  講義.pdf  ')).toBe('講義.pdf')
+    expect(notebookTitleFromHint('あ'.repeat(120))).toBe('あ'.repeat(100))
+    expect(notebookTitleFromHint('   ')).toBe('無題のノート')
   })
 })
 
@@ -83,42 +79,13 @@ describe('organization', () => {
     ).rejects.toThrow('notebook_title_taken')
   })
 
-  it('deletes an empty notebook and cascade-deletes sources in a notebook', async () => {
-    const { db } = createTestDb()
-    await run(db, { type: 'create-notebook', title: '空' })
-    const emptyId = (await db.select().from(notebooks).where(eq(notebooks.title, '空')))[0]!.id
-    await run(db, { type: 'delete-notebook', notebookId: emptyId })
-    expect(await db.select().from(notebooks).where(eq(notebooks.id, emptyId))).toEqual([])
-
-    await run(db, { type: 'delete-notebook', notebookId: emptyId })
-
-    const fullId = await seedNotebook(db, '中身あり')
-    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebookId: fullId })
-    await run(db, { type: 'delete-notebook', notebookId: fullId })
-    expect(await db.select().from(notebooks).where(eq(notebooks.id, fullId))).toEqual([])
-    expect(await db.select().from(sources).where(eq(sources.id, pasted.sourceId))).toEqual([])
-  })
-
-  it('rejects notebook delete when a source job is in progress', async () => {
-    const { db } = createTestDb()
-    const notebookId = await seedNotebook(db, '処理中')
-    await registerUrlSource(
-      db,
-      { url: 'https://example.com/busy-notebook', notebookId },
-      { create: async () => ({ id: 'wf' }) },
-    )
-    await expect(run(db, { type: 'delete-notebook', notebookId })).rejects.toThrow('notebook_in_progress')
-    expect((await db.select().from(notebooks).where(eq(notebooks.id, notebookId)))[0]?.title).toBe('処理中')
-    expect(await db.select().from(sources)).toHaveLength(1)
-  })
-
   it('creates a source directly in the given notebook without an inbox', async () => {
     const { db } = createTestDb()
     const created = organizationMutationAckSchema.parse(
       await run(db, { type: 'create-notebook', title: '研究' }),
     )
     const notebookId = notebookIdSchema.parse(created.notebookId)
-    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebookId })
+    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebook: notebookId })
     expect((await db.select().from(sources).where(eq(sources.id, pasted.sourceId)))[0]?.notebookId).toBe(
       notebookId,
     )
@@ -128,7 +95,7 @@ describe('organization', () => {
   it('moves a source by changing only notebook_id', async () => {
     const { db } = createTestDb()
     const originId = await seedNotebook(db, '元')
-    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebookId: originId })
+    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebook: originId })
     await run(db, { type: 'set-memo', sourceId: pasted.sourceId, memo: 'メモ' })
     await run(db, { type: 'attach-tag', sourceId: pasted.sourceId, tagName: 'AI' })
     const before = (await db.select().from(sources).where(eq(sources.id, pasted.sourceId)))[0]!
@@ -148,7 +115,7 @@ describe('organization', () => {
   it('attaches a tag once and treats a missing detach as success', async () => {
     const { db } = createTestDb()
     const notebookId = await seedNotebook(db)
-    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebookId })
+    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebook: notebookId })
     await run(db, { type: 'attach-tag', sourceId: pasted.sourceId, tagName: 'AI' })
     await run(db, { type: 'attach-tag', sourceId: pasted.sourceId, tagName: 'AI' })
     await run(db, { type: 'attach-tag', sourceId: pasted.sourceId, tagName: 'ai' })
@@ -164,7 +131,7 @@ describe('organization', () => {
   it('stores a whitespace-only memo as null and round-trips other whitespace', async () => {
     const { db } = createTestDb()
     const notebookId = await seedNotebook(db)
-    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebookId })
+    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebook: notebookId })
     await run(db, { type: 'set-memo', sourceId: pasted.sourceId, memo: '   ' })
     expect((await db.select().from(sources).where(eq(sources.id, pasted.sourceId)))[0]?.memo).toBeNull()
 
@@ -174,14 +141,14 @@ describe('organization', () => {
     )
   })
 
-  it('reports catalog counts and sorts by updatedAt then createdAt', async () => {
+  it('reports catalog counts and sorts by derived updatedAt then createdAt', async () => {
     const { db } = createTestDb()
     const olderId = await seedNotebook(db, '古い')
     const newerId = await seedNotebook(db, '新しい')
     await db.update(notebooks).set({ createdAt: 10, updatedAt: 10 }).where(eq(notebooks.id, olderId))
     await db.update(notebooks).set({ createdAt: 20, updatedAt: 20 }).where(eq(notebooks.id, newerId))
 
-    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebookId: olderId })
+    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebook: olderId })
     await run(db, { type: 'attach-tag', sourceId: pasted.sourceId, tagName: '論文' })
 
     const catalog = await readOrganizationCatalog(db)
@@ -190,6 +157,56 @@ describe('organization', () => {
     expect(catalog.notebooks[1]?.sourceCount).toBe(0)
     expect(catalog.notebooks[0]?.updatedAt).toBeGreaterThan(catalog.notebooks[1]!.updatedAt)
     expect(catalog.tags).toEqual(['論文'])
+  })
+
+  it('derives catalog updatedAt from create, paste, memo, ask, and source delete', async () => {
+    vi.useFakeTimers()
+    const t0 = 1_000
+    const t1 = 2_000
+    const t2 = 3_000
+    const t3 = 4_000
+    const t4 = 5_000
+    vi.setSystemTime(t0)
+    const { db } = createTestDb()
+    const notebookId = await seedNotebook(db, '時間')
+    expect((await readOrganizationCatalog(db)).notebooks[0]?.updatedAt).toBe(t0)
+
+    vi.setSystemTime(t1)
+    const pasted = await pasteSourceBody(db, { title: '記事', body: 'これはモックの本文です。', notebook: notebookId })
+    expect((await readOrganizationCatalog(db)).notebooks[0]?.updatedAt).toBe(t1)
+
+    vi.setSystemTime(t2)
+    await run(db, { type: 'set-memo', sourceId: pasted.sourceId, memo: 'メモ' })
+    expect((await readOrganizationCatalog(db)).notebooks[0]?.updatedAt).toBe(t2)
+
+    vi.setSystemTime(t3)
+    const created: unknown[] = []
+    const asked = await askSourceQuestion(db, pasted.sourceId, '要点は？', {
+      create: async (options) => {
+        created.push(options.params)
+        return { id: 'wf-ask' }
+      },
+    })
+    const qaAnswerId = (created[0] as { qaAnswerId: string }).qaAnswerId
+    await runIngestWorkflow({
+      params: {
+        mode: 'ask_source',
+        jobId: asked.jobId,
+        sourceId: pasted.sourceId,
+        qaAnswerId,
+      },
+      db,
+      step: createImmediateStep(),
+      cursor: createMockCursorClient({ result: JSON.stringify(MOCK_ASK_JSON) }),
+      maxPolls: 2,
+      pollSleep: 0,
+      now: () => t3,
+    })
+    expect((await readOrganizationCatalog(db)).notebooks[0]?.updatedAt).toBe(t3)
+
+    vi.setSystemTime(t4)
+    await deleteSource(db, pasted.sourceId, undefined)
+    expect((await readOrganizationCatalog(db)).notebooks[0]?.updatedAt).toBe(t4)
   })
 })
 

@@ -1,16 +1,17 @@
 import { desc, eq, inArray, sql } from 'drizzle-orm'
-import { citations, cursorRuns, jobs, qaAnswers, sources } from '~/db/schema'
+import { citations, cursorRuns, jobs, notebooks, qaAnswers, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { sha256Hex, storedBodyText } from '~/domain/ingest-result'
 import { assertTransition, canStartCursorJob, isTerminalJobStatus, jobKindSchema, jobStatusSchema, sanitizeErrorMessage } from '~/domain/jobs'
-import { parseAndNormalizeUrl } from '~/domain/url'
-import { notebookIdSchema, type NotebookId } from '~/domain/organization'
+import { parseAndNormalizeUrl, type PasteSourceInput } from '~/domain/url'
+import { notebookIdSchema, type NotebookId, type NotebookTarget } from '~/domain/organization'
 import { startIngestWorkflow, type WorkflowBinding } from '~/server/ingest/start-workflow'
 import type { AssetsPort, R2ObjectKey } from '~/server/ingest/pdf'
-import { assertNotebookExists, touchNotebookForSource, touchNotebookUpdatedAt } from '~/server/organization'
+import { withNotebookTarget } from '~/server/organization'
 
 export type RegisterResult = {
   sourceId: string
+  notebookId: NotebookId
   jobId: string
   duplicate: boolean
 }
@@ -23,6 +24,7 @@ export type RetryResult = {
 
 export type PasteResult = {
   sourceId: string
+  notebookId: NotebookId
 }
 
 function nowMs(): number {
@@ -32,6 +34,11 @@ function nowMs(): number {
 function isActiveJobUniqueError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return /UNIQUE constraint failed/i.test(message)
+}
+
+function reuseOrRejectDuplicate(existingNotebookId: string, target: NotebookTarget): void {
+  if (target !== 'new' && existingNotebookId === target) return
+  throw new Error('source_already_registered')
 }
 
 export async function latestJobForSource(db: AppDb, sourceId: string) {
@@ -44,59 +51,64 @@ export async function latestJobForSource(db: AppDb, sourceId: string) {
   return rows[0] ?? null
 }
 
+async function sourceByNormalizedUrl(db: AppDb, normalized: string) {
+  const rows = await db.select().from(sources).where(eq(sources.normalizedUrl, normalized)).limit(1)
+  return rows[0] ?? null
+}
+
 export async function registerUrlSource(
   db: AppDb,
-  input: { url: string; notebookId: NotebookId },
+  input: { url: string; notebook: NotebookTarget },
   workflow: WorkflowBinding | undefined,
 ): Promise<RegisterResult> {
   const { original, normalized, kind } = parseAndNormalizeUrl(input.url)
-  const duplicates = await db.select().from(sources).where(eq(sources.normalizedUrl, normalized)).limit(1)
-  const existing = duplicates[0]
+  const existing = await sourceByNormalizedUrl(db, normalized)
   if (existing) {
+    reuseOrRejectDuplicate(existing.notebookId, input.notebook)
+    const notebookId = notebookIdSchema.parse(existing.notebookId)
     const latest = await latestJobForSource(db, existing.id)
     if (latest) {
-      return { sourceId: existing.id, jobId: latest.id, duplicate: true }
+      return { sourceId: existing.id, notebookId, jobId: latest.id, duplicate: true }
     }
     const queued = await enqueueJob(db, workflow, 0, {
       mode: 'fetch',
       sourceId: existing.id,
       url: normalized,
     })
-    return { ...queued, duplicate: true }
+    return { ...queued, notebookId, duplicate: true }
   }
 
-  await assertNotebookExists(db, input.notebookId)
-  const notebookId = input.notebookId
-  const sourceId = crypto.randomUUID()
-  const ts = nowMs()
+  return withNotebookTarget(db, input.notebook, new URL(normalized).hostname, async (notebookId) => {
+    const sourceId = crypto.randomUUID()
+    const ts = nowMs()
 
-  await db.insert(sources).values({
-    id: sourceId,
-    notebookId,
-    kind,
-    url: original,
-    normalizedUrl: normalized,
-    title: null,
-    author: null,
-    publishedAt: null,
-    fetchedAt: null,
-    body: null,
-    summary: null,
-    contentHash: null,
-    fetchStatus: 'none',
-    acquiredVia: 'fetch',
-    r2Key: null,
-    createdAt: ts,
-    updatedAt: ts,
-  })
-  await touchNotebookUpdatedAt(db, notebookId, ts)
+    await db.insert(sources).values({
+      id: sourceId,
+      notebookId,
+      kind,
+      url: original,
+      normalizedUrl: normalized,
+      title: null,
+      author: null,
+      publishedAt: null,
+      fetchedAt: null,
+      body: null,
+      summary: null,
+      contentHash: null,
+      fetchStatus: 'none',
+      acquiredVia: 'fetch',
+      r2Key: null,
+      createdAt: ts,
+      updatedAt: ts,
+    })
 
-  const queued = await enqueueJob(db, workflow, 0, {
-    mode: 'fetch',
-    sourceId,
-    url: normalized,
+    const queued = await enqueueJob(db, workflow, 0, {
+      mode: 'fetch',
+      sourceId,
+      url: normalized,
+    })
+    return { ...queued, notebookId, duplicate: false }
   })
-  return { ...queued, duplicate: false }
 }
 
 export async function retrySourceIngest(
@@ -180,7 +192,6 @@ export async function deleteSource(
   db: AppDb,
   sourceId: string,
   assets: AssetsPort | undefined,
-  options?: { force?: boolean },
 ): Promise<{ deleted: true }> {
   const rows = await db.select().from(sources).where(eq(sources.id, sourceId)).limit(1)
   const source = rows[0]
@@ -189,14 +200,14 @@ export async function deleteSource(
   }
   const latest = await latestJobForSource(db, sourceId)
   const latestStatus = latest ? jobStatusSchema.parse(latest.status) : null
-  // force: create-notebook rollback may need to drop a source whose fetch job is already queued.
-  if (!options?.force && !canStartCursorJob(latestStatus)) {
+  if (!canStartCursorJob(latestStatus)) {
     throw new Error('source_in_progress')
   }
 
   const jobRows = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.sourceId, sourceId))
   const jobIds = jobRows.map((row) => row.id)
 
+  await db.update(notebooks).set({ updatedAt: nowMs() }).where(eq(notebooks.id, source.notebookId))
   await db.delete(qaAnswers).where(eq(qaAnswers.sourceId, sourceId))
   await db.delete(citations).where(eq(citations.sourceId, sourceId))
   if (jobIds.length > 0) {
@@ -204,7 +215,6 @@ export async function deleteSource(
     await db.delete(jobs).where(eq(jobs.sourceId, sourceId))
   }
   await db.delete(sources).where(eq(sources.id, sourceId))
-  await touchNotebookUpdatedAt(db, notebookIdSchema.parse(source.notebookId))
 
   if (source.r2Key && assets) {
     try {
@@ -214,6 +224,31 @@ export async function deleteSource(
     }
   }
 
+  return { deleted: true }
+}
+
+export async function deleteNotebookWithSources(
+  db: AppDb,
+  notebookId: NotebookId,
+  assets: AssetsPort | undefined,
+): Promise<{ deleted: true }> {
+  const rows = await db.select({ id: notebooks.id }).from(notebooks).where(eq(notebooks.id, notebookId)).limit(1)
+  if (!rows[0]) return { deleted: true }
+  const sourceRows = await db
+    .select({ id: sources.id })
+    .from(sources)
+    .where(eq(sources.notebookId, notebookId))
+  for (const source of sourceRows) {
+    const latest = await latestJobForSource(db, source.id)
+    const latestStatus = latest ? jobStatusSchema.parse(latest.status) : null
+    if (!canStartCursorJob(latestStatus)) {
+      throw new Error('notebook_in_progress')
+    }
+  }
+  for (const source of sourceRows) {
+    await deleteSource(db, source.id, assets)
+  }
+  await db.delete(notebooks).where(eq(notebooks.id, notebookId))
   return { deleted: true }
 }
 
@@ -261,6 +296,7 @@ async function assertSourceIdle(db: AppDb, sourceId: string): Promise<void> {
 async function writePastedBody(
   db: AppDb,
   sourceId: string,
+  notebookId: NotebookId,
   input: { title: string; body: string },
   ts: number,
   hash: string,
@@ -279,59 +315,60 @@ async function writePastedBody(
       updatedAt: ts,
     })
     .where(eq(sources.id, sourceId))
-  await touchNotebookForSource(db, sourceId, ts)
-  return { sourceId }
+  return { sourceId, notebookId }
 }
 
-export async function pasteSourceBody(
-  db: AppDb,
-  input: { sourceId?: string; title: string; body: string; url?: string; notebookId?: NotebookId },
-): Promise<PasteResult> {
+export async function pasteSourceBody(db: AppDb, input: PasteSourceInput): Promise<PasteResult> {
   const ts = nowMs()
   const hash = await sha256Hex(input.body)
   const urlInput = input.url?.trim()
   const parsed = urlInput ? parseAndNormalizeUrl(urlInput) : null
 
-  if (input.sourceId) {
+  if ('sourceId' in input) {
     const rows = await db.select().from(sources).where(eq(sources.id, input.sourceId)).limit(1)
     const row = rows[0]
     if (!row) throw new Error('source_not_found')
-    return writePastedBody(db, row.id, input, ts, hash)
+    return writePastedBody(db, row.id, notebookIdSchema.parse(row.notebookId), input, ts, hash)
   }
 
   if (parsed) {
-    const duplicates = await db.select().from(sources).where(eq(sources.normalizedUrl, parsed.normalized)).limit(1)
-    const existing = duplicates[0]
+    const existing = await sourceByNormalizedUrl(db, parsed.normalized)
     if (existing) {
-      return writePastedBody(db, existing.id, input, ts, hash)
+      reuseOrRejectDuplicate(existing.notebookId, input.notebook)
+      return writePastedBody(
+        db,
+        existing.id,
+        notebookIdSchema.parse(existing.notebookId),
+        input,
+        ts,
+        hash,
+      )
     }
   }
 
-  if (!input.notebookId) throw new Error('notebook_not_found')
-  await assertNotebookExists(db, input.notebookId)
-  const notebookId = input.notebookId
-  const sourceId = crypto.randomUUID()
-  await db.insert(sources).values({
-    id: sourceId,
-    notebookId,
-    kind: parsed?.kind ?? 'url',
-    url: parsed ? parsed.original : null,
-    normalizedUrl: parsed?.normalized ?? null,
-    title: input.title,
-    author: null,
-    publishedAt: null,
-    fetchedAt: ts,
-    body: input.body,
-    summary: null,
-    contentHash: hash,
-    fetchStatus: 'full',
-    acquiredVia: 'paste',
-    r2Key: null,
-    createdAt: ts,
-    updatedAt: ts,
+  return withNotebookTarget(db, input.notebook, input.title, async (notebookId) => {
+    const sourceId = crypto.randomUUID()
+    await db.insert(sources).values({
+      id: sourceId,
+      notebookId,
+      kind: parsed?.kind ?? 'url',
+      url: parsed ? parsed.original : null,
+      normalizedUrl: parsed?.normalized ?? null,
+      title: input.title,
+      author: null,
+      publishedAt: null,
+      fetchedAt: ts,
+      body: input.body,
+      summary: null,
+      contentHash: hash,
+      fetchStatus: 'full',
+      acquiredVia: 'paste',
+      r2Key: null,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+    return { sourceId, notebookId }
   })
-  await touchNotebookUpdatedAt(db, notebookId, ts)
-  return { sourceId }
 }
 
 async function enqueueJob(

@@ -106,7 +106,7 @@ function SourcesPage() {
       if (!notebookId) {
         throw new Error('ソースを追加するノートブックを選んでください')
       }
-      return registerSource({ data: { url: value, notebookId } })
+      return registerSource({ data: { url: value, notebook: notebookId } })
     },
     onSuccess: async (result) => {
       await invalidateAfterIngest()
@@ -128,7 +128,7 @@ function SourcesPage() {
           title: pasteTitle,
           body: pasteBody,
           url: pasteUrl.trim() ? pasteUrl : undefined,
-          notebookId,
+          notebook: notebookId,
         },
       })
     },
@@ -149,7 +149,7 @@ function SourcesPage() {
       }
       const data = new FormData()
       data.set('file', file)
-      data.set('notebookId', notebookId)
+      data.set('notebook', notebookId)
       return registerPdf({ data })
     },
     onSuccess: async (result) => {

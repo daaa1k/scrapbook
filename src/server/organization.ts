@@ -1,13 +1,14 @@
-import { and, count, desc, eq } from 'drizzle-orm'
+import { and, count, desc, eq, sql } from 'drizzle-orm'
 import { notebooks, sources, sourceTags } from '~/db/schema'
 import type { AppDb } from '~/db/types'
-import { canStartCursorJob, jobStatusSchema } from '~/domain/jobs'
 import {
   notebookIdSchema,
+  notebookTitleFromHint,
   notebookTitleSchema,
   organizationCatalogSchema,
   tagNameSchema,
   type NotebookId,
+  type NotebookTarget,
   type NotebookTitle,
   type OrganizationCommand,
   type OrganizationMutationAck,
@@ -15,11 +16,11 @@ import {
   type SourceMemo,
   type TagName,
 } from '~/domain/organization'
-import type { AssetsPort } from '~/server/ingest/pdf'
 
 type OrganizationSourcePatch = { notebookId: NotebookId } | { memo: SourceMemo }
 
 const ACK: OrganizationMutationAck = { ok: true }
+const NOTEBOOK_TITLE_MAX = 100
 
 function nowMs(): number {
   return Date.now()
@@ -28,6 +29,12 @@ function nowMs(): number {
 function isUniqueConstraintError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return /UNIQUE constraint failed/i.test(message)
+}
+
+function titleWithSuffix(base: NotebookTitle, n: number): NotebookTitle {
+  if (n === 1) return base
+  const suffix = ` (${n})`
+  return notebookTitleSchema.parse(`${base.slice(0, NOTEBOOK_TITLE_MAX - suffix.length)}${suffix}`)
 }
 
 async function notebookById(db: AppDb, notebookId: NotebookId) {
@@ -45,32 +52,49 @@ async function sourceExists(db: AppDb, sourceId: string): Promise<boolean> {
   return Boolean(rows[0])
 }
 
-export async function assertNotebookExists(db: AppDb, notebookId: NotebookId): Promise<void> {
-  const row = await notebookById(db, notebookId)
-  if (!row) throw new Error('notebook_not_found')
-}
-
-export async function touchNotebookUpdatedAt(
+export async function withNotebookTarget<T>(
   db: AppDb,
-  notebookId: NotebookId,
-  ts = nowMs(),
-): Promise<void> {
-  await db.update(notebooks).set({ updatedAt: ts }).where(eq(notebooks.id, notebookId))
-}
+  target: NotebookTarget,
+  titleHint: string,
+  work: (notebookId: NotebookId) => Promise<T>,
+): Promise<T> {
+  if (target !== 'new') {
+    const row = await notebookById(db, target)
+    if (!row) throw new Error('notebook_not_found')
+    return work(target)
+  }
 
-export async function touchNotebookForSource(
-  db: AppDb,
-  sourceId: string,
-  ts = nowMs(),
-): Promise<void> {
-  const rows = await db
-    .select({ notebookId: sources.notebookId })
-    .from(sources)
-    .where(eq(sources.id, sourceId))
-    .limit(1)
-  const notebookId = rows[0]?.notebookId
-  if (!notebookId) return
-  await touchNotebookUpdatedAt(db, notebookIdSchema.parse(notebookId), ts)
+  const base = notebookTitleFromHint(titleHint)
+  const notebookId = notebookIdSchema.parse(crypto.randomUUID())
+  const ts = nowMs()
+  let inserted = false
+  for (let n = 1; n < 10_000; n += 1) {
+    try {
+      await db.insert(notebooks).values({
+        id: notebookId,
+        title: titleWithSuffix(base, n),
+        createdAt: ts,
+        updatedAt: ts,
+      })
+      inserted = true
+      break
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error
+    }
+  }
+  if (!inserted) throw new Error('notebook_title_taken')
+
+  try {
+    return await work(notebookId)
+  } catch (error) {
+    await db.delete(notebooks).where(
+      and(
+        eq(notebooks.id, notebookId),
+        sql`not exists (select 1 from sources where notebook_id = ${notebookId})`,
+      ),
+    )
+    throw error
+  }
 }
 
 export async function createNotebook(db: AppDb, title: NotebookTitle): Promise<OrganizationMutationAck> {
@@ -118,32 +142,6 @@ async function renameNotebook(
   return ACK
 }
 
-export async function deleteNotebook(
-  db: AppDb,
-  notebookId: NotebookId,
-  assets?: AssetsPort,
-): Promise<OrganizationMutationAck> {
-  const row = await notebookById(db, notebookId)
-  if (!row) return ACK
-  const { deleteSource, latestJobForSource } = await import('~/server/ingest/register')
-  const sourceRows = await db
-    .select({ id: sources.id })
-    .from(sources)
-    .where(eq(sources.notebookId, notebookId))
-  for (const source of sourceRows) {
-    const latest = await latestJobForSource(db, source.id)
-    const latestStatus = latest ? jobStatusSchema.parse(latest.status) : null
-    if (!canStartCursorJob(latestStatus)) {
-      throw new Error('notebook_in_progress')
-    }
-  }
-  for (const source of sourceRows) {
-    await deleteSource(db, source.id, assets)
-  }
-  await db.delete(notebooks).where(eq(notebooks.id, notebookId))
-  return ACK
-}
-
 async function patchSourceOrganization(
   db: AppDb,
   sourceId: string,
@@ -153,12 +151,6 @@ async function patchSourceOrganization(
     throw new Error('source_not_found')
   }
   const ts = nowMs()
-  const currentRows = await db
-    .select({ notebookId: sources.notebookId })
-    .from(sources)
-    .where(eq(sources.id, sourceId))
-    .limit(1)
-  const currentNotebookId = notebookIdSchema.parse(currentRows[0]!.notebookId)
   if ('notebookId' in patch) {
     const target = await notebookById(db, patch.notebookId)
     if (!target) throw new Error('notebook_not_found')
@@ -166,14 +158,9 @@ async function patchSourceOrganization(
       .update(sources)
       .set({ notebookId: patch.notebookId, updatedAt: ts })
       .where(eq(sources.id, sourceId))
-    await touchNotebookUpdatedAt(db, patch.notebookId, ts)
-    if (currentNotebookId !== patch.notebookId) {
-      await touchNotebookUpdatedAt(db, currentNotebookId, ts)
-    }
     return ACK
   }
   await db.update(sources).set({ memo: patch.memo, updatedAt: ts }).where(eq(sources.id, sourceId))
-  await touchNotebookUpdatedAt(db, currentNotebookId, ts)
   return ACK
 }
 
@@ -195,19 +182,33 @@ async function detachTag(db: AppDb, sourceId: string, tagName: TagName): Promise
   return ACK
 }
 
+const catalogUpdatedAt = sql<number>`max(
+  ${notebooks.updatedAt},
+  coalesce(max(${sources.updatedAt}), 0),
+  coalesce(
+    (
+      select max(q.updated_at)
+      from qa_answers q
+      join sources s2 on s2.id = q.source_id
+      where s2.notebook_id = ${notebooks.id}
+    ),
+    0
+  )
+)`
+
 export async function readOrganizationCatalog(db: AppDb): Promise<OrganizationCatalog> {
   const notebookRows = await db
     .select({
       id: notebooks.id,
       title: notebooks.title,
       createdAt: notebooks.createdAt,
-      updatedAt: notebooks.updatedAt,
+      updatedAt: catalogUpdatedAt,
       sourceCount: count(sources.id),
     })
     .from(notebooks)
     .leftJoin(sources, eq(sources.notebookId, notebooks.id))
     .groupBy(notebooks.id)
-    .orderBy(desc(notebooks.updatedAt), desc(notebooks.createdAt))
+    .orderBy(desc(catalogUpdatedAt), desc(notebooks.createdAt))
   const tagRows = await db
     .selectDistinct({ tagName: sourceTags.tagName })
     .from(sourceTags)
@@ -227,15 +228,12 @@ export async function readOrganizationCatalog(db: AppDb): Promise<OrganizationCa
 export async function applyOrganizationCommand(
   db: AppDb,
   command: OrganizationCommand,
-  assets?: AssetsPort,
 ): Promise<OrganizationMutationAck> {
   switch (command.type) {
     case 'create-notebook':
       return createNotebook(db, command.title)
     case 'rename-notebook':
       return renameNotebook(db, command.notebookId, command.title)
-    case 'delete-notebook':
-      return deleteNotebook(db, command.notebookId, assets)
     case 'move-source':
       return patchSourceOrganization(db, command.sourceId, { notebookId: command.notebookId })
     case 'set-memo':

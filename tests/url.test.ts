@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeUrl, parseAndNormalizeUrl, registerUrlInputSchema, sourceKindFromUrl } from '../src/domain/url'
+import { normalizeUrl, parseAndNormalizeUrl, pasteSourceInputSchema, registerUrlInputSchema, sourceKindFromUrl } from '../src/domain/url'
 
 describe('URL normalization', () => {
   it('lowercases host, strips default port, hash, and trailing slash', () => {
@@ -24,9 +24,26 @@ describe('URL normalization', () => {
   })
 
   it('rejects non-URL strings at the Zod boundary', () => {
-    const notebookId = '11111111-1111-4111-8111-111111111111'
-    expect(registerUrlInputSchema.safeParse({ url: 'not-a-url', notebookId }).success).toBe(false)
+    const notebook = '11111111-1111-4111-8111-111111111111'
+    expect(registerUrlInputSchema.safeParse({ url: 'not-a-url', notebook }).success).toBe(false)
     expect(registerUrlInputSchema.safeParse({ url: 'https://example.com/ok' }).success).toBe(false)
-    expect(registerUrlInputSchema.safeParse({ url: 'https://example.com/ok', notebookId }).success).toBe(true)
+    expect(registerUrlInputSchema.safeParse({ url: 'https://example.com/ok', notebook }).success).toBe(true)
+    expect(registerUrlInputSchema.safeParse({ url: 'https://example.com/ok', notebook: 'new' }).success).toBe(
+      true,
+    )
+  })
+
+  it('accepts paste as overwrite via sourceId or create via notebook, not both-optional', () => {
+    const body = { title: '題', body: '本文' }
+    expect(pasteSourceInputSchema.safeParse(body).success).toBe(false)
+    expect(pasteSourceInputSchema.safeParse({ ...body, sourceId: 'src-1' }).success).toBe(true)
+    expect(
+      pasteSourceInputSchema.safeParse({
+        ...body,
+        notebook: '11111111-1111-4111-8111-111111111111',
+      }).success,
+    ).toBe(true)
+    expect(pasteSourceInputSchema.safeParse({ ...body, notebook: 'new' }).success).toBe(true)
+    expect(pasteSourceInputSchema.safeParse({ ...body, notebook: 'not-an-id' }).success).toBe(false)
   })
 })

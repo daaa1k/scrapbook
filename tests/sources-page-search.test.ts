@@ -62,8 +62,8 @@ describe('sources page search', () => {
   it('lists only that notebook when the page search has notebookId', async () => {
     const { db } = createTestDb()
     const notebookId = await seedNotebook(db)
-    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebookId })
-    const weather = await pasteSourceBody(db, { title: '無関係', body: '天気の話', notebookId })
+    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebook: notebookId })
+    const weather = await pasteSourceBody(db, { title: '無関係', body: '天気の話', notebook: notebookId })
     const tiedAt = 1_700_000_000_000
     for (const id of [apple.sourceId, weather.sourceId]) {
       await db.update(sources).set({ createdAt: tiedAt }).where(eq(sources.id, id))

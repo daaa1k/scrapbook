@@ -18,9 +18,9 @@ describe('source search', () => {
   it('returns sources whose title or body contains the query', async () => {
     const { db } = createTestDb()
     const notebookId = await seedNotebook(db)
-    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebookId })
-    const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物', notebookId })
-    const other = await pasteSourceBody(db, { title: '無関係', body: '天気の話', notebookId })
+    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebook: notebookId })
+    const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物', notebook: notebookId })
+    const other = await pasteSourceBody(db, { title: '無関係', body: '天気の話', notebook: notebookId })
     const tiedAt = 1_700_000_000_000
     for (const id of [apple.sourceId, orange.sourceId, other.sourceId]) {
       await db.update(sources).set({ createdAt: tiedAt }).where(eq(sources.id, id))

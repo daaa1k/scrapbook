@@ -5,6 +5,7 @@ import type { AppDb } from '../src/db/types'
 import {
   MAX_PDF_BYTES,
   parsePdfUpload,
+  parseRegisterPdfForm,
   persistablePdfBody,
   pdfTextHelp,
   titleFromFilename,
@@ -110,6 +111,19 @@ describe('pdf parse', () => {
     expect(titleFromFilename('  ')).toBe('無題のPDF')
   })
 
+  it('reads notebook from the FormData field notebook', () => {
+    const notebook = '11111111-1111-4111-8111-111111111111'
+    const data = new FormData()
+    data.set('file', new File(['%PDF'], 'note.pdf', { type: 'application/pdf' }))
+    data.set('notebook', notebook)
+    expect(parseRegisterPdfForm(data).notebook).toBe(notebook)
+
+    const created = new FormData()
+    created.set('file', new File(['%PDF'], 'note.pdf', { type: 'application/pdf' }))
+    created.set('notebook', 'new')
+    expect(parseRegisterPdfForm(created).notebook).toBe('new')
+  })
+
   it('caps persisted body length', () => {
     const result = persistablePdfBody(`あ`.repeat(200_001))
     expect(result.fetchStatus).toBe('partial')
@@ -143,6 +157,7 @@ describe('pdf register', () => {
     expect(row?.fetchStatus).toBe('full')
     expect(row?.contentHash).toBeTruthy()
     expect(row?.r2Key).toBe(`pdf/${result.sourceId}/original.pdf`)
+    expect(result.notebookId).toBe(row?.notebookId)
     expect(book?.title).toBe('研究')
     expect(jobRows).toHaveLength(0)
     expect(stored).toEqual(upload.bytes)
@@ -262,7 +277,11 @@ describe('pdf serve', () => {
   it('returns 404 for a URL source', async () => {
     const { db } = createTestDb()
     const assets = createMemoryAssets()
-    const pasted = await pasteSourceBody(db, { title: 'URLノート', body: '本文', notebookId: await seedNotebook(db) })
+    const pasted = await pasteSourceBody(db, {
+      title: 'URLノート',
+      body: '本文',
+      notebook: await seedNotebook(db),
+    })
     const response = await respondWithPdfOriginal({
       sourceId: pasted.sourceId,
       request: new Request(`https://scrapbook.example/assets/sources/${pasted.sourceId}`),

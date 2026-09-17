@@ -18,9 +18,10 @@ describe('paste source body', () => {
     const result = await pasteSourceBody(db, {
       title: '手入力タイトル',
       body: '手入力の本文です。',
-      notebookId,
+      notebook: notebookId,
     })
 
+    expect(result.notebookId).toBe(notebookId)
     const row = (await db.select().from(sources).where(eq(sources.id, result.sourceId)))[0]
     const jobRows = await db.select().from(jobs).where(eq(jobs.sourceId, result.sourceId))
     const book = (await db.select().from(notebooks).where(eq(notebooks.id, row!.notebookId)))[0]
@@ -40,7 +41,7 @@ describe('paste source body', () => {
     const notebookId = await seedNotebook(db)
     const registered = await registerUrlSource(
       db,
-      { url: 'https://example.com/paste-over', notebookId },
+      { url: 'https://example.com/paste-over', notebook: notebookId },
       {
         create: async () => ({ id: 'wf' }),
       },
@@ -81,7 +82,7 @@ describe('paste source body', () => {
   it('refuses paste while a job is in flight', async () => {
     const { db } = createTestDb()
     const notebookId = await seedNotebook(db)
-    const registered = await registerUrlSource(db, { url: 'https://example.com/busy', notebookId }, {
+    const registered = await registerUrlSource(db, { url: 'https://example.com/busy', notebook: notebookId }, {
       create: async () => ({ id: 'wf' }),
     })
     await expect(
@@ -93,17 +94,15 @@ describe('paste source body', () => {
     ).rejects.toThrow('job_in_progress')
   })
 
-  it('keeps notebook, memo, and tags on a URL-bearing paste of an existing source', async () => {
+  it('overwrites title and body when the same URL is pasted into the same notebook', async () => {
     const { db } = createTestDb()
     const originId = await seedNotebook(db, '元')
     const first = await pasteSourceBody(db, {
       title: '初回',
       body: '初回本文',
       url: 'https://example.com/paste-url',
-      notebookId: originId,
+      notebook: originId,
     })
-    const researchId = await seedNotebook(db, '研究')
-    await organize(db, { type: 'move-source', sourceId: first.sourceId, notebookId: researchId })
     await organize(db, { type: 'set-memo', sourceId: first.sourceId, memo: '残すメモ' })
     await organize(db, { type: 'attach-tag', sourceId: first.sourceId, tagName: '論文' })
 
@@ -111,16 +110,42 @@ describe('paste source body', () => {
       title: '二回目',
       body: '二回目本文',
       url: 'https://example.com/paste-url',
-      notebookId: originId,
+      notebook: originId,
     })
     expect(again.sourceId).toBe(first.sourceId)
+    expect(again.notebookId).toBe(originId)
     const row = (await db.select().from(sources).where(eq(sources.id, first.sourceId)))[0]
     expect(row?.title).toBe('二回目')
     expect(row?.body).toBe('二回目本文')
     expect(row?.summary).toBeNull()
     expect(row?.memo).toBe('残すメモ')
-    expect(row?.notebookId).toBe(researchId)
+    expect(row?.notebookId).toBe(originId)
     const tags = await db.select().from(sourceTags).where(eq(sourceTags.sourceId, first.sourceId))
     expect(tags.map((tag) => tag.tagName)).toEqual(['論文'])
+  })
+
+  it('rejects a URL-bearing paste that already lives in another notebook', async () => {
+    const { db } = createTestDb()
+    const originId = await seedNotebook(db, '元')
+    const first = await pasteSourceBody(db, {
+      title: '初回',
+      body: '初回本文',
+      url: 'https://example.com/paste-url',
+      notebook: originId,
+    })
+    const researchId = await seedNotebook(db, '研究')
+    await organize(db, { type: 'move-source', sourceId: first.sourceId, notebookId: researchId })
+
+    await expect(
+      pasteSourceBody(db, {
+        title: '二回目',
+        body: '二回目本文',
+        url: 'https://example.com/paste-url',
+        notebook: originId,
+      }),
+    ).rejects.toThrow('source_already_registered')
+    const row = (await db.select().from(sources).where(eq(sources.id, first.sourceId)))[0]
+    expect(row?.notebookId).toBe(researchId)
+    expect(row?.title).toBe('初回')
   })
 })

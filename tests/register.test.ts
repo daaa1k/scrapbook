@@ -18,7 +18,7 @@ describe('register ingest', () => {
     const created: unknown[] = []
     const result = await registerUrlSource(
       db,
-      { url: 'https://Example.com/post/', notebookId },
+      { url: 'https://Example.com/post/', notebook: notebookId },
       {
         create: async (options) => {
           created.push(options.params)
@@ -28,6 +28,7 @@ describe('register ingest', () => {
     )
 
     expect(result.duplicate).toBe(false)
+    expect(result.notebookId).toBe(notebookId)
     expect(created).toHaveLength(1)
     expect(created[0]).toMatchObject({
       mode: 'fetch',
@@ -53,8 +54,8 @@ describe('register ingest', () => {
     const { db } = createTestDb()
     const notebookId = await seedNotebook(db)
     const workflow = { create: async () => ({ id: 'wf' }) }
-    const first = await registerUrlSource(db, { url: 'https://example.com/a', notebookId }, workflow)
-    const second = await registerUrlSource(db, { url: 'HTTPS://EXAMPLE.COM/a/', notebookId }, workflow)
+    const first = await registerUrlSource(db, { url: 'https://example.com/a', notebook: notebookId }, workflow)
+    const second = await registerUrlSource(db, { url: 'HTTPS://EXAMPLE.COM/a/', notebook: notebookId }, workflow)
     expect(second.duplicate).toBe(true)
     expect(second.sourceId).toBe(first.sourceId)
     expect(second.jobId).toBe(first.jobId)
@@ -62,24 +63,38 @@ describe('register ingest', () => {
     expect(rows).toHaveLength(1)
   })
 
-  it('keeps notebook, memo, and tags when the same URL is registered again', async () => {
+  it('keeps memo and tags when the same URL is registered again in the same notebook', async () => {
     const { db } = createTestDb()
     const originId = await seedNotebook(db, '元')
     const workflow = { create: async () => ({ id: 'wf' }) }
-    const first = await registerUrlSource(db, { url: 'https://example.com/keep-org', notebookId: originId }, workflow)
-    const researchId = await seedNotebook(db, '研究')
-    await organize(db, { type: 'move-source', sourceId: first.sourceId, notebookId: researchId })
+    const first = await registerUrlSource(db, { url: 'https://example.com/keep-org', notebook: originId }, workflow)
     await organize(db, { type: 'set-memo', sourceId: first.sourceId, memo: '残すメモ' })
     await organize(db, { type: 'attach-tag', sourceId: first.sourceId, tagName: '論文' })
 
-    const second = await registerUrlSource(db, { url: 'https://example.com/keep-org', notebookId: originId }, workflow)
+    const second = await registerUrlSource(db, { url: 'https://example.com/keep-org', notebook: originId }, workflow)
     expect(second.duplicate).toBe(true)
     expect(second.sourceId).toBe(first.sourceId)
+    expect(second.notebookId).toBe(originId)
     const row = (await db.select().from(sources).where(eq(sources.id, first.sourceId)))[0]
-    expect(row?.notebookId).toBe(researchId)
+    expect(row?.notebookId).toBe(originId)
     expect(row?.memo).toBe('残すメモ')
     const tags = await db.select().from(sourceTags).where(eq(sourceTags.sourceId, first.sourceId))
     expect(tags.map((tag) => tag.tagName)).toEqual(['論文'])
+  })
+
+  it('rejects a URL that already lives in another notebook', async () => {
+    const { db } = createTestDb()
+    const originId = await seedNotebook(db, '元')
+    const workflow = { create: async () => ({ id: 'wf' }) }
+    const first = await registerUrlSource(db, { url: 'https://example.com/keep-org', notebook: originId }, workflow)
+    const researchId = await seedNotebook(db, '研究')
+    await organize(db, { type: 'move-source', sourceId: first.sourceId, notebookId: researchId })
+
+    await expect(
+      registerUrlSource(db, { url: 'https://example.com/keep-org', notebook: originId }, workflow),
+    ).rejects.toThrow('source_already_registered')
+    const row = (await db.select().from(sources).where(eq(sources.id, first.sourceId)))[0]
+    expect(row?.notebookId).toBe(researchId)
   })
 
   it('does not start a second Cursor job while one is in flight', async () => {
@@ -92,7 +107,7 @@ describe('register ingest', () => {
         return { id: `wf-${created.length}` }
       },
     }
-    const first = await registerUrlSource(db, { url: 'https://example.com/retry', notebookId }, workflow)
+    const first = await registerUrlSource(db, { url: 'https://example.com/retry', notebook: notebookId }, workflow)
     const second = await retrySourceIngest(db, first.sourceId, workflow)
     expect(second.started).toBe(false)
     expect(second.jobId).toBe(first.jobId)
@@ -109,7 +124,7 @@ describe('register ingest', () => {
         return { id: `wf-${created.length}` }
       },
     }
-    const first = await registerUrlSource(db, { url: 'https://example.com/same-created-at', notebookId }, workflow)
+    const first = await registerUrlSource(db, { url: 'https://example.com/same-created-at', notebook: notebookId }, workflow)
     const firstJob = (await db.select().from(jobs).where(eq(jobs.id, first.jobId)))[0]!
     await db
       .update(jobs)
@@ -153,7 +168,7 @@ describe('register ingest', () => {
         return { id: `wf-${created.length}` }
       },
     }
-    const first = await registerUrlSource(db, { url: 'https://example.com/retry-fail', notebookId }, workflow)
+    const first = await registerUrlSource(db, { url: 'https://example.com/retry-fail', notebook: notebookId }, workflow)
     await db
       .update(jobs)
       .set({
@@ -179,7 +194,7 @@ describe('register ingest', () => {
   it('rejects retry when the source has no URL', async () => {
     const { db } = createTestDb()
     const notebookId = await seedNotebook(db)
-    const pasted = await pasteSourceBody(db, { title: 'ノート', body: '手入力の本文', notebookId })
+    const pasted = await pasteSourceBody(db, { title: 'ノート', body: '手入力の本文', notebook: notebookId })
     await expect(retrySourceIngest(db, pasted.sourceId, { create: async () => ({ id: 'wf' }) })).rejects.toThrow(
       'source_has_no_url',
     )
@@ -195,7 +210,7 @@ describe('register ingest', () => {
         return { id: `wf-${created.length}` }
       },
     }
-    const first = await registerUrlSource(db, { url: 'https://example.com/reregister', notebookId }, workflow)
+    const first = await registerUrlSource(db, { url: 'https://example.com/reregister', notebook: notebookId }, workflow)
     await db
       .update(jobs)
       .set({
@@ -207,7 +222,7 @@ describe('register ingest', () => {
       })
       .where(eq(jobs.id, first.jobId))
 
-    const again = await registerUrlSource(db, { url: 'https://example.com/reregister', notebookId }, workflow)
+    const again = await registerUrlSource(db, { url: 'https://example.com/reregister', notebook: notebookId }, workflow)
     expect(again.duplicate).toBe(true)
     expect(again.jobId).toBe(first.jobId)
     expect(created).toHaveLength(1)

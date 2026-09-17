@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
-import type { NotebookId } from '~/domain/organization'
+import type { NotebookId, NotebookTarget } from '~/domain/organization'
 import { sha256Hex } from '~/domain/ingest-result'
 import {
   persistablePdfBody,
@@ -11,7 +11,7 @@ import {
   type ParsedPdfUpload,
 } from '~/domain/pdf'
 import { authenticateAccessRequest, type AccessEnv } from '~/server/auth/access'
-import { assertNotebookExists, touchNotebookUpdatedAt } from '~/server/organization'
+import { withNotebookTarget } from '~/server/organization'
 
 export type R2ObjectKey = string & { readonly __brand: 'R2ObjectKey' }
 
@@ -45,6 +45,7 @@ export function pdfOriginalKey(sourceId: string): R2ObjectKey {
 
 export type RegisterPdfResult = {
   sourceId: string
+  notebookId: NotebookId
 }
 
 export async function extractPdfTextWithUnpdf(bytes: PdfBytes): Promise<PdfExtractResult> {
@@ -67,68 +68,68 @@ export async function registerPdfSource(
   assets: AssetsPort,
   upload: ParsedPdfUpload,
   extract: PdfExtractor,
-  notebookId: NotebookId,
+  notebook: NotebookTarget,
 ): Promise<RegisterPdfResult> {
-  await assertNotebookExists(db, notebookId)
-  const sourceId = crypto.randomUUID()
-  const key = pdfOriginalKey(sourceId)
-  await assets.put(key, upload.bytes)
+  return withNotebookTarget(db, notebook, upload.title, async (notebookId) => {
+    const sourceId = crypto.randomUUID()
+    const key = pdfOriginalKey(sourceId)
+    await assets.put(key, upload.bytes)
 
-  const ts = Date.now()
-  try {
-    await db.insert(sources).values({
-      id: sourceId,
-      notebookId,
-      kind: 'pdf',
-      url: null,
-      normalizedUrl: null,
-      title: upload.title,
-      author: null,
-      publishedAt: null,
-      fetchedAt: null,
-      body: null,
-      summary: null,
-      contentHash: null,
-      fetchStatus: 'failed',
-      acquiredVia: 'upload',
-      r2Key: key,
-      createdAt: ts,
-      updatedAt: ts,
-    })
-  } catch (error) {
+    const ts = Date.now()
     try {
-      await assets.delete(key)
-    } catch {}
-    throw error
-  }
-  await touchNotebookUpdatedAt(db, notebookId, ts)
+      await db.insert(sources).values({
+        id: sourceId,
+        notebookId,
+        kind: 'pdf',
+        url: null,
+        normalizedUrl: null,
+        title: upload.title,
+        author: null,
+        publishedAt: null,
+        fetchedAt: null,
+        body: null,
+        summary: null,
+        contentHash: null,
+        fetchStatus: 'failed',
+        acquiredVia: 'upload',
+        r2Key: key,
+        createdAt: ts,
+        updatedAt: ts,
+      })
+    } catch (error) {
+      try {
+        await assets.delete(key)
+      } catch {}
+      throw error
+    }
 
-  let extracted: PdfExtractResult
-  try {
-    extracted = await extract(upload.bytes)
-  } catch {
-    extracted = { kind: 'error' }
-  }
+    let extracted: PdfExtractResult
+    try {
+      extracted = await extract(upload.bytes)
+    } catch {
+      extracted = { kind: 'error' }
+    }
 
-  if (extracted.kind !== 'text') {
-    return { sourceId }
-  }
+    if (extracted.kind !== 'text') {
+      return { sourceId, notebookId }
+    }
 
-  const persistable = persistablePdfBody(extracted.text)
-  const hash = await sha256Hex(persistable.body)
-  const now = Date.now()
-  await db
-    .update(sources)
-    .set({
-      body: persistable.body,
-      contentHash: hash,
-      fetchStatus: persistable.fetchStatus,
-      fetchedAt: now,
-      updatedAt: now,
-    })
-    .where(eq(sources.id, sourceId))
+    const persistable = persistablePdfBody(extracted.text)
+    const hash = await sha256Hex(persistable.body)
+    const now = Date.now()
+    await db
+      .update(sources)
+      .set({
+        body: persistable.body,
+        contentHash: hash,
+        fetchStatus: persistable.fetchStatus,
+        fetchedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(sources.id, sourceId))
 
-  return { sourceId }
+    return { sourceId, notebookId }
+  })
 }
 
 export type ServePdfInput = {

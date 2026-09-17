@@ -32,7 +32,6 @@ import {
 import { FAILED_CURSOR_RUN_STATUSES } from '~/server/cursor/schemas'
 import { isInsecureAuthBypassEnabled } from '~/server/auth/access'
 import { ingestWorkflowParamsSchema, type IngestWorkflowParams } from '~/server/ingest/start-workflow'
-import { touchNotebookForSource } from '~/server/organization'
 
 export type IngestStep = {
   do: <T>(name: string, callback: () => Promise<T>) => Promise<T>
@@ -251,7 +250,6 @@ async function persistIngestOutput(
       break
     }
   }
-  await touchNotebookForSource(db, params.sourceId, ts)
 }
 
 function failCodeForError(error: unknown): string {

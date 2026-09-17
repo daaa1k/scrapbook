@@ -56,7 +56,7 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
 
   const register = useMutation({
     mutationFn: async (value: string) => {
-      const result = await registerSource({ data: { url: value, notebookId } })
+      const result = await registerSource({ data: { url: value, notebook: notebookId } })
       return invalidateAfterIngest(result.sourceId)
     },
     onSuccess: (sourceId) => {
@@ -73,7 +73,7 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
           title: pasteTitle,
           body: pasteBody,
           url: pasteUrl.trim() ? pasteUrl : undefined,
-          notebookId,
+          notebook: notebookId,
         },
       })
       return invalidateAfterIngest(result.sourceId)
@@ -89,7 +89,7 @@ export function SourceModal({ notebookId, open, onClose, onSourceAdded }: Source
     mutationFn: async (file: File) => {
       const data = new FormData()
       data.set('file', file)
-      data.set('notebookId', notebookId)
+      data.set('notebook', notebookId)
       const result = await registerPdf({ data })
       return invalidateAfterIngest(result.sourceId)
     },

@@ -1,4 +1,4 @@
-import { notebookIdSchema, type NotebookId } from '~/domain/organization'
+import { notebookTargetSchema, type NotebookTarget } from '~/domain/organization'
 
 export const MAX_PDF_BYTES = 8 * 1024 * 1024
 export const MAX_SOURCE_BODY_CHARS = 200_000
@@ -43,7 +43,7 @@ export function parsePdfUpload(input: { bytes: Uint8Array; filename: string }): 
   }
 }
 
-export function parseRegisterPdfForm(data: unknown): { file: File; notebookId: NotebookId } {
+export function parseRegisterPdfForm(data: unknown): { file: File; notebook: NotebookTarget } {
   if (!(data instanceof FormData)) {
     throw new Error('expected_form_data')
   }
@@ -51,11 +51,11 @@ export function parseRegisterPdfForm(data: unknown): { file: File; notebookId: N
   if (!(file instanceof File)) {
     throw new Error('pdf_not_pdf')
   }
-  const notebookIdRaw = data.get('notebookId')
-  if (typeof notebookIdRaw !== 'string') {
+  const notebookRaw = data.get('notebook')
+  if (typeof notebookRaw !== 'string') {
     throw new Error('notebook_not_found')
   }
-  return { file, notebookId: notebookIdSchema.parse(notebookIdRaw) }
+  return { file, notebook: notebookTargetSchema.parse(notebookRaw) }
 }
 
 export function persistablePdfBody(text: string): { body: string; fetchStatus: 'full' | 'partial' } {
