@@ -14,7 +14,7 @@ Maintained source for verifying Scrapbook's user-facing web UI. Read this index,
 ## Driving conventions
 
 - Prefer ARIA roles and accessible names over CSS or coordinates.
-- Japanese labels are the stable handles (`本文を保存`, `検索`, `作成`, …).
+- Japanese labels are the stable handles (`本文を保存`, `新しいノート`, `質問する`, …).
 - Run browser actions through `helpers/drive.mjs` when a subcommand exists; otherwise Playwright against the same base URL with the same naming rules.
 - Restore or delete disposable fixtures after mutation. Keep proof artifacts.
 
@@ -31,8 +31,10 @@ Each feature file: H1, one paragraph, then exactly four H2s in order: `Sub-featu
 
 ## Features
 
-- [Create a notebook](./create-notebook.md) covers home create, open, rename, delete, and the post-create source modal.
-- [Paste a source](./paste-source.md) covers manual body paste from `/sources` and persistence on the detail page.
-- [Search sources](./search-sources.md) covers title/body search and notebook/tag filters on `/sources`.
-- [Source detail](./source-detail.md) covers memo, organize, summarize, ask, Markdown export, and delete.
-- [Register a URL](./register-url.md) covers URL registration and navigation into the ingest/detail flow.
+- [Create a notebook](./create-notebook.md) covers home「新しいノート」, open, rename, and cascade delete.
+- [Paste a source](./paste-source.md) covers first-source paste via the home modal into `/notebooks/$id`.
+- [Register a URL](./register-url.md) covers first-source URL register via the same modal.
+- [Note shell](./note-shell.md) covers sources / summarize·ask / memo panes (and mobile tabs).
+- [Compat redirects](./compat-redirects.md) covers old `/sources` URLs landing on notebook routes or `/`.
+
+Removed from the map (no UI): standalone `/sources` search list, tag/move controls, reserved inbox.
