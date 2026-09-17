@@ -11,7 +11,7 @@ import {
   type ParsedPdfUpload,
 } from '~/domain/pdf'
 import { authenticateAccessRequest, type AccessEnv } from '~/server/auth/access'
-import { withNotebookTarget } from '~/server/organization'
+import { applyFirstSourceNotebookTitle, withNotebookTarget } from '~/server/organization'
 
 export type R2ObjectKey = string & { readonly __brand: 'R2ObjectKey' }
 
@@ -101,6 +101,10 @@ export async function registerPdfSource(
         await assets.delete(key)
       } catch {}
       throw error
+    }
+
+    if (notebook !== 'new') {
+      await applyFirstSourceNotebookTitle(db, notebookId, upload.title)
     }
 
     let extracted: PdfExtractResult

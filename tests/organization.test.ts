@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { notebooks, sources, sourceTags } from '../src/db/schema'
 import {
+  isPlaceholderNotebookTitle,
   notebookIdSchema,
   notebookTitleFromHint,
   organizationCommandSchema,
@@ -39,6 +40,16 @@ describe('notebook titles', () => {
     expect(notebookTitleFromHint('  講義.pdf  ')).toBe('講義.pdf')
     expect(notebookTitleFromHint('あ'.repeat(120))).toBe('あ'.repeat(100))
     expect(notebookTitleFromHint('   ')).toBe('無題のノート')
+  })
+
+  it('treats empty and 無題のノート as placeholder titles', () => {
+    expect(isPlaceholderNotebookTitle('')).toBe(true)
+    expect(isPlaceholderNotebookTitle('   ')).toBe(true)
+    expect(isPlaceholderNotebookTitle('無題のノート')).toBe(true)
+    expect(isPlaceholderNotebookTitle(' 無題のノート ')).toBe(true)
+    expect(isPlaceholderNotebookTitle('研究')).toBe(false)
+    expect(isPlaceholderNotebookTitle('example.com')).toBe(false)
+    expect(isPlaceholderNotebookTitle('無題のノート (2)')).toBe(false)
   })
 })
 

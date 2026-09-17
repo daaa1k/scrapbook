@@ -12,6 +12,11 @@ const NOTEBOOK_TITLE_MAX = 100
 export const notebookTargetSchema = z.union([notebookIdSchema, z.literal('new')])
 export type NotebookTarget = z.infer<typeof notebookTargetSchema>
 
+export function isPlaceholderNotebookTitle(title: string): boolean {
+  const trimmed = title.trim()
+  return trimmed === '' || trimmed === UNTITLED_NOTEBOOK_TITLE
+}
+
 export function notebookTitleFromHint(hint: string): NotebookTitle {
   const trimmed = hint.trim() || UNTITLED_NOTEBOOK_TITLE
   return notebookTitleSchema.parse(trimmed.slice(0, NOTEBOOK_TITLE_MAX))
