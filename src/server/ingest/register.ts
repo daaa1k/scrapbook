@@ -9,6 +9,7 @@ import { startIngestWorkflow, type WorkflowBinding } from '~/server/ingest/start
 import { fetchUrlPageTitle } from '~/server/ingest/page-title'
 import type { AssetsPort, R2ObjectKey } from '~/server/ingest/pdf'
 import { applyFirstSourceNotebookTitle, withNotebookTarget } from '~/server/organization'
+import { isUniqueConstraintError } from '~/lib/sqlite-errors'
 
 export type RegisterResult = {
   sourceId: string
@@ -30,11 +31,6 @@ export type PasteResult = {
 
 function nowMs(): number {
   return Date.now()
-}
-
-function isActiveJobUniqueError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error)
-  return /UNIQUE constraint failed/i.test(message)
 }
 
 function reuseOrRejectDuplicate(existingNotebookId: string, target: NotebookTarget): void {
@@ -292,7 +288,7 @@ async function startOrReuseJob(
     const queued = await enqueueJob(db, workflow, attemptCount, { ...params, sourceId })
     return { ...queued, started: true }
   } catch (error) {
-    if (!isActiveJobUniqueError(error)) throw error
+    if (!isUniqueConstraintError(error)) throw error
     const current = await latestJobForSource(db, sourceId)
     if (!current) throw error
     return { sourceId, jobId: current.id, started: false }

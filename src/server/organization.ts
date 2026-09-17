@@ -17,6 +17,7 @@ import {
   type SourceMemo,
   type TagName,
 } from '~/domain/organization'
+import { isUniqueConstraintError } from '~/lib/sqlite-errors'
 
 type OrganizationSourcePatch = { notebookId: NotebookId } | { memo: SourceMemo }
 
@@ -25,11 +26,6 @@ const NOTEBOOK_TITLE_MAX = 100
 
 function nowMs(): number {
   return Date.now()
-}
-
-function isUniqueConstraintError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error)
-  return /UNIQUE constraint failed/i.test(message)
 }
 
 function titleWithSuffix(base: NotebookTitle, n: number): NotebookTitle {
