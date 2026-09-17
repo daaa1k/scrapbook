@@ -107,7 +107,11 @@ export function formatNotebookUpdatedAt(updatedAt: number, now = Date.now()): st
   if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}分前`
   if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}時間前`
   if (delta < 7 * 86_400_000) return `${Math.floor(delta / 86_400_000)}日前`
-  return new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium' }).format(new Date(updatedAt))
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date(updatedAt))
 }
 
 export function notebookDeleteConfirmMessage(title: string): string {
