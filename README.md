@@ -28,6 +28,12 @@ Worker  src/server.ts
 - Effect (`effect` 3.22.2) on the Cursor REST client and job transitions. Typed errors (`CursorNotConfigured`, `CursorApiError`, `IllegalJobTransitionError`) travel the Effect channel. Cloudflare Workflow steps stay Promise-based. `Effect.runPromise` is the bridge.
 - `jose` verifies Access JWTs (signature + `iss` + `aud` + `exp` + email allowlist). Never decode-only.
 
+## Screen flow
+
+1. **Home `/`** — notebook list and「新しいノート」only. Creating a notebook opens the source modal with `notebook: 'new'`. Cancel or failed ingest leaves no empty notebook. Delete confirms and cascades sources, summaries, Q&A, memos, and PDF originals.
+2. **Notebook `/notebooks/$notebookId`** — three panes on wide screens (sources ≈280px / summarize·ask `1fr` / memo ≈320px). Narrow screens use tabs for the same three regions without unmounting drafts. Optional `?sourceId=` selects a source.
+3. **Compat** — `/sources` and `/sources/$sourceId` redirect into a notebook URL (or `/` when unresolved). There is no standalone all-sources inbox UI.
+
 ## Data model
 
 | Table | Role |
@@ -41,7 +47,7 @@ Worker  src/server.ts
 | `qa_answers` | One question/answer turn for a source. `source_id` FK → `sources.id`, `job_id` FK → `jobs.id`. Written when the user asks; `answer` fills on successful ask persist. |
 | `qa_citations` | Quotes for one Q&A turn. `qa_answer_id` FK → `qa_answers.id`. Separate from source-level `citations`. |
 
-**notebook ↔ source:** many sources belong to one notebook (`sources.notebook_id`). A source can move. Duplicate URLs are still one row globally, not one row per notebook. Many-to-many notebooks remain out of scope.
+**notebook ↔ source:** many sources belong to one notebook (`sources.notebook_id`). Duplicate URLs are still one row globally, not one row per notebook. Many-to-many notebooks remain out of scope. There is no reserved inbox notebook.
 
 The list filter is `{ q, notebookId, tagName }` combined with AND. Empty `q` means no text predicate. Tag attach is create-if-missing. Organization writes go through `runOrganizationCommand`. Notebook delete is `deleteNotebook`. URL, paste, and PDF ingest take `notebook` (`uuid` or `'new'`). Ingest persist, paste, and PDF extract do not write `memo` or `notebook_id`.
 
@@ -49,15 +55,15 @@ Successful persist of `fetch` or `summarize_body` deletes every `citations` row 
 
 `normalized_url` is unique when present (duplicate URL detection). `acquired_via` is `fetch`, `paste`, or `upload`. `content_hash` is SHA-256 of `body` after a successful fetch, paste, or PDF extract. Do not log `body`, PDF bytes, or API keys.
 
-Re-registering a URL that already has a job returns that job and does **not** start Cursor. Explicit **再取得** on a terminal job (`succeeded` or `failed`) inserts a new job. At most one non-terminal job per source (`jobs_one_active_per_source`). Viewing a source never starts Cursor. Idle sources (no non-terminal job) can be deleted from the list or the detail page; that removes citations, Q&A turns, jobs, and any R2 PDF original.
+Re-registering a URL that already has a job returns that job and does **not** start Cursor. Explicit **再取得** on a terminal job (`succeeded` or `failed`) inserts a new job. At most one non-terminal job per source (`jobs_one_active_per_source`). Viewing a source never starts Cursor. Idle sources (no non-terminal job) can be deleted from the notebook left pane; that removes citations, Q&A turns, jobs, and any R2 PDF original.
 
 PDF upload writes the original to private R2 at `pdf/{sourceId}/original.pdf`, inserts `kind: 'pdf'` with `acquired_via = upload`, and extracts text in the Worker with `unpdf`. It does **not** start Cursor. Empty extract (scanned PDF) keeps the original, leaves `fetchStatus = failed`, and the detail page asks you to paste. Bytes are served only from authenticated GET `/assets/sources/:id` (add `?download=1` for attachment). There is no public R2 URL. Cap is 8 MiB. Magic bytes must be `%PDF`.
 
 Manual paste writes `title` and `body`, leaves `summary` null, sets `acquired_via = paste` and `fetchStatus = full`, and does not create a job. Paste on a PDF keeps `kind` and `r2_key`.
 
-Explicit **要約する** / **再要約する** on the source detail page starts a job that asks Cursor to summarize the **stored body**. It does not re-fetch the URL and does not re-read R2. The button is shown only when `body` is non-empty. Paste and PDF register still do not auto-summarize.
+Explicit **要約する** / **再要約する** in the notebook center pane starts a job that asks Cursor to summarize the **stored body**. It does not re-fetch the URL and does not re-read R2. The button is shown only when `body` is non-empty. Paste and PDF register still do not auto-summarize.
 
-Explicit **質問する** on the source detail page starts an `ask_source` job that asks Cursor to answer from the **stored body** only. It writes `qa_answers` / `qa_citations` and does not replace source-level `citations` or `summary`. Finished turns (succeeded or failed jobs) can be deleted from the detail page; in-flight asks cannot. Multi-source picker is out of scope. Summarize and ask prompts share a body budget (`MAX_CURSOR_BODY_CHARS` = 100_000); longer stored bodies are truncated for the Cursor prompt only. Fetch persist truncates to `MAX_SOURCE_BODY_CHARS` (200_000) like paste/PDF and marks `partial` when cut. **Markdownを書き出す** on the detail page downloads the loaded title, memo, summary, citations, Q&A, and body as a `.md` file (client-side; no new server route).
+Explicit **質問する** in the notebook center pane starts an `ask_source` job that asks Cursor to answer from the **stored body** only. It writes `qa_answers` / `qa_citations` and does not replace source-level `citations` or `summary`. Finished turns (succeeded or failed jobs) can be deleted; in-flight asks cannot. Multi-source picker is out of scope. Summarize and ask prompts share a body budget (`MAX_CURSOR_BODY_CHARS` = 100_000); longer stored bodies are truncated for the Cursor prompt only. Fetch persist truncates to `MAX_SOURCE_BODY_CHARS` (200_000) like paste/PDF and marks `partial` when cut. Markdown export for a single source remains available via the domain helper (client-side; no dedicated notebook export UI in this slice).
 
 Title and body search uses SQLite `LIKE` with escaped wildcards, not FTS5. Unicode `LIKE` is good enough for Japanese substrings. FTS5 without a Japanese tokenizer would miss queries that `LIKE` hits. Vectorize is still out of scope.
 
@@ -163,9 +169,10 @@ Production without `CURSOR_API_KEY`: the job fails with `cursor_not_configured` 
 
 - PDF R2 path: upload stores the original privately, extracts text with unpdf, serves bytes only through Access-authenticated GET `/assets/sources/:id`. Cursor is not started for PDFs. Scanned PDFs use paste.
 - FTS5 / Vectorize: title and body search uses `LIKE`. Vectorize is not in this slice.
-- Playwright E2E: upcoming.
+- Multi-source RAG and chat target checkboxes.
+- Simultaneous three-pane layout on mobile (tabs instead).
 - X/Twitter authenticated fetch.
-- Full notebook / R2 zip backup. A single source can be exported as Markdown from the detail page (current summary, citations, Q&A, and body).
+- Full notebook / R2 zip backup.
 
 ## Tooling substitutions
 
