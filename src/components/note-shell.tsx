@@ -1,19 +1,24 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SourceInvestigate } from '~/components/source-investigate'
 import { SourceModal } from '~/components/source-modal'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
+import { Input } from '~/components/ui/input'
 import { resolveNoteShellView, type NoteShellSearch } from '~/domain/note-shell'
 import { sourceListFilterFromSourcesPageSearch } from '~/domain/organization'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
-import { getOrganizationCatalog } from '~/server/functions/organization'
+import { userFacingError } from '~/lib/utils'
+import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
 import { listSources } from '~/server/functions/sources'
 
 export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [modalOpen, setModalOpen] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
+  const [renameError, setRenameError] = useState<string | null>(null)
   const filter = sourceListFilterFromSourcesPageSearch({ notebookId })
 
   const catalog = useQuery({
@@ -26,18 +31,42 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     queryFn: () => listSources({ data: filter }),
   })
 
+  const view =
+    catalog.data && sourcesQuery.data !== undefined
+      ? resolveNoteShellView({ notebookId, sourceId }, catalog.data, sourcesQuery.data)
+      : null
+  const notebookTitle = view && view.status !== 'unknown-notebook' ? view.notebook.title : null
+
+  useEffect(() => {
+    if (notebookTitle) setTitleDraft(notebookTitle)
+  }, [notebookTitle])
+
+  const rename = useMutation({
+    mutationFn: (title: string) =>
+      runOrganizationCommand({ data: { type: 'rename-notebook', notebookId, title } }),
+    onSuccess: async () => {
+      setRenameError(null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
+        queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
+      ])
+    },
+    onError: (error) => {
+      setRenameError(userFacingError(error))
+    },
+  })
+
   async function focusSource(nextSourceId: string) {
     await navigate({
-      to: '/sources',
-      search: { notebookId, sourceId: nextSourceId },
+      to: '/notebooks/$notebookId',
+      params: { notebookId },
+      search: { sourceId: nextSourceId },
     })
   }
 
-  if (!catalog.data || sourcesQuery.data === undefined) {
+  if (!view) {
     return <p>読み込み中…</p>
   }
-
-  const view = resolveNoteShellView({ notebookId, sourceId }, catalog.data, sourcesQuery.data)
 
   if (view.status === 'unknown-notebook') {
     return (
@@ -46,7 +75,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           ← ホームへ
         </Link>
         <Card>
-          <p>ノートブックが見つかりません。</p>
+          <p>ノートが見つかりません。</p>
         </Card>
       </div>
     )
@@ -55,11 +84,32 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <Link to="/" className="text-sm text-zinc-500 hover:underline">
             ← ホームへ
           </Link>
           <h1 className="mt-2 text-2xl font-semibold">{view.notebook.title}</h1>
+          <form
+            className="mt-3 flex max-w-xl flex-col gap-3 sm:flex-row"
+            onSubmit={(event) => {
+              event.preventDefault()
+              rename.mutate(titleDraft)
+            }}
+          >
+            <Input
+              name="notebook-title"
+              required
+              maxLength={100}
+              value={titleDraft}
+              disabled={rename.isPending}
+              onChange={(event) => setTitleDraft(event.target.value)}
+              aria-label="ノートブック名"
+            />
+            <Button type="submit" className="shrink-0 whitespace-nowrap" disabled={rename.isPending}>
+              名前を変更
+            </Button>
+          </form>
+          {renameError ? <p className="mt-2 text-sm text-red-600">{renameError}</p> : null}
         </div>
         <Button type="button" onClick={() => setModalOpen(true)}>
           ソースを追加
@@ -115,14 +165,15 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
       )}
 
       <SourceModal
-        notebookId={notebookId}
+        notebook={notebookId}
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onSourceAdded={async (addedSourceId) => {
+        onSourceAdded={async ({ sourceId: addedSourceId }) => {
           setModalOpen(false)
           await navigate({
-            to: '/sources',
-            search: { notebookId, sourceId: addedSourceId },
+            to: '/notebooks/$notebookId',
+            params: { notebookId },
+            search: { sourceId: addedSourceId },
           })
         }}
       />

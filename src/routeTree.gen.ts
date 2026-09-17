@@ -10,7 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as NotebooksRouteImport } from './routes/notebooks'
+import { Route as NotebooksIndexRouteImport } from './routes/notebooks.index'
+import { Route as NotebooksNotebookIdRouteImport } from './routes/notebooks.$notebookId'
 import { Route as SourcesIndexRouteImport } from './routes/sources.index'
 import { Route as SourcesSourceIdRouteImport } from './routes/sources.$sourceId'
 import { Route as AssetsSourcesSourceIdRouteImport } from './routes/assets.sources.$sourceId'
@@ -20,9 +21,14 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const NotebooksRoute = NotebooksRouteImport.update({
-  id: '/notebooks',
-  path: '/notebooks',
+const NotebooksIndexRoute = NotebooksIndexRouteImport.update({
+  id: '/notebooks/',
+  path: '/notebooks/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotebooksNotebookIdRoute = NotebooksNotebookIdRouteImport.update({
+  id: '/notebooks/$notebookId',
+  path: '/notebooks/$notebookId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SourcesIndexRoute = SourcesIndexRouteImport.update({
@@ -43,23 +49,26 @@ const AssetsSourcesSourceIdRoute = AssetsSourcesSourceIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/notebooks': typeof NotebooksRoute
+  '/notebooks/$notebookId': typeof NotebooksNotebookIdRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
+  '/notebooks/': typeof NotebooksIndexRoute
   '/sources/': typeof SourcesIndexRoute
   '/assets/sources/$sourceId': typeof AssetsSourcesSourceIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/notebooks': typeof NotebooksRoute
+  '/notebooks/$notebookId': typeof NotebooksNotebookIdRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
+  '/notebooks': typeof NotebooksIndexRoute
   '/sources': typeof SourcesIndexRoute
   '/assets/sources/$sourceId': typeof AssetsSourcesSourceIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/notebooks': typeof NotebooksRoute
+  '/notebooks/$notebookId': typeof NotebooksNotebookIdRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
+  '/notebooks/': typeof NotebooksIndexRoute
   '/sources/': typeof SourcesIndexRoute
   '/assets/sources/$sourceId': typeof AssetsSourcesSourceIdRoute
 }
@@ -67,30 +76,34 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/notebooks'
+    | '/notebooks/$notebookId'
     | '/sources/$sourceId'
+    | '/notebooks/'
     | '/sources/'
     | '/assets/sources/$sourceId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/notebooks'
+    | '/notebooks/$notebookId'
     | '/sources/$sourceId'
+    | '/notebooks'
     | '/sources'
     | '/assets/sources/$sourceId'
   id:
     | '__root__'
     | '/'
-    | '/notebooks'
+    | '/notebooks/$notebookId'
     | '/sources/$sourceId'
+    | '/notebooks/'
     | '/sources/'
     | '/assets/sources/$sourceId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  NotebooksRoute: typeof NotebooksRoute
+  NotebooksNotebookIdRoute: typeof NotebooksNotebookIdRoute
   SourcesSourceIdRoute: typeof SourcesSourceIdRoute
+  NotebooksIndexRoute: typeof NotebooksIndexRoute
   SourcesIndexRoute: typeof SourcesIndexRoute
   AssetsSourcesSourceIdRoute: typeof AssetsSourcesSourceIdRoute
 }
@@ -104,11 +117,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/notebooks': {
-      id: '/notebooks'
+    '/notebooks/': {
+      id: '/notebooks/'
       path: '/notebooks'
-      fullPath: '/notebooks'
-      preLoaderRoute: typeof NotebooksRouteImport
+      fullPath: '/notebooks/'
+      preLoaderRoute: typeof NotebooksIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notebooks/$notebookId': {
+      id: '/notebooks/$notebookId'
+      path: '/notebooks/$notebookId'
+      fullPath: '/notebooks/$notebookId'
+      preLoaderRoute: typeof NotebooksNotebookIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sources/': {
@@ -137,8 +157,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  NotebooksRoute: NotebooksRoute,
+  NotebooksNotebookIdRoute: NotebooksNotebookIdRoute,
   SourcesSourceIdRoute: SourcesSourceIdRoute,
+  NotebooksIndexRoute: NotebooksIndexRoute,
   SourcesIndexRoute: SourcesIndexRoute,
   AssetsSourcesSourceIdRoute: AssetsSourcesSourceIdRoute,
 }

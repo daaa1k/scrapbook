@@ -44,6 +44,29 @@ export type SourcesPageSearch = {
   sourceId?: string
 }
 
+export type NotebookPageSearch = {
+  sourceId?: string
+}
+
+export type NotebookAppLocation =
+  | { to: '/' }
+  | {
+      to: '/notebooks/$notebookId'
+      params: { notebookId: NotebookId }
+      search: NotebookPageSearch
+    }
+
+function optionalTrimmedString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
+export function parseNotebookPageSearch(search: unknown): NotebookPageSearch {
+  const bag = z.object({ sourceId: z.unknown().optional() }).safeParse(search)
+  // Router merges this onto the URL bag, so dropped keys must be explicit undefined.
+  if (!bag.success) return { sourceId: undefined }
+  return { sourceId: optionalTrimmedString(bag.data.sourceId) }
+}
+
 export function parseSourcesPageSearch(search: unknown): SourcesPageSearch {
   const bag = z
     .object({
@@ -51,15 +74,48 @@ export function parseSourcesPageSearch(search: unknown): SourcesPageSearch {
       sourceId: z.unknown().optional(),
     })
     .safeParse(search)
-  // Router merges this onto the URL bag, so dropped keys must be explicit undefined.
   if (!bag.success) return { notebookId: undefined, sourceId: undefined }
   const notebookId = notebookIdSchema.safeParse(bag.data.notebookId)
   if (!notebookId.success) return { notebookId: undefined, sourceId: undefined }
-  const sourceId =
-    typeof bag.data.sourceId === 'string' && bag.data.sourceId.trim() !== ''
-      ? bag.data.sourceId.trim()
-      : undefined
-  return { notebookId: notebookId.data, sourceId }
+  return { notebookId: notebookId.data, sourceId: optionalTrimmedString(bag.data.sourceId) }
+}
+
+export function redirectFromSourcesIndex(search: SourcesPageSearch): NotebookAppLocation {
+  if (!search.notebookId) return { to: '/' }
+  return {
+    to: '/notebooks/$notebookId',
+    params: { notebookId: search.notebookId },
+    search: { sourceId: search.sourceId },
+  }
+}
+
+export function redirectFromSourceDetail(
+  notebookId: NotebookId | undefined,
+  sourceId: string,
+): NotebookAppLocation {
+  if (!notebookId) return { to: '/' }
+  return {
+    to: '/notebooks/$notebookId',
+    params: { notebookId },
+    search: { sourceId },
+  }
+}
+
+export function formatNotebookUpdatedAt(updatedAt: number, now = Date.now()): string {
+  const delta = now - updatedAt
+  if (delta < 60_000) return 'たった今'
+  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}分前`
+  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}時間前`
+  if (delta < 7 * 86_400_000) return `${Math.floor(delta / 86_400_000)}日前`
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date(updatedAt))
+}
+
+export function notebookDeleteConfirmMessage(title: string): string {
+  return `「${title}」を削除します。ソース、要約、Q&A、メモ、PDF原本は完全に削除され、元に戻せません。`
 }
 
 export function sourceListFilterFromSourcesPageSearch(search: {
@@ -133,7 +189,3 @@ export const organizationMutationAckSchema = z.object({
   notebookId: notebookIdSchema.optional(),
 })
 export type OrganizationMutationAck = z.infer<typeof organizationMutationAckSchema>
-
-export type HomeCreateFlow =
-  | { status: 'idle' }
-  | { status: 'awaiting-source'; notebookId: NotebookId }
