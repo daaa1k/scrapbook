@@ -13,12 +13,11 @@ const notebookTitle = notebookTitleSchema.parse('研究')
 const notebook = {
   id: notebookId,
   title: notebookTitle,
-  isInbox: false as const,
 }
 
 function catalogWithNotebook(): OrganizationCatalog {
   return {
-    notebooks: [{ ...notebook, sourceCount: 2 }],
+    notebooks: [{ ...notebook, sourceCount: 2, updatedAt: 1 }],
     tags: [],
   }
 }

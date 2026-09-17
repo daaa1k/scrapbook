@@ -7,6 +7,7 @@ import { pasteSourceBody } from '../src/server/ingest/register'
 import { applyOrganizationCommand, readOrganizationCatalog } from '../src/server/organization'
 import { listSourceViews } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'
+import { seedNotebook } from './helpers/notebook'
 
 describe('source views', () => {
   it('escapes LIKE wildcards in the user query', () => {
@@ -17,9 +18,10 @@ describe('source views', () => {
 
   it('returns all sources when q is empty', async () => {
     const { db } = createTestDb()
-    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話' })
-    const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物' })
-    const other = await pasteSourceBody(db, { title: '無関係', body: '天気の話' })
+    const notebookId = await seedNotebook(db)
+    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebookId })
+    const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物', notebookId })
+    const other = await pasteSourceBody(db, { title: '無関係', body: '天気の話', notebookId })
     const tiedAt = 1_700_000_000_000
     for (const id of [apple.sourceId, orange.sourceId, other.sourceId]) {
       await db.update(sources).set({ createdAt: tiedAt }).where(eq(sources.id, id))
@@ -31,9 +33,10 @@ describe('source views', () => {
 
   it('composes q AND notebook AND tag', async () => {
     const { db } = createTestDb()
-    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話' })
-    const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物' })
-    const weather = await pasteSourceBody(db, { title: '無関係', body: '天気の話' })
+    const notebookId = await seedNotebook(db)
+    const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebookId })
+    const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物', notebookId })
+    const weather = await pasteSourceBody(db, { title: '無関係', body: '天気の話', notebookId })
 
     await applyOrganizationCommand(
       db,
@@ -83,15 +86,17 @@ describe('source views', () => {
 
   it('rejects % as a LIKE wildcard', async () => {
     const { db } = createTestDb()
-    await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話' })
+    const notebookId = await seedNotebook(db)
+    await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebookId })
     const wildcard = await listSourceViews(db, { q: '%', notebookId: null, tagName: null })
     expect(wildcard).toEqual([])
   })
 
   it('returns tagged rows when q is empty', async () => {
     const { db } = createTestDb()
-    const tagged = await pasteSourceBody(db, { title: 'タグ付き', body: '本文' })
-    await pasteSourceBody(db, { title: 'なし', body: '本文' })
+    const notebookId = await seedNotebook(db)
+    const tagged = await pasteSourceBody(db, { title: 'タグ付き', body: '本文', notebookId })
+    await pasteSourceBody(db, { title: 'なし', body: '本文', notebookId })
     await applyOrganizationCommand(
       db,
       organizationCommandSchema.parse({ type: 'attach-tag', sourceId: tagged.sourceId, tagName: '後で' }),

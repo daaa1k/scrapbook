@@ -16,14 +16,13 @@ import { MOCK_ASK_JSON, MOCK_INGEST_JSON, createMockCursorClient } from '../src/
 import {
   askSourceQuestion,
   deleteSource,
-  pasteSourceBody,
-  registerUrlSource,
 } from '../src/server/ingest/register'
-import { pdfOriginalKey, registerPdfSource } from '../src/server/ingest/pdf'
+import { pdfOriginalKey } from '../src/server/ingest/pdf'
 import { applyOrganizationCommand } from '../src/server/organization'
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import { listSourceViews } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'
+import { pasteSourceBody, registerPdfSource, registerUrlSource } from './helpers/ingest'
 import { createMemoryAssets } from './helpers/r2'
 
 const TINY_PDF = new TextEncoder().encode('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n')
@@ -113,13 +112,6 @@ describe('delete source', () => {
         notebookId,
       }),
     )
-    await expect(
-      applyOrganizationCommand(
-        db,
-        organizationCommandSchema.parse({ type: 'delete-notebook', notebookId }),
-      ),
-    ).rejects.toThrow('notebook_not_empty')
-
     await deleteSource(db, pasted.sourceId, undefined)
     await applyOrganizationCommand(
       db,

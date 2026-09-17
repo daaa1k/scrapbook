@@ -6,7 +6,8 @@ import { parseIngestResultJson } from '../src/domain/ingest-result'
 import { sourceDetailSchema, sourceListItemSchema } from '../src/domain/source-views'
 import { authenticateAccessRequest } from '../src/server/auth/access'
 import { MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
-import { pasteSourceBody, registerUrlSource, retrySourceIngest, summarizeSourceBody } from '../src/server/ingest/register'
+import { retrySourceIngest, summarizeSourceBody } from '../src/server/ingest/register'
+import { pasteSourceBody, registerUrlSource } from './helpers/ingest'
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import { readSourceDetail } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'
@@ -28,7 +29,6 @@ const detailFixture = {
     notebook: {
       id: '11111111-1111-4111-8111-111111111111',
       title: '受信箱',
-      isInbox: true,
     },
     tags: [],
     memo: null,
@@ -381,7 +381,6 @@ describe('source citations', () => {
       notebook: {
         id: '11111111-1111-4111-8111-111111111111',
         title: '受信箱',
-        isInbox: true,
       },
       tags: [],
     })

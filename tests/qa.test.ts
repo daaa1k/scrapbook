@@ -6,10 +6,9 @@ import { MOCK_ASK_JSON, MOCK_INGEST_JSON, createMockCursorClient } from '../src/
 import {
   askSourceQuestion,
   deleteQaAnswer,
-  pasteSourceBody,
-  registerUrlSource,
   summarizeSourceBody,
 } from '../src/server/ingest/register'
+import { pasteSourceBody, registerUrlSource } from './helpers/ingest'
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import { readSourceDetail } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'

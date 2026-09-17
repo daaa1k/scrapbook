@@ -5,6 +5,7 @@ import { organizationCommandSchema } from '../src/domain/organization'
 import { pasteSourceBody, registerUrlSource } from '../src/server/ingest/register'
 import { applyOrganizationCommand } from '../src/server/organization'
 import { createTestDb } from './helpers/db'
+import { seedNotebook } from './helpers/notebook'
 
 async function organize(db: ReturnType<typeof createTestDb>['db'], input: unknown) {
   return applyOrganizationCommand(db, organizationCommandSchema.parse(input))
@@ -13,9 +14,11 @@ async function organize(db: ReturnType<typeof createTestDb>['db'], input: unknow
 describe('paste source body', () => {
   it('persists title and body without starting Cursor', async () => {
     const { db } = createTestDb()
+    const notebookId = await seedNotebook(db)
     const result = await pasteSourceBody(db, {
       title: '手入力タイトル',
       body: '手入力の本文です。',
+      notebookId,
     })
 
     const row = (await db.select().from(sources).where(eq(sources.id, result.sourceId)))[0]
@@ -25,7 +28,7 @@ describe('paste source body', () => {
     expect(row?.body).toBe('手入力の本文です。')
     expect(row?.summary).toBeNull()
     expect(row?.memo).toBeNull()
-    expect(book?.title).toBe('受信箱')
+    expect(book?.title).toBe('研究')
     expect(row?.fetchStatus).toBe('full')
     expect(row?.acquiredVia).toBe('paste')
     expect(row?.contentHash).toBeTruthy()
@@ -34,9 +37,14 @@ describe('paste source body', () => {
 
   it('updates an existing failed source without a workflow binding', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/paste-over' }, {
-      create: async () => ({ id: 'wf' }),
-    })
+    const notebookId = await seedNotebook(db)
+    const registered = await registerUrlSource(
+      db,
+      { url: 'https://example.com/paste-over', notebookId },
+      {
+        create: async () => ({ id: 'wf' }),
+      },
+    )
     await db
       .update(jobs)
       .set({
@@ -72,7 +80,8 @@ describe('paste source body', () => {
 
   it('refuses paste while a job is in flight', async () => {
     const { db } = createTestDb()
-    const registered = await registerUrlSource(db, { url: 'https://example.com/busy' }, {
+    const notebookId = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/busy', notebookId }, {
       create: async () => ({ id: 'wf' }),
     })
     await expect(
@@ -86,13 +95,14 @@ describe('paste source body', () => {
 
   it('keeps notebook, memo, and tags on a URL-bearing paste of an existing source', async () => {
     const { db } = createTestDb()
+    const originId = await seedNotebook(db, '元')
     const first = await pasteSourceBody(db, {
       title: '初回',
       body: '初回本文',
       url: 'https://example.com/paste-url',
+      notebookId: originId,
     })
-    await organize(db, { type: 'create-notebook', title: '研究' })
-    const researchId = (await db.select().from(notebooks).where(eq(notebooks.title, '研究')))[0]!.id
+    const researchId = await seedNotebook(db, '研究')
     await organize(db, { type: 'move-source', sourceId: first.sourceId, notebookId: researchId })
     await organize(db, { type: 'set-memo', sourceId: first.sourceId, memo: '残すメモ' })
     await organize(db, { type: 'attach-tag', sourceId: first.sourceId, tagName: '論文' })
@@ -101,6 +111,7 @@ describe('paste source body', () => {
       title: '二回目',
       body: '二回目本文',
       url: 'https://example.com/paste-url',
+      notebookId: originId,
     })
     expect(again.sourceId).toBe(first.sourceId)
     const row = (await db.select().from(sources).where(eq(sources.id, first.sourceId)))[0]

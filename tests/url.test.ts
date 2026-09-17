@@ -24,7 +24,9 @@ describe('URL normalization', () => {
   })
 
   it('rejects non-URL strings at the Zod boundary', () => {
-    expect(registerUrlInputSchema.safeParse({ url: 'not-a-url' }).success).toBe(false)
-    expect(registerUrlInputSchema.safeParse({ url: 'https://example.com/ok' }).success).toBe(true)
+    const notebookId = '11111111-1111-4111-8111-111111111111'
+    expect(registerUrlInputSchema.safeParse({ url: 'not-a-url', notebookId }).success).toBe(false)
+    expect(registerUrlInputSchema.safeParse({ url: 'https://example.com/ok' }).success).toBe(false)
+    expect(registerUrlInputSchema.safeParse({ url: 'https://example.com/ok', notebookId }).success).toBe(true)
   })
 })
