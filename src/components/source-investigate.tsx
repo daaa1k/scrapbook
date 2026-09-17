@@ -1,11 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Button } from '~/components/ui/button'
-import { Card } from '~/components/ui/card'
 import { Textarea } from '~/components/ui/textarea'
 import { MAX_CURSOR_BODY_CHARS, storedBodyText } from '~/domain/ingest-result'
 import { sourceKeys } from '~/lib/query-keys'
-import { isTerminalJobStatus, userFacingError } from '~/lib/utils'
+import { isTerminalJobStatus, jobStatusLabel, userFacingError } from '~/lib/utils'
 import { askSource, deleteSourceQaAnswer, getSource, summarizeSource } from '~/server/functions/sources'
 
 type SourceInvestigateProps = {
@@ -68,6 +67,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   }
 
   const jobStatus = source.job?.status ?? null
+  const jobKind = source.job?.kind ?? null
   const retryBusy = Boolean(jobStatus && !isTerminalJobStatus(jobStatus))
   const bodyForCursor = storedBodyText(source.body)
   const cursorBodyTruncated = Boolean(bodyForCursor && bodyForCursor.length > MAX_CURSOR_BODY_CHARS)
@@ -76,52 +76,55 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
     : null
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div className="space-y-6">
-        <Card>
-          <h2 className="mb-2 font-medium">要約</h2>
-          <p className="whitespace-pre-wrap">{source.summary ?? 'まだありません'}</p>
-          {bodyForCursor ? (
-            <div className="mt-4">
-              <Button
-                disabled={retryBusy || summarize.isPending}
-                onClick={() => summarize.mutate()}
-              >
-                {source.summary == null ? '要約する' : '再要約する'}
-              </Button>
-              {retryBusy ? (
-                <p className="mt-2 text-sm text-zinc-500">処理中のため要約できません。</p>
-              ) : (
-                <p className="mt-2 text-sm text-zinc-500">
-                  保存済みの本文を要約します。URLの再取得やPDFの再読み込みはしません。
-                </p>
-              )}
-              {cursorBudgetNote ? <p className="mt-2 text-sm text-zinc-500">{cursorBudgetNote}</p> : null}
-            </div>
-          ) : null}
-        </Card>
-        <Card>
-          <h2 className="mb-2 font-medium">引用</h2>
-          {source.citations.length === 0 ? (
-            <p className="text-sm text-zinc-500">まだありません</p>
-          ) : (
-            <ul className="space-y-3">
-              {source.citations.map((citation) => (
-                <li key={citation.id}>
-                  <blockquote className="whitespace-pre-wrap">{citation.excerpt}</blockquote>
-                  {citation.bodySpan ? (
-                    <a href="#source-body" className="mt-1 inline-block text-sm underline">
-                      本文の該当箇所へ
-                    </a>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
-      <Card>
-        <h2 className="mb-2 font-medium">質問</h2>
+    <div className="flex min-h-0 flex-col gap-6">
+      <header className="space-y-1">
+        <h2 className="text-lg font-semibold">{source.title ?? source.url ?? source.id}</h2>
+        <p className="text-sm text-zinc-500">
+          {jobStatus ? jobStatusLabel(jobStatus, jobKind) : '未処理'}
+          {' · '}
+          回答対象はこのソースのみ
+        </p>
+      </header>
+
+      <section className="space-y-3" aria-label="要約">
+        <h3 className="text-sm font-medium text-zinc-500">要約</h3>
+        <p className="whitespace-pre-wrap">{source.summary ?? 'まだありません'}</p>
+        {bodyForCursor ? (
+          <div>
+            <Button disabled={retryBusy || summarize.isPending} onClick={() => summarize.mutate()}>
+              {source.summary == null ? '要約する' : '再要約する'}
+            </Button>
+            {retryBusy ? (
+              <p className="mt-2 text-sm text-zinc-500">処理中のため要約できません。</p>
+            ) : (
+              <p className="mt-2 text-sm text-zinc-500">
+                保存済みの本文を要約します。URLの再取得やPDFの再読み込みはしません。
+              </p>
+            )}
+            {cursorBudgetNote ? <p className="mt-2 text-sm text-zinc-500">{cursorBudgetNote}</p> : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="space-y-3" aria-label="引用">
+        <h3 className="text-sm font-medium text-zinc-500">引用</h3>
+        {source.citations.length === 0 ? (
+          <p className="text-sm text-zinc-500">まだありません</p>
+        ) : (
+          <ul className="space-y-3">
+            {source.citations.map((citation) => (
+              <li key={citation.id}>
+                <blockquote className="whitespace-pre-wrap border-l-2 border-zinc-300 pl-3 dark:border-zinc-600">
+                  {citation.excerpt}
+                </blockquote>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="space-y-3" aria-label="質問">
+        <h3 className="text-sm font-medium text-zinc-500">質問</h3>
         {bodyForCursor ? (
           <form
             className="space-y-3"
@@ -155,9 +158,9 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
           <p className="text-sm text-zinc-500">本文があるときだけ質問できます。</p>
         )}
         {source.qaAnswers.length === 0 ? (
-          <p className="mt-4 text-sm text-zinc-500">まだ質問はありません</p>
+          <p className="mt-2 text-sm text-zinc-500">まだ質問はありません</p>
         ) : (
-          <ul className="mt-4 space-y-4">
+          <ul className="mt-2 space-y-4">
             {source.qaAnswers.map((turn) => (
               <li key={turn.id} className="space-y-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
                 <div className="flex items-start justify-between gap-3">
@@ -181,12 +184,9 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                   <ul className="space-y-2">
                     {turn.citations.map((citation) => (
                       <li key={citation.id}>
-                        <blockquote className="whitespace-pre-wrap text-sm">{citation.excerpt}</blockquote>
-                        {citation.bodySpan ? (
-                          <a href="#source-body" className="mt-1 inline-block text-sm underline">
-                            本文の該当箇所へ
-                          </a>
-                        ) : null}
+                        <blockquote className="whitespace-pre-wrap border-l-2 border-zinc-300 pl-3 text-sm dark:border-zinc-600">
+                          {citation.excerpt}
+                        </blockquote>
                       </li>
                     ))}
                   </ul>
@@ -195,8 +195,9 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
             ))}
           </ul>
         )}
-      </Card>
-      {actionError ? <p className="text-sm text-red-600 lg:col-span-2">{actionError}</p> : null}
+      </section>
+
+      {actionError ? <p className="text-sm text-red-600">{actionError}</p> : null}
     </div>
   )
 }

@@ -30,7 +30,7 @@ function RootDocument({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <div className="mx-auto max-w-3xl px-4 py-8">
+        <div className="mx-auto max-w-7xl px-4 py-8">
           <header className="mb-8 flex items-baseline justify-between gap-4">
             <Link to="/" className="text-xl font-semibold tracking-tight">
               Scrapbook
