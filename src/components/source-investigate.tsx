@@ -78,7 +78,15 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   return (
     <div className="flex min-h-0 flex-col gap-6">
       <header className="space-y-1">
-        <h2 className="text-lg font-semibold">{source.title ?? source.url ?? source.id}</h2>
+        <h2 className="text-lg font-semibold">
+          {source.url ? (
+            <a href={source.url} target="_blank" rel="noopener noreferrer" className="underline">
+              {source.title ?? source.url ?? source.id}
+            </a>
+          ) : (
+            source.title ?? source.url ?? source.id
+          )}
+        </h2>
         <p className="text-sm text-zinc-500">
           {jobStatus ? jobStatusLabel(jobStatus, jobKind) : '未処理'}
           {' · '}
