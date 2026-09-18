@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { CitedProse } from '~/components/citation-footnotes'
 import { Button } from '~/components/ui/button'
 import { Textarea } from '~/components/ui/textarea'
 import { MAX_CURSOR_BODY_CHARS, storedBodyText } from '~/domain/ingest-result'
@@ -74,11 +75,25 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const cursorBudgetNote = cursorBodyTruncated
     ? `Cursor には本文の先頭 ${MAX_CURSOR_BODY_CHARS.toLocaleString('ja-JP')} 文字だけを渡します。`
     : null
+  const title = source.title ?? source.url ?? source.id
 
   return (
     <div className="flex min-h-0 flex-col gap-6">
       <header className="space-y-1">
-        <h2 className="text-lg font-semibold">{source.title ?? source.url ?? source.id}</h2>
+        <h2 className="text-lg font-semibold">
+          {source.url ? (
+            <a
+              href={source.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline decoration-zinc-300 underline-offset-4 hover:decoration-zinc-500"
+            >
+              {title}
+            </a>
+          ) : (
+            title
+          )}
+        </h2>
         <p className="text-sm text-zinc-500">
           {jobStatus ? jobStatusLabel(jobStatus, jobKind) : '未処理'}
           {' · '}
@@ -88,7 +103,11 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
 
       <section className="space-y-3" aria-label="要約">
         <h3 className="text-sm font-medium text-zinc-500">要約</h3>
-        <p className="whitespace-pre-wrap">{source.summary ?? 'まだありません'}</p>
+        <CitedProse
+          text={source.summary ?? ''}
+          citations={source.citations}
+          emptyLabel="まだありません"
+        />
         {bodyForCursor ? (
           <div>
             <Button disabled={retryBusy || summarize.isPending} onClick={() => summarize.mutate()}>
@@ -104,23 +123,6 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
             {cursorBudgetNote ? <p className="mt-2 text-sm text-zinc-500">{cursorBudgetNote}</p> : null}
           </div>
         ) : null}
-      </section>
-
-      <section className="space-y-3" aria-label="引用">
-        <h3 className="text-sm font-medium text-zinc-500">引用</h3>
-        {source.citations.length === 0 ? (
-          <p className="text-sm text-zinc-500">まだありません</p>
-        ) : (
-          <ul className="space-y-3">
-            {source.citations.map((citation) => (
-              <li key={citation.id}>
-                <blockquote className="whitespace-pre-wrap border-l-2 border-zinc-300 pl-3 dark:border-zinc-600">
-                  {citation.excerpt}
-                </blockquote>
-              </li>
-            ))}
-          </ul>
-        )}
       </section>
 
       <section className="space-y-3" aria-label="質問">
@@ -176,20 +178,13 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                   </Button>
                 </div>
                 <p className="text-sm text-zinc-500">回答</p>
-                <p className="whitespace-pre-wrap">{turn.answer ?? '回答待ち…'}</p>
+                <CitedProse
+                  text={turn.answer ?? ''}
+                  citations={turn.citations}
+                  emptyLabel="回答待ち…"
+                />
                 {!turn.canDelete ? (
                   <p className="text-sm text-zinc-500">処理中のため削除できません。</p>
-                ) : null}
-                {turn.citations.length > 0 ? (
-                  <ul className="space-y-2">
-                    {turn.citations.map((citation) => (
-                      <li key={citation.id}>
-                        <blockquote className="whitespace-pre-wrap border-l-2 border-zinc-300 pl-3 text-sm dark:border-zinc-600">
-                          {citation.excerpt}
-                        </blockquote>
-                      </li>
-                    ))}
-                  </ul>
                 ) : null}
               </li>
             ))}

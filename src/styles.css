@@ -1,8 +1,47 @@
 @import 'tailwindcss' source('./');
 
+/*
+  Catppuccin: light = Latte, dark = Mocha.
+  zinc-* stays the working scale so existing utilities keep working.
+  Low stops are Latte surfaces; high stops are Mocha surfaces.
+*/
+
+:root {
+  color-scheme: light;
+  --ctp-red: #d20f39;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ctp-red: #f38ba8;
+  }
+}
+
+@theme {
+  --color-zinc-50: #eff1f5;
+  --color-zinc-100: #cdd6f4;
+  --color-zinc-200: #ccd0da;
+  --color-zinc-300: #bcc0cc;
+  --color-zinc-400: #8c8fa1;
+  --color-zinc-500: #6c6f85;
+  --color-zinc-600: #5c5f77;
+  --color-zinc-700: #4c4f69;
+  --color-zinc-800: #45475a;
+  --color-zinc-900: #313244;
+  --color-zinc-950: #1e1e2e;
+
+  --color-white: #e6e9ef;
+  --color-black: #11111b;
+
+  --color-red-500: var(--ctp-red);
+  --color-red-600: var(--ctp-red);
+  --color-red-700: var(--ctp-red);
+}
+
 html,
 body {
-  @apply bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100;
+  @apply bg-zinc-50 text-zinc-700 dark:bg-zinc-950 dark:text-zinc-100;
 }
 
 body {

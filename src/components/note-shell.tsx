@@ -211,17 +211,33 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                             : 'rounded-md border border-transparent p-2 hover:border-zinc-200 dark:hover:border-zinc-700'
                         }
                       >
-                        <button
-                          type="button"
-                          className="w-full truncate text-left text-sm hover:underline"
-                          aria-current={focused ? 'true' : undefined}
-                          onClick={() => {
-                            void focusSource(source.id)
-                            setMobilePane('study')
-                          }}
-                        >
-                          {source.title ?? source.url ?? source.id}
-                        </button>
+                        {source.url ? (
+                          <a
+                            href={source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block w-full truncate text-left text-sm underline"
+                            aria-current={focused ? 'true' : undefined}
+                            onClick={() => {
+                              void focusSource(source.id)
+                              setMobilePane('study')
+                            }}
+                          >
+                            {source.title ?? source.url ?? source.id}
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            className="w-full truncate text-left text-sm"
+                            aria-current={focused ? 'true' : undefined}
+                            onClick={() => {
+                              void focusSource(source.id)
+                              setMobilePane('study')
+                            }}
+                          >
+                            {source.title ?? source.url ?? source.id}
+                          </button>
+                        )}
                         <div className="mt-2 flex justify-end">
                           <Button
                             type="button"

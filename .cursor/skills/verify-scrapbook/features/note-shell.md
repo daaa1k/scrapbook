@@ -24,7 +24,8 @@ Preconditions:
 - A notebook with at least one pasted source exists (use paste-source).
 
 - **Open.** Navigate to the notebook URL from paste-source `meta.json` `resultUrl`.
-- **Select.** Click a source button in `getByRole('complementary', { name: 'ソース一覧' })` (or the sources tab on narrow viewports). URL search includes that `sourceId`.
+- **Select.** Click a source name in `getByRole('complementary', { name: 'ソース一覧' })` (URL sources are external links that also focus; paste/PDF without URL are buttons). URL search includes that `sourceId`.
+- **Citations.** After summarize (mock or live), summary text ends with `[1]` footnote buttons (`getByRole('button', { name: '引用1' })`). Click toggles an in-flow excerpt panel under the paragraph (`aria-expanded`). There is no floating tooltip and no separate `引用` region.
 - **Memo.** Fill `getByRole('textbox', { name: 'ソースのメモ' })`, blur or wait for `保存済み`. Reload. Memo remains.
 - **Ask.** Fill `getByRole('textbox', { name: '質問' })`, click `質問する`.
 - **Mobile tabs.** Set viewport under `lg`, use tablist `ノートの表示切替`, switch tabs, confirm ask draft / memo draft still present.

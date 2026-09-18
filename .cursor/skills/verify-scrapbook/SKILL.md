@@ -11,7 +11,7 @@ Read `features/README.md` before driving. Drive recipes from the matching featur
 
 ## Interview facts (do not skip)
 
-- **Surface:** Web UI at `/` (notebook list +「新しいノート」) and `/notebooks/$notebookId` (three-pane note shell). Japanese copy. Brand link `Scrapbook` and nav「ノート」both go to `/`. Old `/sources` and `/sources/$sourceId` redirect into a notebook URL or `/`.
+- **Surface:** Web UI at `/` (notebook list +「新しいノート」) and `/notebooks/$notebookId` (three-pane note shell). Japanese copy. Brand link `Scrapbook` goes to `/`. Old `/sources` and `/sources/$sourceId` redirect into a notebook URL or `/`.
 - **Run:** `bun run migrate` once per checkout, then `bun run dev` (Vite + Cloudflare plugin) on port **3000** by default. Auth bypass is on when `wrangler.jsonc` has `ENVIRONMENT=development` and `ALLOW_INSECURE_AUTH_BYPASS=true` (default local). Copy `.dev.vars.example` → `.dev.vars` if missing. Empty `CURSOR_API_KEY` uses the mock Cursor client locally. Production dogfood `https://scrapbook.dd41kk.workers.dev` is Cloudflare Access gated; do **not** treat it as the default verification target unless Access credentials are available.
 - **Drive:** Repo has **no** Playwright/Cypress e2e suite. This skill ships a Playwright helper under `helpers/`. Prefer ARIA names and visible Japanese button labels already in the app. CDP against a manual Chrome is a fallback only if Playwright cannot start; document that honestly in the run notes.
 - **Observe:** Screenshots (PNG), ARIA/accessibility snapshots (txt), HTTP doctor output, page URL after navigation. Optional: local D1 under `.wrangler/state` (shared; not a proof substitute for UI).

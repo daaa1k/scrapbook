@@ -31,12 +31,9 @@ function RootDocument({ children }: { children: ReactNode }) {
       </head>
       <body>
         <div className="mx-auto max-w-7xl px-4 py-8">
-          <header className="mb-8 flex items-baseline justify-between gap-4">
+          <header className="mb-8">
             <Link to="/" className="text-xl font-semibold tracking-tight">
               Scrapbook
-            </Link>
-            <Link to="/" className="text-sm text-zinc-700 hover:underline dark:text-zinc-300">
-              ノート
             </Link>
           </header>
           {children}
