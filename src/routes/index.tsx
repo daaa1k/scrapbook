@@ -49,11 +49,7 @@ function HomePage() {
 
   return (
     <div className="space-y-8">
-      <section className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="mb-2 text-2xl font-semibold">ノート</h1>
-          <p className="text-sm text-zinc-500">ノートを開くか、新しく作成してください。</p>
-        </div>
+      <section className="flex flex-wrap items-start justify-end gap-3">
         <Button type="button" onClick={() => setCreateOpen(true)}>
           新しいノート
         </Button>

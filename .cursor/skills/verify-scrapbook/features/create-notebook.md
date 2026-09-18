@@ -12,7 +12,7 @@ Create notebook lets a user open the first-source modal from home, land in a not
 
 ## How to get to it (user POV)
 
-- Open `/` (header brand `Scrapbook` or nav「ノート」).
+- Open `/` (header brand `Scrapbook`).
 - Choose `新しいノート`. Cancel with `閉じる` to prove no empty notebook appears.
 - Complete a paste or URL register in the modal to create and open the notebook.
 - On the notebook page, edit `ノート名` and `名前を変更`.
