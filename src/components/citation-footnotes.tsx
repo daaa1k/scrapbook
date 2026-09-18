@@ -46,7 +46,9 @@ function CitationFootnote({ index, excerpt }: CitationFootnoteProps) {
         type="button"
         className="align-super text-xs font-medium text-zinc-600 underline decoration-dotted underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
         aria-label={label}
-        aria-describedby={open ? tipId : undefined}
+        aria-expanded={open}
+        aria-controls={tipId}
+        onClick={() => setOpen((current) => !current)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
       >
@@ -55,7 +57,7 @@ function CitationFootnote({ index, excerpt }: CitationFootnoteProps) {
       {open ? (
         <span
           id={tipId}
-          role="tooltip"
+          role="region"
           className="absolute bottom-full left-1/2 z-20 mb-2 w-64 -translate-x-1/2 rounded-md border border-zinc-200 bg-white p-3 text-left text-sm font-normal normal-case text-zinc-800 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
         >
           <span className="mb-1 block text-xs text-zinc-500 dark:text-zinc-400">{label}</span>

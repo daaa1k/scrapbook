@@ -108,9 +108,6 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
           citations={source.citations}
           emptyLabel="まだありません"
         />
-        {source.summary && source.citations.length > 0 ? (
-          <p className="text-xs text-zinc-500">番号にマウスを置くと、本文からの引用が表示されます。</p>
-        ) : null}
         {bodyForCursor ? (
           <div>
             <Button disabled={retryBusy || summarize.isPending} onClick={() => summarize.mutate()}>
