@@ -1,17 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { SourceInvestigate } from '~/components/source-investigate'
 import { SourceMemoPane } from '~/components/source-memo-pane'
 import { SourceModal } from '~/components/source-modal'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
+import { isLeavingNotebook, type MemoSessionHandle } from '~/domain/memo-save'
 import { resolveNoteShellView, type NoteShellSearch } from '~/domain/note-shell'
 import { sourceListFilterFromSourcesPageSearch } from '~/domain/organization'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { isTerminalJobStatus, userFacingError } from '~/lib/utils'
 import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
 import { deleteRegisteredSource, listSources } from '~/server/functions/sources'
+
+function notebookIdFromParams(params: object): string | undefined {
+  if (!('notebookId' in params)) return undefined
+  const id = params.notebookId
+  return typeof id === 'string' ? id : undefined
+}
 
 export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const navigate = useNavigate()
@@ -20,8 +27,50 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const [titleDraft, setTitleDraft] = useState('')
   const [renameError, setRenameError] = useState<string | null>(null)
   const [paneError, setPaneError] = useState<string | null>(null)
-  const [flushMemo, setFlushMemo] = useState<(() => Promise<void>) | null>(null)
+  const memoSessionRef = useRef<MemoSessionHandle | null>(null)
+  const registerMemoSession = useCallback((session: MemoSessionHandle) => {
+    memoSessionRef.current = session
+  }, [])
   const [mobilePane, setMobilePane] = useState<'sources' | 'study' | 'memo'>('study')
+
+  const shouldBlockLeave = useCallback(async (args: { current: { params: object }; next: { params: object } }) => {
+    if (!isLeavingNotebook(notebookIdFromParams(args.current.params), notebookIdFromParams(args.next.params))) {
+      return false
+    }
+    const session = memoSessionRef.current
+    if (!session?.needsGuard) return false
+    try {
+      await session.flush()
+      return false
+    } catch {
+      return true
+    }
+  }, [])
+
+  const enableBeforeUnload = useCallback(() => memoSessionRef.current?.needsGuard ?? false, [])
+
+  const blocker = useBlocker({
+    shouldBlockFn: shouldBlockLeave,
+    enableBeforeUnload,
+    withResolver: true,
+  })
+
+  async function retryLeave() {
+    if (blocker.status !== 'blocked') return
+    try {
+      await memoSessionRef.current?.flush()
+      blocker.proceed()
+    } catch {
+      return
+    }
+  }
+
+  function discardAndLeave() {
+    if (blocker.status !== 'blocked') return
+    memoSessionRef.current?.discard()
+    blocker.proceed()
+  }
+
   const filter = sourceListFilterFromSourcesPageSearch({ notebookId })
 
   const catalog = useQuery({
@@ -82,9 +131,8 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   async function focusSource(nextSourceId: string) {
     if (view?.status === 'ready' && view.focusSourceId === nextSourceId) return
     try {
-      await flushMemo?.()
+      await memoSessionRef.current?.flush()
     } catch {
-      // Keep the draft; surface error via memo pane state.
       return
     }
     await navigate({
@@ -115,6 +163,27 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         <Link to="/" className="text-sm text-zinc-500 hover:underline">
           ← ホームへ
         </Link>
+        {blocker.status === 'blocked' ? (
+          <div
+            role="alertdialog"
+            aria-labelledby="memo-leave-title"
+            aria-describedby="memo-leave-desc"
+            className="space-y-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/40"
+          >
+            <p id="memo-leave-title" className="font-medium text-red-800 dark:text-red-200">
+              メモを保存できませんでした
+            </p>
+            <p id="memo-leave-desc">再試行するか、変更を破棄して移動できます。</p>
+            <div className="flex gap-3">
+              <button type="button" className="underline" onClick={() => void retryLeave()}>
+                再試行
+              </button>
+              <button type="button" className="underline" onClick={discardAndLeave}>
+                破棄
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <form
             className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row"
@@ -303,7 +372,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
               <SourceMemoPane
                 key={view.focusSourceId}
                 sourceId={view.focusSourceId}
-                registerFlush={(flush) => setFlushMemo(() => flush)}
+                registerMemoSession={registerMemoSession}
               />
             </aside>
           </div>
@@ -315,6 +384,11 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onSourceAdded={async ({ sourceId: addedSourceId }) => {
+          try {
+            await memoSessionRef.current?.flush()
+          } catch {
+            return
+          }
           setModalOpen(false)
           await navigate({
             to: '/notebooks/$notebookId',
