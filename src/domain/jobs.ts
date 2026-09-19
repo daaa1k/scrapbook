@@ -96,6 +96,8 @@ export const JOB_ERROR_LABEL: Record<string, string> = {
   notebook_in_progress: '処理中のソースがあるノートは削除できません',
   notebook_title_taken: '同じ名前のノートブックがあります',
   source_already_registered: 'このURLは別のノートに登録されています',
+  invalid_url: '有効なURLではありません。https://example.com のように入力してください',
+  unsupported_protocol: 'http または https のURLだけ登録できます',
 }
 
 export function jobErrorReason(

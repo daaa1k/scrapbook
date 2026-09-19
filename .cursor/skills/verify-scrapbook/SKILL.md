@@ -78,11 +78,13 @@ Drive via the helper (see feature files for recipes):
 
 Subcommands:
 
-- `paste-source --title <t> --body <b>` — home「新しいノート」modal paste; prove `/notebooks/$id?sourceId=…`.
+- `paste-source --title <t> --body <b>` — home「新しいノート」modal; select `貼り付け`; prove `/notebooks/$id?sourceId=…`.
+- `url-source --url <url>` — home「新しいノート」modal URL method; prove `/notebooks/$id`.
+- `pdf-source --file <path>` — home「新しいノート」modal PDF method; prove `/notebooks/$id`.
 - `screenshot --path <file> [--url <path>]` — capture a page.
 - `snapshot --path <file> [--url <path>]` — accessibility snapshot text.
 
-Prefer role + accessible name. Example names already in the app: `新しいノート`, `URL`, `タイトル`, `本文`, `ノート名`, `ソースのメモ`, `質問`, buttons `URLを登録`, `本文を保存`, `名前を変更`, `削除`, `ソースを追加`, `質問する`, `要約する`.
+Prefer role + accessible name. Example names already in the app: `新しいノート`, `ページのURL`, `タイトル`, `本文`, `ノート名`, `ソースのメモ`, `質問`, buttons `URLを登録`, `本文を保存`, `名前を変更`, `削除`, `ソースを追加`, `質問する`, `要約する`, tablist `入力方法`.
 
 ## Evidence
 
