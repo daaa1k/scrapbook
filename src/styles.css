@@ -9,12 +9,14 @@
 :root {
   color-scheme: light;
   --ctp-red: #d20f39;
+  --focus-ring: #1e66f5;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
     --ctp-red: #f38ba8;
+    --focus-ring: #89b4fa;
   }
 }
 
@@ -46,4 +48,51 @@ body {
 
 body {
   @apply min-h-screen antialiased;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  z-index: 100;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  background: #e6e9ef;
+  color: #4c4f69;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-12rem);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .skip-link {
+    background: #313244;
+    color: #cdd6f4;
+  }
+}
+
+:is(a, button, input, select, textarea, summary, [role='button'], [role='tab'], [role='menuitem']):focus {
+  outline: none;
+}
+
+:is(a, button, input, select, textarea, summary, [role='button'], [role='tab'], [role='menuitem']):focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+#main-content:focus {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  :is(a, button, input, select, textarea, summary, [role='button'], [role='tab'], [role='menuitem']):focus-visible,
+  #main-content:focus {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
 }

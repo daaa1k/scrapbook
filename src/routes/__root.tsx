@@ -30,13 +30,20 @@ function RootDocument({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <a href="#main-content" className="skip-link">
+          メインコンテンツへ移動
+        </a>
         <div className="mx-auto max-w-7xl px-4 py-8">
           <header className="mb-8">
-            <Link to="/" className="text-xl font-semibold tracking-tight">
-              Scrapbook
-            </Link>
+            <nav aria-label="サイト">
+              <Link to="/" className="text-xl font-semibold tracking-tight">
+                Scrapbook
+              </Link>
+            </nav>
           </header>
-          {children}
+          <main id="main-content" tabIndex={-1}>
+            {children}
+          </main>
         </div>
         <Scripts />
       </body>

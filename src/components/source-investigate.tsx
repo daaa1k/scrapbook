@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { CitedProse } from '~/components/citation-footnotes'
+import { Alert } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
 import { Textarea } from '~/components/ui/textarea'
 import { MAX_CURSOR_BODY_CHARS, storedBodyText } from '~/domain/ingest-result'
@@ -64,7 +65,11 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   })
 
   if (!source) {
-    return <p className="text-sm text-zinc-500">読み込み中…</p>
+    return (
+      <p className="text-sm text-zinc-500" aria-live="polite" aria-busy="true">
+        読み込み中…
+      </p>
+    )
   }
 
   const jobStatus = source.job?.status ?? null
@@ -76,11 +81,13 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
     ? `Cursor には本文の先頭 ${MAX_CURSOR_BODY_CHARS.toLocaleString('ja-JP')} 文字だけを渡します。`
     : null
   const title = source.title ?? source.url ?? source.id
+  const studyBusy = summarize.isPending || ask.isPending || deleteQa.isPending || retryBusy
+  const jobStatusText = jobStatus ? jobStatusLabel(jobStatus, jobKind) : '未処理'
 
   return (
-    <div className="flex min-h-0 flex-col gap-6">
+    <div className="flex min-h-0 flex-col gap-6" aria-busy={studyBusy || undefined}>
       <header className="space-y-1">
-        <h2 className="text-lg font-semibold">
+        <p className="text-lg font-semibold">
           {source.url ? (
             <a
               href={source.url}
@@ -93,9 +100,11 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
           ) : (
             title
           )}
-        </h2>
+        </p>
         <p className="text-sm text-zinc-500">
-          {jobStatus ? jobStatusLabel(jobStatus, jobKind) : '未処理'}
+          <span id="investigate-job-status" aria-live="polite" aria-atomic="true">
+            {jobStatusText}
+          </span>
           {' · '}
           回答対象はこのソースのみ
         </p>
@@ -193,7 +202,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
         )}
       </section>
 
-      {actionError ? <p className="text-sm text-red-600">{actionError}</p> : null}
+      {actionError ? <Alert id="investigate-action-error">{actionError}</Alert> : null}
     </div>
   )
 }
