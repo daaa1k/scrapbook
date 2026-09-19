@@ -81,7 +81,7 @@ function panelConcealment(concealed: boolean) {
 
 function FieldLabel({ htmlFor, children }: { htmlFor: string; children: ReactNode }) {
   return (
-    <label htmlFor={htmlFor} className="mb-1 block text-sm font-medium">
+    <label htmlFor={htmlFor} className="mb-1 block text-body font-medium">
       {children}
     </label>
   )
@@ -90,7 +90,7 @@ function FieldLabel({ htmlFor, children }: { htmlFor: string; children: ReactNod
 function PendingMark() {
   return (
     <span
-      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
       aria-hidden="true"
     />
   )
@@ -116,7 +116,7 @@ function SourceAddTabs({
 
   return (
     <div
-      className="grid grid-cols-3 overflow-hidden rounded-md border border-zinc-300 dark:border-zinc-700"
+      className="grid grid-cols-3 overflow-hidden rounded-md border border-border"
       role="tablist"
       aria-label={SOURCE_ADD_TABLIST_LABEL}
       aria-orientation="horizontal"
@@ -136,10 +136,11 @@ function SourceAddTabs({
             tabIndex={isSelected ? 0 : -1}
             disabled={disabled}
             className={cn(
-              'relative flex min-h-11 items-center justify-center px-2 text-sm',
+              'relative flex min-h-11 items-center justify-center px-2 text-body',
               isSelected
-                ? 'bg-zinc-900 font-bold text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900'
-                : 'font-medium text-zinc-600 dark:text-zinc-400',
+                ? 'bg-inverse font-bold text-canvas'
+                : 'font-medium text-muted hover:bg-surface-muted active:bg-surface-muted',
+              disabled && 'disabled:cursor-not-allowed disabled:text-disabled disabled:opacity-60',
             )}
             onClick={() => {
               if (disabled) return
@@ -323,7 +324,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
     <>
       <dialog
         ref={dialogRef}
-        className="m-auto w-[min(100%,32rem)] max-h-[90vh] overflow-y-auto rounded-lg border border-zinc-200 bg-white p-0 text-zinc-900 shadow-lg backdrop:bg-zinc-950/40 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+        className="m-auto w-[min(100%,32rem)] max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-surface p-0 text-ink shadow-lg backdrop:bg-overlay"
         onCancel={(event) => {
           const intent = sourceAddCloseIntent({ busy, dirty: dirtyDraft() })
           if (intent === 'close') return
@@ -347,13 +348,13 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
         aria-describedby={dialogDescribedBy}
         aria-busy={busy || undefined}
       >
-        <div className="space-y-5 p-5">
-          <div className="flex items-start justify-between gap-3">
+        <div className="space-y-4 p-inset">
+          <div className="flex items-start justify-between gap-gap">
             <div className="min-w-0 pr-2">
-              <h2 id="source-modal-title" className="text-lg font-semibold">
+              <h2 id="source-modal-title" className="text-title font-semibold">
                 {creatingNotebook ? '新しいノート' : 'ソースを追加'}
               </h2>
-              <p id="source-modal-desc" className="mt-1 text-sm text-zinc-500">
+              <p id="source-modal-desc" className="mt-1 text-status text-muted">
                 {creatingNotebook
                   ? '最初のソースを登録するとノートが作成されます。閉じても空のノートは残りません。'
                   : 'URL・PDF・貼り付けからソースを追加します。'}
@@ -386,7 +387,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
             {...panelConcealment(sourceAddPanelIsConcealed('url', method))}
           >
             <form
-              className="space-y-3"
+              className="space-y-stack"
               onSubmit={(event) => {
                 event.preventDefault()
                 const trimmed = url.trim()
@@ -446,7 +447,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
             {...panelConcealment(sourceAddPanelIsConcealed('pdf', method))}
           >
             <form
-              className="space-y-3"
+              className="space-y-stack"
               onSubmit={(event) => {
                 event.preventDefault()
                 const issue = sourceAddPdfIssue(
@@ -464,7 +465,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
             >
               <div>
                 <FieldLabel htmlFor="source-add-pdf">PDFファイル</FieldLabel>
-                <p id="source-add-pdf-hint" className="mb-2 text-sm text-zinc-500">
+                <p id="source-add-pdf-hint" className="mb-2 text-status text-muted">
                   {SOURCE_ADD_PDF_HINT}
                 </p>
                 <Input
@@ -484,7 +485,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
                 />
               </div>
               {pdfFile ? (
-                <div id="source-add-pdf-pick" className="space-y-2 text-sm">
+                <div id="source-add-pdf-pick" className="space-y-stack text-body">
                   <p>
                     {pdfFile.name}（{formatFileBytes(pdfFile.size)}）
                   </p>
@@ -523,7 +524,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
             {...panelConcealment(sourceAddPanelIsConcealed('paste', method))}
           >
             <form
-              className="space-y-3"
+              className="space-y-stack"
               onSubmit={(event) => {
                 event.preventDefault()
                 const titleIssue = sourceAddPasteTitleIssue(pasteTitle)
@@ -626,7 +627,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
                 />
                 <p
                   id="source-add-paste-count"
-                  className={cn('mt-1 text-sm', pasteCount.over ? 'text-red-600' : 'text-zinc-500')}
+                  className={cn('mt-1 text-meta', pasteCount.over ? 'text-danger' : 'text-muted')}
                 >
                   {pasteCount.current.toLocaleString('ja-JP')} / {pasteCount.max.toLocaleString('ja-JP')}
                 </p>

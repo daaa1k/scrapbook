@@ -17,11 +17,11 @@ export function LoadingSkeleton({
   return (
     <div aria-busy="true" aria-live="polite">
       <p className="sr-only">{label}</p>
-      <div className="space-y-3">
+      <div className="space-y-stack">
         {Array.from({ length: lines }, (_, index) => (
           <div
             key={index}
-            className="h-16 animate-pulse rounded-lg bg-surface-muted motion-reduce:animate-none"
+            className="h-14 animate-pulse rounded-md bg-surface-muted motion-reduce:animate-none"
           />
         ))}
       </div>

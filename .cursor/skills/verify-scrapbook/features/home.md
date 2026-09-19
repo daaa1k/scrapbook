@@ -8,7 +8,7 @@ Home is `/`. The page heading is `ノート`. Catalog loading, empty, and error 
 - `home-empty` explains that a notebook holds sources for summarize and ask, names URL / PDF / paste, and shows the only `新しいノート` control. The header does not repeat that button.
 - `home-loading` shows a skeleton with `ノート一覧を読み込み中…` and never shows `ノートはまだありません`.
 - `home-error` shows an alert and `再試行` when the catalog request fails. Retry refetches. Empty copy is absent.
-- `home-card` opens the notebook from the card body. `削除` is outside that link. Only the row being deleted is pending (`削除しています`). Other rows keep a working `削除`. The time line is `更新` plus a relative label.
+- `home-card` opens the notebook from the card body. `削除` is outside that link. Only the row being deleted is pending (`削除しています`). Other rows keep a working `削除`. One meta line combines source count and `更新` plus a relative label.
 
 ## How to get to it (user POV)
 

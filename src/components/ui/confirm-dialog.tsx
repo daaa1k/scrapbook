@@ -72,12 +72,12 @@ export function ConfirmDialog({
         onCancel()
       }}
     >
-      <div className="space-y-4 p-5">
-        <h2 id={titleId} className="text-lg font-semibold">
+      <div className="space-y-stack p-inset">
+        <h2 id={titleId} className="text-title font-semibold">
           {title}
         </h2>
         {describedBy ? (
-          <div id={bodyId} className="space-y-3 text-sm">
+          <div id={bodyId} className="space-y-stack text-body">
             {description ? <p>{description}</p> : null}
             {bullets && bullets.length > 0 ? (
               <ul className="list-disc space-y-1 pl-5">
@@ -88,7 +88,7 @@ export function ConfirmDialog({
             ) : null}
           </div>
         ) : null}
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-gap">
           <Button type="button" variant="secondary" data-confirm-cancel="" onClick={onCancel}>
             {cancelLabel}
           </Button>

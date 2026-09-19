@@ -64,12 +64,12 @@ function RootDocument({ children }: { children: ReactNode }) {
           <header
             className={
               notebookWorkspace
-                ? 'mb-3 flex shrink-0 items-center justify-between gap-3'
-                : 'mb-8 flex items-center justify-between gap-3'
+                ? 'mb-stack flex shrink-0 items-center justify-between gap-gap'
+                : 'mb-section flex items-center justify-between gap-gap'
             }
           >
             <nav aria-label="サイト">
-              <Link to="/" className="text-xl font-semibold tracking-tight">
+              <Link to="/" className="text-title font-semibold tracking-tight">
                 Scrapbook
               </Link>
             </nav>
