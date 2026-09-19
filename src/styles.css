@@ -50,6 +50,32 @@ body {
   @apply min-h-screen antialiased;
 }
 
+/*
+  Notebook workspace height tracks visualViewport via --app-height so the
+  software keyboard shrinks the shell instead of covering ask/memo controls.
+  Safe-area padding lives on the shell chrome in __root.tsx.
+*/
+body.notebook-workspace {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--app-offset-top, 0px);
+  height: var(--app-height, 100dvh);
+  max-height: var(--app-height, 100dvh);
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.tap-target {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+.break-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .skip-link {
   position: absolute;
   left: 1rem;

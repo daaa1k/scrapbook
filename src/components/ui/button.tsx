@@ -11,13 +11,13 @@ const variantClass: Record<ButtonVariant, string> = {
     'border border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800',
   ghost: 'bg-transparent text-zinc-700 hover:bg-zinc-200 dark:text-zinc-300 dark:hover:bg-zinc-800',
   danger: 'bg-red-600 text-white hover:opacity-90 dark:text-zinc-950',
-  icon: 'h-9 w-9 p-0 bg-transparent text-zinc-700 hover:bg-zinc-200 dark:text-zinc-300 dark:hover:bg-zinc-800',
+  icon: 'h-11 w-11 p-0 bg-transparent text-zinc-700 hover:bg-zinc-200 dark:text-zinc-300 dark:hover:bg-zinc-800',
 }
 
 const sizeClass: Record<ButtonSize, string> = {
-  sm: 'px-2 py-1 text-xs',
-  md: 'px-3 py-2 text-sm',
-  lg: 'px-4 py-2.5 text-base',
+  sm: 'min-h-11 px-2.5 py-1.5 text-xs',
+  md: 'min-h-11 px-3 py-2 text-sm',
+  lg: 'min-h-11 px-4 py-2.5 text-base',
 }
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {

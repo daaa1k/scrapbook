@@ -384,7 +384,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           {titleEditor.status === 'viewing' ? (
             <div className="min-w-0 flex-1 space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight break-words">{view.notebook.title}</h1>
+              <h1 className="break-anywhere text-2xl font-semibold tracking-tight">{view.notebook.title}</h1>
               <Button
                 ref={renameButtonRef}
                 type="button"
@@ -637,7 +637,7 @@ function NotebookBreadcrumb({ current }: { current: string }) {
           </Link>
         </li>
         <li aria-hidden="true">/</li>
-        <li aria-current="page" className="min-w-0 break-words text-zinc-700 dark:text-zinc-300">
+        <li aria-current="page" className="min-w-0 break-anywhere text-zinc-700 dark:text-zinc-300">
           {current}
         </li>
       </ol>
@@ -724,7 +724,7 @@ function SourceRow({
               aria-describedby={compact ? NOTEBOOK_SOURCE_STUDY_HINT_ID : undefined}
               onClick={onFocus}
             >
-              <span className={`line-clamp-2 break-words ${focused ? 'font-bold' : ''}`}>{label}</span>
+              <span className={`line-clamp-2 break-anywhere ${focused ? 'font-bold' : ''}`}>{label}</span>
               {focused ? (
                 <span className="mt-0.5 block text-xs font-medium text-zinc-500">
                   {SOURCE_LIST_SELECTED_LABEL}
@@ -737,7 +737,7 @@ function SourceRow({
               href={source.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex shrink-0 rounded-md p-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+              className="tap-target inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
               aria-label={`${label}を新しいタブで開く`}
             >
               <svg
@@ -828,6 +828,7 @@ function SourceRowMenu({
         type="button"
         variant="ghost"
         size="sm"
+        className="tap-target min-h-11"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -846,7 +847,7 @@ function SourceRowMenu({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center rounded px-2 py-1.5 text-left text-sm text-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-300"
+            className="tap-target flex min-h-11 w-full items-center rounded px-3 text-left text-sm text-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-300"
             disabled={busy}
             aria-disabled={busy || undefined}
             aria-describedby={busy ? busyReasonId : undefined}
