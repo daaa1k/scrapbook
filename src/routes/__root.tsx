@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { ThemeToggle } from '~/components/theme-toggle'
 import { useAppViewportCssVars } from '~/hooks/use-app-viewport'
+import { useWebVitalsReporting } from '~/hooks/use-web-vitals'
 import { THEME_BOOT_SCRIPT } from '~/lib/theme'
 import { cn } from '~/lib/utils'
 import appCss from '~/styles.css?url'
@@ -39,6 +40,7 @@ function RootDocument({ children }: { children: ReactNode }) {
     select: (state) => isNotebookWorkspacePath(state.location.pathname),
   })
   useAppViewportCssVars(notebookWorkspace)
+  useWebVitalsReporting()
 
   return (
     <html lang="ja" suppressHydrationWarning>
