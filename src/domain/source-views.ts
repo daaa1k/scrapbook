@@ -22,6 +22,7 @@ export const sourceListItemSchema = z.object({
   jobStatus: jobStatusSchema.nullable(),
   jobKind: jobKindSchema.nullable(),
   createdAt: z.number(),
+  updatedAt: z.number(),
   notebook: notebookRefSchema,
   tags: z.array(tagNameSchema),
 })

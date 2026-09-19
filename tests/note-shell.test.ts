@@ -50,6 +50,7 @@ function source(id: string, title: string): SourceListItem {
     jobStatus: null,
     jobKind: null,
     createdAt: 1,
+    updatedAt: 1,
     notebook,
     tags: [],
   })

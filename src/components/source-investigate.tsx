@@ -27,11 +27,17 @@ import {
 } from '~/domain/job-status-copy'
 import type { JobStatus } from '~/domain/jobs'
 import {
+  COPY_FAILURE_ANNOUNCEMENT,
+  COPY_SUCCESS_ANNOUNCEMENT,
+  QUESTION_EXAMPLES,
+} from '~/domain/source-list-controls'
+import {
   sourceAddPasteBodyCount,
   sourceAddPasteBodyIssue,
   sourceAddPasteTitleIssue,
 } from '~/domain/source-add'
 import { STUDY_LOADING_LABEL } from '~/domain/note-shell'
+import { copyText } from '~/lib/clipboard'
 import { sourceKeys } from '~/lib/query-keys'
 import { isTerminalJobStatus, userFacingError } from '~/lib/utils'
 import { scrollElementIntoVisualViewport } from '~/lib/visual-viewport'
@@ -81,6 +87,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const [pasteBodyError, setPasteBodyError] = useState<string | null>(null)
   const [pasteRequested, setPasteRequested] = useState(false)
   const [completionAnnouncement, setCompletionAnnouncement] = useState('')
+  const [copyAnnouncement, setCopyAnnouncement] = useState('')
   const [pendingQa, setPendingQa] = useState<{ id: string; question: string } | null>(null)
   const previousJobStatus = useRef<JobStatus | null | undefined>(undefined)
   const pasteTitleSeeded = useRef(false)
@@ -256,6 +263,11 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
     paste.mutate({ title: pasteTitle, body: pasteBody })
   }
 
+  async function copyPlainText(text: string) {
+    const result = await copyText(text)
+    setCopyAnnouncement(result === 'ok' ? COPY_SUCCESS_ANNOUNCEMENT : COPY_FAILURE_ANNOUNCEMENT)
+  }
+
   return (
     <div className="flex min-h-full flex-col gap-6" aria-busy={studyBusy || undefined}>
       <header className="space-y-2">
@@ -277,6 +289,9 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
         {progress.tone === 'pending' ? <ProgressLine view={progress} /> : null}
         <p id="investigate-job-complete" className="sr-only" role="status" aria-live="polite" aria-atomic="true">
           {completionAnnouncement}
+        </p>
+        <p id="investigate-copy-status" className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {copyAnnouncement}
         </p>
       </header>
 
@@ -381,9 +396,26 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
         className="space-y-3 rounded-md border border-zinc-200 p-4 dark:border-zinc-700"
         aria-label="要約"
       >
-        <h3 className="text-sm font-medium text-zinc-500">要約</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-medium text-zinc-500">要約</h3>
+          {source.summary ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void copyPlainText(source.summary ?? '')}
+            >
+              コピー
+            </Button>
+          ) : null}
+        </div>
         {source.summary ? (
-          <CitedProse text={source.summary} citations={source.citations} emptyLabel="まだありません" />
+          <CitedProse
+            text={source.summary}
+            citations={source.citations}
+            emptyLabel="まだありません"
+            onCopyAnnouncement={setCopyAnnouncement}
+          />
         ) : jobPending && jobKind === 'summarize_body' ? (
           <ProgressLine view={progress} />
         ) : (
@@ -478,7 +510,29 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
           <p className="text-sm text-zinc-500">本文を貼り付けると質問できます。</p>
         )}
         {source.qaAnswers.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-500">まだ質問はありません</p>
+          <div className="mt-2 space-y-3">
+            <p className="text-sm text-zinc-500">まだ質問はありません</p>
+            {bodyForCursor ? (
+              <div className="space-y-2">
+                <p className="text-meta font-medium text-muted">質問例</p>
+                <ul className="flex flex-col gap-2">
+                  {QUESTION_EXAMPLES.map((example) => (
+                    <li key={example}>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="h-auto min-h-11 w-full justify-start whitespace-normal text-left"
+                        onClick={() => setQuestionDraft(example)}
+                      >
+                        {example}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
         ) : (
           <ul className="mt-2 space-y-3">
             {source.qaAnswers.map((turn) => {
@@ -510,9 +564,26 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                     </Button>
                   </div>
                   <div className="mt-3 space-y-2 border-l-2 border-zinc-900 pl-3 dark:border-zinc-100">
-                    <p className="text-xs font-semibold tracking-wide text-zinc-500">回答</p>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold tracking-wide text-zinc-500">回答</p>
+                      {turnView.phase === 'ready' && turn.answer ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => void copyPlainText(turn.answer ?? '')}
+                        >
+                          コピー
+                        </Button>
+                      ) : null}
+                    </div>
                     {turnView.phase === 'ready' ? (
-                      <CitedProse text={turn.answer ?? ''} citations={turn.citations} emptyLabel="回答待ち…" />
+                      <CitedProse
+                        text={turn.answer ?? ''}
+                        citations={turn.citations}
+                        emptyLabel="回答待ち…"
+                        onCopyAnnouncement={setCopyAnnouncement}
+                      />
                     ) : turnView.phase === 'pending' ? (
                       <ProgressLine view={turnView.progress} />
                     ) : (

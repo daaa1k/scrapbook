@@ -6,6 +6,8 @@ The study pane turns job status into Japanese progress, and failed jobs into cau
 
 - `job-progress-label` replaces internal names such as `queued` with Japanese text and a spinner. Examples: `本文の取得を準備しています`, `要約しています`, `回答を準備しています`.
 - `job-progress-per-question` shows that label on the waiting turn after `質問する`. The turn does not use `回答待ち…`.
+- `job-copy` adds `コピー` on ready summary and answer blocks, and on open citation excerpts. Success announces `コピーしました` in `#investigate-copy-status`.
+- `job-question-examples` shows clickable example prompts when the Q&A list is empty and the source has body text.
 - `job-failure-recovery` shows an alert with cause and impact. URL fetch failure offers `本文を貼り付ける` and `再取得` or `再試行`. A missing Cursor key explains that an admin must set it and offers no retry. Timeout offers `再試行`.
 - `job-empty-body` shows `本文がありません` and a paste form titled `本文の貼り付け` when the source has no body and no job is running.
 - `job-complete-live` writes one sentence into `#investigate-job-complete` (`role="status"`) when a job becomes `succeeded`. In-flight poll labels are not live.
