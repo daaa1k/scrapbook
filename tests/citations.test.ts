@@ -372,6 +372,7 @@ describe('source citations', () => {
         jobStatus: null,
         jobKind: null,
         createdAt: 1,
+        updatedAt: 1,
         notebook: detailFixture.organization.notebook,
         tags: [],
       }),
@@ -385,6 +386,7 @@ describe('source citations', () => {
       jobStatus: null,
       jobKind: null,
       createdAt: 1,
+      updatedAt: 1,
       notebook: {
         id: '11111111-1111-4111-8111-111111111111',
         title: '受信箱',

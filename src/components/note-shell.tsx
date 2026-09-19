@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   focusNotebookTab,
   MobileNotebookTabs,
@@ -53,6 +53,13 @@ import {
   type SourceListKind,
 } from '~/domain/note-shell'
 import { sourceListFilterFromSourcesPageSearch } from '~/domain/organization'
+import {
+  SOURCE_LIST_SORT_DEFAULT,
+  SOURCE_LIST_SORT_LABELS,
+  sortSourceListItems,
+  sourceListSearchEmptyCopy,
+  type SourceListSort,
+} from '~/domain/source-list-controls'
 import type { SourceListItem } from '~/domain/source-views'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { cn, isTerminalJobStatus, userFacingError } from '~/lib/utils'
@@ -90,6 +97,9 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const [paneAnnounce, setPaneAnnounce] = useState('')
   const [pendingSource, setPendingSource] = useState<{ id: string; label: string } | null>(null)
   const [sourcesDrawerOpen, setSourcesDrawerOpen] = useState(false)
+  const [sourceSearch, setSourceSearch] = useState('')
+  const [sourceSort, setSourceSort] = useState<SourceListSort>(SOURCE_LIST_SORT_DEFAULT)
+  const deferredSourceSearch = useDeferredValue(sourceSearch.trim())
   const layoutMode = useNotebookLayoutMode()
   const tabsLayout = layoutMode === 'tabs'
   const drawerLayout = layoutMode === 'drawer'
@@ -147,7 +157,10 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     blocker.proceed()
   }
 
-  const filter = sourceListFilterFromSourcesPageSearch({ notebookId })
+  const filter = {
+    ...sourceListFilterFromSourcesPageSearch({ notebookId }),
+    q: deferredSourceSearch,
+  }
 
   const catalog = useQuery({
     queryKey: organizationKeys.catalog,
@@ -279,6 +292,10 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   }
 
   const view = frame
+  const sortedSources = useMemo(
+    () => (view.status === 'ready' ? sortSourceListItems(view.sources, sourceSort) : []),
+    [view, sourceSort],
+  )
   const paneGridClass = cn(
     'grid min-h-0 flex-1 gap-gap',
     splitLayout && 'grid-cols-[minmax(10rem,16rem)_minmax(0,1fr)_minmax(10rem,18rem)]',
@@ -326,7 +343,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         <ErrorRetry onRetry={() => void sourcesQuery.refetch()}>
           {userFacingError(sourcesQuery.error)}
         </ErrorRetry>
-      ) : view.status === 'empty' ? (
+      ) : view.status === 'empty' && deferredSourceSearch === '' ? (
         <EmptyState
           title={SOURCE_LIST_EMPTY_COPY}
           action={
@@ -336,22 +353,60 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           }
         />
       ) : (
-        <ul className="space-y-2">
-          {view.sources.map((source) => (
-            <SourceRow
-              key={source.id}
-              source={source}
-              focused={source.id === view.focusSourceId}
-              compact={tabsLayout}
-              deleting={deletingSourceId === source.id}
-              onFocus={() => focusListedSource(source)}
-              onDelete={() => {
-                const label = source.title ?? source.url ?? source.id
-                setPendingSource({ id: source.id, label })
-              }}
-            />
-          ))}
-        </ul>
+        <div className="space-y-stack">
+          <div className="space-y-2">
+            <div>
+              <label htmlFor="notebook-source-search" className="mb-1 block text-meta font-medium text-muted">
+                検索
+              </label>
+              <Input
+                id="notebook-source-search"
+                type="search"
+                value={sourceSearch}
+                onChange={(event) => setSourceSearch(event.target.value)}
+                placeholder="タイトルや本文で検索"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label htmlFor="notebook-source-sort" className="mb-1 block text-meta font-medium text-muted">
+                並び替え
+              </label>
+              <select
+                id="notebook-source-sort"
+                className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-body text-ink"
+                value={sourceSort}
+                onChange={(event) => setSourceSort(event.target.value as SourceListSort)}
+              >
+                {(Object.keys(SOURCE_LIST_SORT_LABELS) as SourceListSort[]).map((key) => (
+                  <option key={key} value={key}>
+                    {SOURCE_LIST_SORT_LABELS[key]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {view.status === 'empty' || sortedSources.length === 0 ? (
+            <p className="text-sm text-muted">{sourceListSearchEmptyCopy(deferredSourceSearch)}</p>
+          ) : (
+            <ul className="space-y-2">
+              {sortedSources.map((source) => (
+                <SourceRow
+                  key={source.id}
+                  source={source}
+                  focused={view.status === 'ready' && source.id === view.focusSourceId}
+                  compact={tabsLayout}
+                  deleting={deletingSourceId === source.id}
+                  onFocus={() => focusListedSource(source)}
+                  onDelete={() => {
+                    const label = source.title ?? source.url ?? source.id
+                    setPendingSource({ id: source.id, label })
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </>
   )
@@ -597,7 +652,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           onCancel={() => setPendingSource(null)}
           onConfirm={() => {
             const deletedId = pendingSource.id
-            const ids = view.status === 'ready' ? view.sources.map((row) => row.id) : []
+            const ids = view.status === 'ready' ? sortedSources.map((row) => row.id) : []
             const focusedId = view.status === 'ready' ? view.focusSourceId : undefined
             const nextId = nextSourceIdAfterDelete(ids, deletedId, focusedId)
             setPendingSource(null)

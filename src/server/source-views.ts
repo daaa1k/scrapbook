@@ -86,6 +86,7 @@ export async function listSourceViews(db: AppDb, filter: SourceListFilter): Prom
       fetchStatus: sources.fetchStatus,
       acquiredVia: sources.acquiredVia,
       createdAt: sources.createdAt,
+      updatedAt: sources.updatedAt,
       notebookId: notebooks.id,
       notebookTitle: notebooks.title,
     })
@@ -112,6 +113,7 @@ export async function listSourceViews(db: AppDb, filter: SourceListFilter): Prom
         jobStatus: job ? jobStatusSchema.parse(job.status) : null,
         jobKind: job ? jobKindSchema.parse(job.kind) : null,
         createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
         notebook: notebookRef(row.notebookId, row.notebookTitle),
         tags: tagsBySource.get(row.id) ?? [],
       }),

@@ -15,6 +15,7 @@ Note shell is the `/notebooks/$notebookId` three-pane experience: sources on the
 - `shell-delete-source` deletes from the left pane after the in-app alertdialog. Open the row `操作` menu, then `削除`. After a mid-list delete, the next source at that index is selected (the previous source if it was last). Other rows keep a working `操作` control. A row with an in-flight job shows `処理中のため削除できません` in the row text, not only as a tooltip. `操作`, `削除`, external-open, and footnote `引用N` controls are at least 44×44 CSS px.
 - `shell-source-row` shows a Web / PDF / `貼り付け` kind mark, a two-line title with a native tooltip, `選択中` plus `aria-current="true"` on the focused row, and a pending or failed job chip when the list item has one. Long titles and URLs wrap with `break-anywhere` instead of forcing horizontal overflow.
 - `shell-empty-sources` keeps the three panes when the notebook has no sources. The left pane shows `まだソースがありません。追加すると要約と質問が使えます。` with a nearby `ソースを追加` button.
+- `shell-source-controls` offers title/body search and sort (`追加順` / `更新順` / `タイトル順`) above the source list when the notebook has sources or an active search.
 - `shell-invalid-source` shows `指定されたソースが見つからないため、先頭のソースを表示しています。` when `?sourceId=` is missing from the notebook.
 - `shell-qa-delete` confirms with the same alertdialog as source delete. Only the turn being deleted is pending. Other `この質問と回答を削除` buttons stay enabled.
 

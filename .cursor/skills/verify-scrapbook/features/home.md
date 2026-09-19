@@ -9,12 +9,13 @@ Home is `/`. The page heading is `ノート`. Catalog loading, empty, and error 
 - `home-loading` shows a skeleton with `ノート一覧を読み込み中…` and never shows `ノートはまだありません`.
 - `home-error` shows an alert and `再試行` when the catalog request fails. Retry refetches. Empty copy is absent.
 - `home-card` opens the notebook from the card body. `削除` is outside that link. Only the row being deleted is pending (`削除しています`). Other rows keep a working `削除`. One meta line combines source count and `更新` plus a relative label.
+- `home-list-controls` offers search by title, sort (`更新順` / `名前順`), and a density toggle (`標準` / `コンパクト`). Empty search shows `一致するノートはありません`.
 
 ## How to get to it (user POV)
 
 - Open `/`. The heading is `ノート`.
 - With no notebooks, read the empty copy and choose the empty-state `新しいノート`.
-- With notebooks, choose a card body to open, or `削除` then confirm.
+- With notebooks, search or sort the list, toggle density, choose a card body to open, or `削除` then confirm.
 - If the list fails to load, choose `再試行`.
 
 ## Driving it with Playwright
