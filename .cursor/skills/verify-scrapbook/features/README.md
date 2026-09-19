@@ -32,6 +32,7 @@ Each feature file: H1, one paragraph, then exactly four H2s in order: `Sub-featu
 ## Features
 
 - [Focus and landmarks](./a11y-focus.md) covers the skip link, page `h1`, pane `h2`, and keyboard focus rings.
+- [Add a source](./source-add.md) covers the method tabs, discard confirm, and busy submit on the source dialog.
 - [Create a notebook](./create-notebook.md) covers home「新しいノート」, open, rename, and cascade delete.
 - [Paste a source](./paste-source.md) covers first-source paste via the home modal into `/notebooks/$id`.
 - [Register a URL](./register-url.md) covers first-source URL register via the same modal.
