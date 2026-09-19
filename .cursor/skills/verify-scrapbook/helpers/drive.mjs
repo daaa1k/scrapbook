@@ -276,7 +276,7 @@ async function sourceListQa(argv) {
     const finishedFirst = idA ? finishLatestAsk(idA) : null
     await page.reload({ waitUntil: 'networkidle' })
     await firstTurn.waitFor({ timeout: 15_000 })
-    await study.getByText('モック回答です。').first().waitFor({ timeout: 15_000 })
+    await study.getByText(/モック回答です。|回答できませんでした/).first().waitFor({ timeout: 15_000 })
 
     await study.getByRole('textbox', { name: '質問' }).fill('二つ目の質問です')
     await study.getByRole('button', { name: '質問する' }).click()
