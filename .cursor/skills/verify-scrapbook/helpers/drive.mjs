@@ -281,10 +281,21 @@ async function jobProgress(argv) {
     if (askPending) {
       await page.screenshot({ path: resolve(out, 'ask-pending.png'), fullPage: true })
     }
-    await page
+    const askFinished = await page
       .getByText(/モック回答です。|回答できませんでした/)
       .first()
-      .waitFor({ timeout: 30_000 })
+      .waitFor({ timeout: 45_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!askFinished) {
+      await page.screenshot({ path: resolve(out, 'ask-before-reload.png'), fullPage: true })
+      await page.reload({ waitUntil: 'networkidle' })
+      await page
+        .getByText(/モック回答です。|回答できませんでした/)
+        .first()
+        .waitFor({ timeout: 15_000 })
+    }
+    await page.screenshot({ path: resolve(out, 'ask-after.png'), fullPage: true })
     const askWaiting = await page.getByText('回答待ち…').count()
 
     let seededPending = null
@@ -334,6 +345,7 @@ async function jobProgress(argv) {
       summarizePending,
       completeText,
       askPending,
+      askFinished,
       askWaitingCount: askWaiting,
       seededPending,
       seededFailedAsk,
