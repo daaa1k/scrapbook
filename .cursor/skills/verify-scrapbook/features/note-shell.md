@@ -1,6 +1,6 @@
 # Note shell
 
-Note shell is the `/notebooks/$notebookId` three-pane experience: sources on the left, summarize/citations/ask in the center, memo on the right. Narrow screens use tabs without dropping drafts.
+Note shell is the `/notebooks/$notebookId` three-pane experience: sources on the left, summarize/citations/ask in the center, memo on the right. The notebook title is the page `h1`. Pane titles `ソース`, `要約・質問`, and `メモ` are `h2`. Narrow screens use tabs without dropping drafts.
 
 ## Sub-features
 

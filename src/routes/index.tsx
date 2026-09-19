@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { SourceModal } from '~/components/source-modal'
+import { Alert } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { ConfirmDialog } from '~/components/ui/confirm-dialog'
@@ -53,14 +54,20 @@ function HomePage() {
 
   return (
     <div className="space-y-8">
-      <section className="flex flex-wrap items-start justify-end gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">ノート</h1>
         <Button type="button" onClick={() => setCreateOpen(true)}>
           新しいノート
         </Button>
-      </section>
-      {listError ? <p className="text-sm text-red-600">{listError}</p> : null}
-      <section>
-        {notebooks.length === 0 ? (
+      </div>
+      {catalog.isError ? <Alert>{userFacingError(catalog.error)}</Alert> : null}
+      {listError ? <Alert id="home-list-error">{listError}</Alert> : null}
+      <section aria-busy={catalog.isPending || removeNotebook.isPending || undefined}>
+        {catalog.isPending && !catalog.data ? (
+          <p aria-live="polite" aria-busy="true">
+            読み込み中…
+          </p>
+        ) : notebooks.length === 0 ? (
           <Card>
             <p className="mb-3">ノートはまだありません。</p>
             <Button type="button" onClick={() => setCreateOpen(true)}>

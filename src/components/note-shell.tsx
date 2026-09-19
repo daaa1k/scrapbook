@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { SourceInvestigate } from '~/components/source-investigate'
 import { SourceMemoPane } from '~/components/source-memo-pane'
 import { SourceModal } from '~/components/source-modal'
+import { Alert } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
 import { ConfirmDialog } from '~/components/ui/confirm-dialog'
 import { Input } from '~/components/ui/input'
@@ -146,16 +147,22 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   }
 
   if (!view) {
-    return <p>読み込み中…</p>
+    return (
+      <p aria-live="polite" aria-busy="true">
+        読み込み中…
+      </p>
+    )
   }
 
   if (view.status === 'unknown-notebook') {
     return (
       <div className="space-y-4">
-        <Link to="/" className="text-sm text-zinc-500 hover:underline">
-          ← ホームへ
-        </Link>
-        <p>ノートが見つかりません。</p>
+        <nav aria-label="パンくず">
+          <Link to="/" className="text-sm text-zinc-500 hover:underline">
+            ← ホームへ
+          </Link>
+        </nav>
+        <h1 className="text-2xl font-semibold tracking-tight">ノートが見つかりません</h1>
       </div>
     )
   }
@@ -163,9 +170,12 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   return (
     <div className="flex min-h-[70vh] flex-col gap-4">
       <header className="shrink-0 space-y-3 border-b border-zinc-200 pb-4 dark:border-zinc-800">
-        <Link to="/" className="text-sm text-zinc-500 hover:underline">
-          ← ホームへ
-        </Link>
+        <nav aria-label="パンくず">
+          <Link to="/" className="text-sm text-zinc-500 hover:underline">
+            ← ホームへ
+          </Link>
+        </nav>
+        <h1 className="text-2xl font-semibold tracking-tight">{view.notebook.title}</h1>
         {blocker.status === 'blocked' ? (
           <div
             role="alertdialog"
@@ -203,6 +213,9 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
               disabled={rename.isPending}
               onChange={(event) => setTitleDraft(event.target.value)}
               aria-label="ノート名"
+              aria-invalid={renameError ? true : undefined}
+              aria-describedby={renameError ? 'notebook-rename-error' : undefined}
+              aria-busy={rename.isPending || undefined}
             />
             <Button type="submit" disabled={rename.isPending || titleDraft === view.notebook.title}>
               名前を変更
@@ -212,8 +225,8 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             ソースを追加
           </Button>
         </div>
-        {renameError ? <p className="text-sm text-red-600">{renameError}</p> : null}
-        {paneError ? <p className="text-sm text-red-600">{paneError}</p> : null}
+        {renameError ? <Alert id="notebook-rename-error">{renameError}</Alert> : null}
+        {paneError ? <Alert id="notebook-pane-error">{paneError}</Alert> : null}
       </header>
 
       {view.status === 'empty' ? (
@@ -263,13 +276,14 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             <aside
               id="notebook-panel-sources"
               role="tabpanel"
-              aria-labelledby="notebook-tab-sources"
+              aria-labelledby="notebook-sources-heading"
               className={`min-h-0 overflow-y-auto border-zinc-200 pr-0 dark:border-zinc-800 lg:block lg:border-r lg:pr-3 ${
                 mobilePane === 'sources' ? 'block' : 'hidden'
               }`}
-              aria-label="ソース一覧"
             >
-              <h2 className="mb-3 text-sm font-medium text-zinc-500">ソース</h2>
+              <h2 id="notebook-sources-heading" className="mb-3 text-sm font-medium text-zinc-500">
+                ソース
+              </h2>
               <ul className="space-y-2">
                 {view.sources.map((source) => {
                   const focused = source.id === view.focusSourceId
@@ -347,24 +361,25 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
               </ul>
             </aside>
 
-            <main
+            <section
               id="notebook-panel-study"
               role="tabpanel"
-              aria-labelledby="notebook-tab-study"
+              aria-labelledby="notebook-study-heading"
               className={`min-h-0 overflow-y-auto lg:block ${mobilePane === 'study' ? 'block' : 'hidden'}`}
-              aria-label="要約と質問"
             >
+              <h2 id="notebook-study-heading" className="mb-3 text-sm font-medium text-zinc-500">
+                要約・質問
+              </h2>
               <SourceInvestigate key={view.focusSourceId} sourceId={view.focusSourceId} />
-            </main>
+            </section>
 
             <aside
               id="notebook-panel-memo"
               role="tabpanel"
-              aria-labelledby="notebook-tab-memo"
+              aria-labelledby="notebook-memo-heading"
               className={`min-h-0 overflow-y-auto border-zinc-200 pl-0 dark:border-zinc-800 lg:block lg:border-l lg:pl-3 ${
                 mobilePane === 'memo' ? 'block' : 'hidden'
               }`}
-              aria-label="メモ"
             >
               <SourceMemoPane
                 key={view.focusSourceId}

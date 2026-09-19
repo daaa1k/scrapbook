@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { Alert } from '~/components/ui/alert'
 import { Textarea } from '~/components/ui/textarea'
 import {
   applyServerMemo,
@@ -154,15 +155,30 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
             : null
 
   if (!query.data) {
-    return <p className="text-sm text-zinc-500">メモを読み込み中…</p>
+    return (
+      <p className="text-sm text-zinc-500" aria-live="polite" aria-busy="true">
+        メモを読み込み中…
+      </p>
+    )
   }
 
+  const statusId = 'memo-save-status'
+  const errorId = 'memo-save-error'
+  const describedBy = [statusLabel ? statusId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3" aria-busy={saveState === 'saving' || undefined}>
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-medium text-zinc-500">メモ</h2>
+        <h2 id="notebook-memo-heading" className="text-sm font-medium text-zinc-500">
+          メモ
+        </h2>
         {statusLabel ? (
-          <p className={saveState === 'error' ? 'text-sm text-red-600' : 'text-sm text-zinc-500'} aria-live="polite">
+          <p
+            id={statusId}
+            className={saveState === 'error' ? 'text-sm text-red-600' : 'text-sm text-zinc-500'}
+            aria-live={saveState === 'error' ? undefined : 'polite'}
+            aria-atomic="true"
+          >
             {statusLabel}
           </p>
         ) : null}
@@ -176,11 +192,14 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
           void saveIfDirty()
         }}
         aria-label="ソースのメモ"
+        aria-invalid={saveState === 'error' || undefined}
+        aria-describedby={describedBy}
+        aria-busy={saveState === 'saving' || undefined}
         maxLength={20_000}
       />
       {error ? (
         <div className="space-y-2">
-          <p className="text-sm text-red-600">{error}</p>
+          <Alert id={errorId}>{error}</Alert>
           <div className="flex gap-3">
             <button type="button" className="text-sm underline" onClick={() => void saveIfDirty()}>
               再試行

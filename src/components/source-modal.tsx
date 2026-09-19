@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { Alert } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
@@ -132,6 +133,8 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
         closeDialog()
       }}
       aria-labelledby="source-modal-title"
+      aria-describedby="source-modal-desc"
+      aria-busy={busy || undefined}
     >
       <div className="space-y-6 p-5">
         <div className="flex items-start justify-between gap-3">
@@ -139,7 +142,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
             <h2 id="source-modal-title" className="text-lg font-semibold">
               {creatingNotebook ? '新しいノート' : 'ソースを追加'}
             </h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p id="source-modal-desc" className="mt-1 text-sm text-zinc-500">
               {creatingNotebook
                 ? '最初のソースを登録するとノートが作成されます。閉じても空のノートは残りません。'
                 : 'URL・PDF・貼り付けからソースを追加します。'}
@@ -168,13 +171,19 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
               value={url}
               onChange={(event) => setUrl(event.target.value)}
               aria-label="URL"
+              aria-invalid={urlError ? true : undefined}
+              aria-describedby={urlError ? 'source-url-error' : undefined}
               disabled={busy}
             />
             <Button type="submit" className="shrink-0 whitespace-nowrap" disabled={busy}>
               URLを登録
             </Button>
           </form>
-          {urlError ? <p className="mt-2 text-sm text-red-600">{urlError}</p> : null}
+          {urlError ? (
+            <Alert id="source-url-error" className="mt-2">
+              {urlError}
+            </Alert>
+          ) : null}
         </section>
 
         <section>
@@ -198,13 +207,19 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
               accept="application/pdf,.pdf"
               onChange={(event) => setPdfFile(event.target.files?.[0] ?? null)}
               aria-label="PDFファイル"
+              aria-invalid={pdfError ? true : undefined}
+              aria-describedby={pdfError ? 'source-pdf-error' : undefined}
               disabled={busy}
             />
             <Button type="submit" className="shrink-0 whitespace-nowrap" disabled={busy}>
               PDFを登録
             </Button>
           </form>
-          {pdfError ? <p className="mt-2 text-sm text-red-600">{pdfError}</p> : null}
+          {pdfError ? (
+            <Alert id="source-pdf-error" className="mt-2">
+              {pdfError}
+            </Alert>
+          ) : null}
         </section>
 
         <section>
@@ -224,6 +239,8 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
               value={pasteTitle}
               onChange={(event) => setPasteTitle(event.target.value)}
               aria-label="タイトル"
+              aria-invalid={pasteError ? true : undefined}
+              aria-describedby={pasteError ? 'source-paste-error' : undefined}
               disabled={busy}
             />
             <Input
@@ -233,6 +250,8 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
               value={pasteUrl}
               onChange={(event) => setPasteUrl(event.target.value)}
               aria-label="URL（任意）"
+              aria-invalid={pasteError ? true : undefined}
+              aria-describedby={pasteError ? 'source-paste-error' : undefined}
               disabled={busy}
             />
             <Textarea
@@ -242,13 +261,19 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
               value={pasteBody}
               onChange={(event) => setPasteBody(event.target.value)}
               aria-label="本文"
+              aria-invalid={pasteError ? true : undefined}
+              aria-describedby={pasteError ? 'source-paste-error' : undefined}
               disabled={busy}
             />
             <Button type="submit" disabled={busy}>
               本文を保存
             </Button>
           </form>
-          {pasteError ? <p className="mt-2 text-sm text-red-600">{pasteError}</p> : null}
+          {pasteError ? (
+            <Alert id="source-paste-error" className="mt-2">
+              {pasteError}
+            </Alert>
+          ) : null}
         </section>
       </div>
     </dialog>
