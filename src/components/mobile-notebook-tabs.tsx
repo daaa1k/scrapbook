@@ -88,10 +88,10 @@ export function MobileNotebookTabs({ selected, onSelect }: MobileNotebookTabsPro
             aria-selected={isSelected}
             tabIndex={isSelected ? 0 : -1}
             className={cn(
-              'tap-target relative flex min-h-11 items-center justify-center px-2 text-sm',
+              'tap-target relative flex min-h-11 items-center justify-center px-2 text-body',
               isSelected
                 ? 'bg-inverse font-bold text-canvas after:absolute after:inset-x-3 after:bottom-0 after:h-1 after:rounded-t-sm after:bg-canvas'
-                : 'font-medium text-muted',
+                : 'font-medium text-muted hover:bg-surface-muted active:bg-surface-muted',
             )}
             onClick={() => onSelect(tab.id)}
           >

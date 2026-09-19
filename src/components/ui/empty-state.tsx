@@ -10,9 +10,9 @@ export function EmptyState({
   action?: ReactNode
 }) {
   return (
-    <div className="rounded-md border border-dashed border-border p-4">
+    <div className="rounded-md border border-dashed border-border p-inset">
       <p className="font-medium text-ink">{title}</p>
-      {description ? <p className="mt-2 text-sm text-muted">{description}</p> : null}
+      {description ? <p className="mt-stack text-status text-muted">{description}</p> : null}
       {action ? <div className="mt-3">{action}</div> : null}
     </div>
   )

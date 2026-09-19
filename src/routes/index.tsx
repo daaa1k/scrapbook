@@ -73,9 +73,9 @@ function HomePage() {
   const deletingNotebookId = removeNotebook.isPending ? removeNotebook.variables : undefined
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">ノート</h1>
+    <div className="space-y-section">
+      <div className="flex flex-wrap items-center justify-between gap-gap">
+        <h1 className="text-heading font-semibold tracking-tight">ノート</h1>
         {createCta === 'header' ? (
           <Button type="button" onClick={() => setCreateOpen(true)}>
             新しいノート
@@ -103,7 +103,7 @@ function HomePage() {
             }
           />
         ) : (
-          <ul className="space-y-3">
+          <ul className="space-y-stack">
             {list.items.map((notebook) => (
               <li key={notebook.id}>
                 <NotebookCard
@@ -161,13 +161,14 @@ function NotebookCard({
         <Link
           to="/notebooks/$notebookId"
           params={{ notebookId: notebook.id }}
-          className="min-w-0 flex-1 p-4 hover:bg-surface-muted"
+          className="min-w-0 flex-1 px-inset py-stack hover:bg-surface-muted active:bg-surface-muted"
         >
           <span className="font-medium text-ink">{notebook.title}</span>
-          <p className="mt-1 text-sm text-muted">{notebook.sourceCount}件のソース</p>
-          <p className="mt-1 text-sm text-muted">{notebookUpdatedAtLabel(notebook.updatedAt)}</p>
+          <p className="mt-1 text-meta text-muted">
+            {notebook.sourceCount}件のソース · {notebookUpdatedAtLabel(notebook.updatedAt)}
+          </p>
         </Link>
-        <div className="flex shrink-0 items-start p-4 pl-0">
+        <div className="flex shrink-0 items-start px-inset py-stack pl-0">
           <Button
             type="button"
             variant="danger"

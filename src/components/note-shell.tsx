@@ -60,11 +60,11 @@ import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functio
 import { deleteRegisteredSource, listSources } from '~/server/functions/sources'
 
 const PANE_HEADING_CLASS =
-  'sticky top-0 z-[1] mb-3 bg-inherit py-1 text-sm font-medium text-muted'
+  'sticky top-0 z-[1] mb-stack bg-inherit py-1 text-status font-medium text-muted'
 const PANE_SURFACE_SIDE =
-  'min-h-0 overflow-y-auto rounded-md bg-surface-muted p-3'
+  'min-h-0 overflow-y-auto rounded-md bg-surface-muted p-inset'
 const PANE_SURFACE_MAIN =
-  'min-h-0 overflow-y-auto rounded-md bg-surface p-3'
+  'min-h-0 overflow-y-auto rounded-md bg-surface p-inset'
 
 function notebookIdFromParams(params: object): string | undefined {
   if (!('notebookId' in params)) return undefined
@@ -240,8 +240,8 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
 
   if (frame.status === 'catalog-loading' || frame.status === 'catalog-error') {
     return (
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <header className="shrink-0 space-y-3 border-b border-border pb-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-gap">
+        <header className="shrink-0 space-y-stack border-b border-border pb-stack">
           <NotebookBreadcrumb current="ノート" />
           {frame.status === 'catalog-error' ? (
             <ErrorRetry onRetry={() => void catalog.refetch()}>
@@ -254,7 +254,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         {frame.status === 'catalog-loading' ? (
           <div
             className={cn(
-              'grid min-h-0 flex-1 gap-3',
+              'grid min-h-0 flex-1 gap-gap',
               splitLayout &&
                 'grid-cols-[minmax(10rem,16rem)_minmax(0,1fr)_minmax(10rem,18rem)]',
               drawerLayout && 'grid-cols-[minmax(0,1fr)_minmax(11rem,18rem)]',
@@ -271,16 +271,16 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
 
   if (frame.status === 'unknown-notebook') {
     return (
-      <div className="space-y-4">
+      <div className="space-y-section">
         <NotebookBreadcrumb current="ノートが見つかりません" />
-        <h1 className="text-2xl font-semibold tracking-tight">ノートが見つかりません</h1>
+        <h1 className="text-heading font-semibold tracking-tight">ノートが見つかりません</h1>
       </div>
     )
   }
 
   const view = frame
   const paneGridClass = cn(
-    'grid min-h-0 flex-1 gap-3',
+    'grid min-h-0 flex-1 gap-gap',
     splitLayout && 'grid-cols-[minmax(10rem,16rem)_minmax(0,1fr)_minmax(10rem,18rem)]',
     drawerLayout && 'grid-cols-[minmax(0,1fr)_minmax(11rem,18rem)]',
   )
@@ -300,7 +300,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
 
   const sourcesBody = (
     <>
-      <div className="mb-3 flex items-start justify-between gap-2">
+      <div className="mb-stack flex items-start justify-between gap-2">
         <h2 id="notebook-sources-heading" className={PANE_HEADING_CLASS}>
           ソース
         </h2>
@@ -311,12 +311,12 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         ) : null}
       </div>
       {tabsLayout ? (
-        <p id={NOTEBOOK_SOURCE_STUDY_HINT_ID} className="mb-3 text-xs text-muted">
+        <p id={NOTEBOOK_SOURCE_STUDY_HINT_ID} className="sr-only">
           {NOTEBOOK_SOURCE_STUDY_HINT}
         </p>
       ) : null}
       {view.status === 'ready' && view.invalidSourceId ? (
-        <Alert id="notebook-invalid-source" className="mb-3">
+        <Alert id="notebook-invalid-source" className="mb-stack">
           {INVALID_SOURCE_ID_RECOVERY}
         </Alert>
       ) : null}
@@ -357,21 +357,21 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   )
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <header className="shrink-0 space-y-3 border-b border-border bg-canvas pb-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-gap">
+      <header className="shrink-0 space-y-stack border-b border-border bg-canvas pb-stack">
         <NotebookBreadcrumb current={view.notebook.title} />
         {blocker.status === 'blocked' ? (
           <div
             role="alertdialog"
             aria-labelledby="memo-leave-title"
             aria-describedby="memo-leave-desc"
-            className="space-y-2 rounded-md border border-danger-border bg-danger-subtle p-3 text-sm"
+            className="space-y-stack rounded-md border border-danger-border bg-danger-subtle p-inset text-body"
           >
             <p id="memo-leave-title" className="font-medium text-danger-subtle-ink">
               メモを保存できませんでした
             </p>
             <p id="memo-leave-desc">再試行するか、変更を破棄して移動できます。</p>
-            <div className="flex gap-3">
+            <div className="flex gap-gap">
               <button type="button" className="underline" onClick={() => void retryLeave()}>
                 再試行
               </button>
@@ -381,10 +381,10 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             </div>
           </div>
         ) : null}
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-gap">
           {titleEditor.status === 'viewing' ? (
             <div className="min-w-0 flex-1 space-y-2">
-              <h1 className="break-anywhere text-2xl font-semibold tracking-tight">{view.notebook.title}</h1>
+              <h1 className="break-anywhere text-heading font-semibold tracking-tight">{view.notebook.title}</h1>
               <Button
                 ref={renameButtonRef}
                 type="button"
@@ -400,7 +400,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             </div>
           ) : (
             <form
-              className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start"
+              className="flex min-w-0 flex-1 flex-col gap-gap sm:flex-row sm:items-start"
               onSubmit={(event) => {
                 event.preventDefault()
                 const intent = notebookTitleCommit(titleEditor.draft, view.notebook.title)
@@ -436,7 +436,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                 aria-invalid={renameError ? true : undefined}
                 aria-describedby={renameError ? 'notebook-rename-error' : undefined}
                 aria-busy={rename.isPending || undefined}
-                className="text-xl font-semibold"
+                className="text-title font-semibold"
               />
               <div className="flex flex-wrap gap-2">
                 <Button type="submit" variant="secondary" disabled={rename.isPending}>
@@ -461,7 +461,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         {paneError ? <Alert id="notebook-pane-error">{paneError}</Alert> : null}
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-gap">
         {tabsLayout ? <MobileNotebookTabs selected={mobilePane} onSelect={setMobilePane} /> : null}
         {drawerLayout ? (
           <div className="shrink-0">
@@ -527,7 +527,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                 {SOURCE_LIST_LOAD_ERROR}
               </ErrorRetry>
             ) : (
-              <p className="text-sm text-muted">{SOURCE_LIST_EMPTY_COPY}</p>
+              <p className="text-status text-muted">{SOURCE_LIST_EMPTY_COPY}</p>
             )}
           </section>
 
@@ -562,7 +562,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                     {SOURCE_LIST_LOAD_ERROR}
                   </ErrorRetry>
                 ) : (
-                  <p className="text-sm text-muted">ソースを選ぶとメモを書けます。</p>
+                  <p className="text-status text-muted">ソースを選ぶとメモを書けます。</p>
                 )}
               </>
             )}
@@ -630,7 +630,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
 function NotebookBreadcrumb({ current }: { current: string }) {
   return (
     <nav aria-label="パンくず">
-      <ol className="m-0 flex list-none flex-wrap items-center gap-x-2 gap-y-1 p-0 text-sm text-muted">
+      <ol className="m-0 flex list-none flex-wrap items-center gap-x-2 gap-y-1 p-0 text-meta text-muted">
         <li>
           <Link to="/" className="hover:underline">
             ホーム
@@ -648,7 +648,7 @@ function NotebookBreadcrumb({ current }: { current: string }) {
 function SourceKindMark({ kind }: { kind: SourceListKind }) {
   const label = sourceListKindLabel(kind)
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted">
+    <span className="inline-flex shrink-0 items-center gap-1 text-meta text-muted">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 16 16"
@@ -708,8 +708,8 @@ function SourceRow({
       <div
         className={
           focused
-            ? 'rounded-md border border-inverse p-2'
-            : 'rounded-md border border-transparent p-2 hover:border-border'
+            ? 'rounded-md border border-inverse bg-surface p-2'
+            : 'rounded-md border border-transparent p-2 hover:border-border hover:bg-surface-muted active:bg-surface-muted'
         }
         aria-busy={deleting || undefined}
       >
@@ -718,7 +718,7 @@ function SourceRow({
             <SourceKindMark kind={kind} />
             <button
               type="button"
-              className="w-full text-left text-sm"
+              className="w-full text-left text-body"
               title={label}
               aria-current={focused ? 'true' : undefined}
               aria-describedby={compact ? NOTEBOOK_SOURCE_STUDY_HINT_ID : undefined}
@@ -726,7 +726,7 @@ function SourceRow({
             >
               <span className={`line-clamp-2 break-anywhere ${focused ? 'font-bold' : ''}`}>{label}</span>
               {focused ? (
-                <span className="mt-0.5 block text-xs font-medium text-muted">
+                <span className="mt-0.5 block text-meta font-medium text-muted">
                   {SOURCE_LIST_SELECTED_LABEL}
                 </span>
               ) : null}
@@ -758,7 +758,7 @@ function SourceRow({
             </a>
           ) : null}
           {deleting ? (
-            <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted">
+            <span className="inline-flex shrink-0 items-center gap-1 text-meta text-muted">
               <PendingMark />
               {SOURCE_DELETING_STATUS}
             </span>
@@ -773,7 +773,7 @@ function SourceRow({
         </div>
         {chip ? (
           <p
-            className={`mt-2 flex items-center gap-2 text-xs ${
+            className={`mt-2 flex items-center gap-2 text-meta ${
               chip.tone === 'failure' ? 'text-danger' : 'text-muted'
             }`}
           >
@@ -782,7 +782,7 @@ function SourceRow({
           </p>
         ) : null}
         {busy ? (
-          <p id={busyReasonId} className="mt-1 text-xs text-muted">
+          <p id={busyReasonId} className="mt-1 text-meta text-muted">
             {SOURCE_DELETE_BUSY_REASON}
           </p>
         ) : null}
@@ -847,7 +847,7 @@ function SourceRowMenu({
           <button
             type="button"
             role="menuitem"
-            className="tap-target flex min-h-11 w-full items-center rounded px-3 text-left text-sm text-danger disabled:cursor-not-allowed disabled:text-disabled disabled:opacity-60"
+            className="tap-target flex min-h-11 w-full items-center rounded px-3 text-left text-body text-danger disabled:cursor-not-allowed disabled:text-disabled disabled:opacity-60"
             disabled={busy}
             aria-disabled={busy || undefined}
             aria-describedby={busy ? busyReasonId : undefined}
