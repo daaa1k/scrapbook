@@ -5,7 +5,7 @@ import {
   focusNotebookTab,
   MobileNotebookTabs,
   notebookPanelConcealmentProps,
-  useCompactNotebookLayout,
+  useNotebookLayoutMode,
 } from '~/components/mobile-notebook-tabs'
 import { SourceInvestigate } from '~/components/source-investigate'
 import { SourceMemoPane } from '~/components/source-memo-pane'
@@ -24,6 +24,8 @@ import {
   CATALOG_LOADING_LABEL,
   INVALID_SOURCE_ID_RECOVERY,
   MEMO_LOADING_LABEL,
+  NOTEBOOK_SOURCES_DRAWER_CLOSE_LABEL,
+  NOTEBOOK_SOURCES_DRAWER_OPEN_LABEL,
   NOTEBOOK_SOURCE_STUDY_HINT,
   NOTEBOOK_SOURCE_STUDY_HINT_ID,
   SOURCE_DELETE_BUSY_REASON,
@@ -53,9 +55,16 @@ import {
 import { sourceListFilterFromSourcesPageSearch } from '~/domain/organization'
 import type { SourceListItem } from '~/domain/source-views'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
-import { isTerminalJobStatus, userFacingError } from '~/lib/utils'
+import { cn, isTerminalJobStatus, userFacingError } from '~/lib/utils'
 import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
 import { deleteRegisteredSource, listSources } from '~/server/functions/sources'
+
+const PANE_HEADING_CLASS =
+  'sticky top-0 z-[1] mb-3 bg-inherit py-1 text-sm font-medium text-zinc-500'
+const PANE_SURFACE_SIDE =
+  'min-h-0 overflow-y-auto rounded-md bg-zinc-100/80 p-3 dark:bg-zinc-900/60'
+const PANE_SURFACE_MAIN =
+  'min-h-0 overflow-y-auto rounded-md bg-white/70 p-3 dark:bg-zinc-950/40'
 
 function notebookIdFromParams(params: object): string | undefined {
   if (!('notebookId' in params)) return undefined
@@ -80,7 +89,25 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const [mobilePane, setMobilePane] = useState<NotebookMobilePane>('study')
   const [paneAnnounce, setPaneAnnounce] = useState('')
   const [pendingSource, setPendingSource] = useState<{ id: string; label: string } | null>(null)
-  const compact = useCompactNotebookLayout()
+  const [sourcesDrawerOpen, setSourcesDrawerOpen] = useState(false)
+  const layoutMode = useNotebookLayoutMode()
+  const tabsLayout = layoutMode === 'tabs'
+  const drawerLayout = layoutMode === 'drawer'
+  const splitLayout = layoutMode === 'split'
+
+  useEffect(() => {
+    if (!drawerLayout) setSourcesDrawerOpen(false)
+  }, [drawerLayout])
+
+  useEffect(() => {
+    if (!sourcesDrawerOpen) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      setSourcesDrawerOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [sourcesDrawerOpen])
 
   const shouldBlockLeave = useCallback(async (args: { current: { params: object }; next: { params: object } }) => {
     if (!isLeavingNotebook(notebookIdFromParams(args.current.params), notebookIdFromParams(args.next.params))) {
@@ -213,8 +240,8 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
 
   if (frame.status === 'catalog-loading' || frame.status === 'catalog-error') {
     return (
-      <div className="flex min-h-[70vh] flex-col gap-4">
-        <header className="shrink-0 space-y-3 border-b border-zinc-200 pb-4 dark:border-zinc-800">
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <header className="shrink-0 space-y-3 border-b border-zinc-200 pb-3 dark:border-zinc-800">
           <NotebookBreadcrumb current="ノート" />
           {frame.status === 'catalog-error' ? (
             <ErrorRetry onRetry={() => void catalog.refetch()}>
@@ -225,8 +252,15 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           )}
         </header>
         {frame.status === 'catalog-loading' ? (
-          <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
-            <LoadingSkeleton label={SOURCES_LOADING_LABEL} />
+          <div
+            className={cn(
+              'grid min-h-0 flex-1 gap-3',
+              splitLayout &&
+                'grid-cols-[minmax(10rem,16rem)_minmax(0,1fr)_minmax(10rem,18rem)]',
+              drawerLayout && 'grid-cols-[minmax(0,1fr)_minmax(11rem,18rem)]',
+            )}
+          >
+            {splitLayout ? <LoadingSkeleton label={SOURCES_LOADING_LABEL} /> : null}
             <LoadingSkeleton label={STUDY_LOADING_LABEL} />
             <LoadingSkeleton label={MEMO_LOADING_LABEL} />
           </div>
@@ -245,10 +279,86 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   }
 
   const view = frame
+  const paneGridClass = cn(
+    'grid min-h-0 flex-1 gap-3',
+    splitLayout && 'grid-cols-[minmax(10rem,16rem)_minmax(0,1fr)_minmax(10rem,18rem)]',
+    drawerLayout && 'grid-cols-[minmax(0,1fr)_minmax(11rem,18rem)]',
+  )
+
+  function focusListedSource(source: SourceListItem) {
+    void focusSource(source.id)
+    setMobilePane('study')
+    if (tabsLayout) {
+      const label = source.title ?? source.url ?? source.id
+      setPaneAnnounce(notebookStudySwitchAnnouncement(label))
+      focusNotebookTab('study')
+    }
+    if (drawerLayout) {
+      setSourcesDrawerOpen(false)
+    }
+  }
+
+  const sourcesBody = (
+    <>
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <h2 id="notebook-sources-heading" className={PANE_HEADING_CLASS}>
+          ソース
+        </h2>
+        {drawerLayout ? (
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSourcesDrawerOpen(false)}>
+            閉じる
+          </Button>
+        ) : null}
+      </div>
+      {tabsLayout ? (
+        <p id={NOTEBOOK_SOURCE_STUDY_HINT_ID} className="mb-3 text-xs text-zinc-500">
+          {NOTEBOOK_SOURCE_STUDY_HINT}
+        </p>
+      ) : null}
+      {view.status === 'ready' && view.invalidSourceId ? (
+        <Alert id="notebook-invalid-source" className="mb-3">
+          {INVALID_SOURCE_ID_RECOVERY}
+        </Alert>
+      ) : null}
+      {view.status === 'sources-loading' ? (
+        <LoadingSkeleton label={SOURCES_LOADING_LABEL} lines={4} />
+      ) : view.status === 'sources-error' ? (
+        <ErrorRetry onRetry={() => void sourcesQuery.refetch()}>
+          {userFacingError(sourcesQuery.error)}
+        </ErrorRetry>
+      ) : view.status === 'empty' ? (
+        <EmptyState
+          title={SOURCE_LIST_EMPTY_COPY}
+          action={
+            <Button type="button" onClick={() => setModalOpen(true)}>
+              ソースを追加
+            </Button>
+          }
+        />
+      ) : (
+        <ul className="space-y-2">
+          {view.sources.map((source) => (
+            <SourceRow
+              key={source.id}
+              source={source}
+              focused={source.id === view.focusSourceId}
+              compact={tabsLayout}
+              deleting={deletingSourceId === source.id}
+              onFocus={() => focusListedSource(source)}
+              onDelete={() => {
+                const label = source.title ?? source.url ?? source.id
+                setPendingSource({ id: source.id, label })
+              }}
+            />
+          ))}
+        </ul>
+      )}
+    </>
+  )
 
   return (
-    <div className="flex min-h-[70vh] flex-col gap-4">
-      <header className="shrink-0 space-y-3 border-b border-zinc-200 pb-4 dark:border-zinc-800">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <header className="shrink-0 space-y-3 border-b border-zinc-200 bg-zinc-50 pb-3 dark:border-zinc-800 dark:bg-zinc-950">
         <NotebookBreadcrumb current={view.notebook.title} />
         {blocker.status === 'blocked' ? (
           <div
@@ -351,86 +461,61 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         {paneError ? <Alert id="notebook-pane-error">{paneError}</Alert> : null}
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4">
-        <MobileNotebookTabs selected={mobilePane} onSelect={setMobilePane} />
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        {tabsLayout ? <MobileNotebookTabs selected={mobilePane} onSelect={setMobilePane} /> : null}
+        {drawerLayout ? (
+          <div className="shrink-0">
+            <Button type="button" variant="secondary" size="sm" onClick={() => setSourcesDrawerOpen(true)}>
+              {NOTEBOOK_SOURCES_DRAWER_OPEN_LABEL}
+            </Button>
+          </div>
+        ) : null}
         <p role="status" className="sr-only">
           {paneAnnounce}
         </p>
 
-        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
-          <aside
-            id={notebookPanelId('sources')}
-            role="tabpanel"
-            aria-labelledby="notebook-sources-heading"
-            {...notebookPanelConcealmentProps(notebookPanelIsConcealed('sources', mobilePane, compact))}
-            className={`min-h-0 overflow-y-auto border-zinc-200 pr-0 dark:border-zinc-800 lg:block lg:border-r lg:pr-3 ${
-              mobilePane === 'sources' ? 'block' : 'hidden'
-            }`}
-          >
-            <h2 id="notebook-sources-heading" className="mb-3 text-sm font-medium text-zinc-500">
-              ソース
-            </h2>
-            {compact ? (
-              <p id={NOTEBOOK_SOURCE_STUDY_HINT_ID} className="mb-3 text-xs text-zinc-500">
-                {NOTEBOOK_SOURCE_STUDY_HINT}
-              </p>
-            ) : null}
-            {view.status === 'ready' && view.invalidSourceId ? (
-              <Alert id="notebook-invalid-source" className="mb-3">
-                {INVALID_SOURCE_ID_RECOVERY}
-              </Alert>
-            ) : null}
-            {view.status === 'sources-loading' ? (
-              <LoadingSkeleton label={SOURCES_LOADING_LABEL} lines={4} />
-            ) : view.status === 'sources-error' ? (
-              <ErrorRetry onRetry={() => void sourcesQuery.refetch()}>
-                {userFacingError(sourcesQuery.error)}
-              </ErrorRetry>
-            ) : view.status === 'empty' ? (
-              <EmptyState
-                title={SOURCE_LIST_EMPTY_COPY}
-                action={
-                  <Button type="button" onClick={() => setModalOpen(true)}>
-                    ソースを追加
-                  </Button>
-                }
-              />
-            ) : (
-              <ul className="space-y-2">
-                {view.sources.map((source) => (
-                  <SourceRow
-                    key={source.id}
-                    source={source}
-                    focused={source.id === view.focusSourceId}
-                    compact={compact}
-                    deleting={deletingSourceId === source.id}
-                    onFocus={() => {
-                      void focusSource(source.id)
-                      setMobilePane('study')
-                      if (compact) {
-                        const label = source.title ?? source.url ?? source.id
-                        setPaneAnnounce(notebookStudySwitchAnnouncement(label))
-                        focusNotebookTab('study')
-                      }
-                    }}
-                    onDelete={() => {
-                      const label = source.title ?? source.url ?? source.id
-                      setPendingSource({ id: source.id, label })
-                    }}
-                  />
-                ))}
-              </ul>
-            )}
-          </aside>
+        {drawerLayout && sourcesDrawerOpen ? (
+          <button
+            type="button"
+            className="fixed inset-0 z-30 bg-zinc-950/40"
+            aria-label={NOTEBOOK_SOURCES_DRAWER_CLOSE_LABEL}
+            onClick={() => setSourcesDrawerOpen(false)}
+          />
+        ) : null}
+
+        <div className={paneGridClass}>
+          {splitLayout || tabsLayout ? (
+            <aside
+              id={notebookPanelId('sources')}
+              role="tabpanel"
+              aria-labelledby="notebook-sources-heading"
+              {...notebookPanelConcealmentProps(
+                notebookPanelIsConcealed('sources', mobilePane, layoutMode, sourcesDrawerOpen),
+              )}
+              className={cn(
+                PANE_SURFACE_SIDE,
+                tabsLayout && (mobilePane === 'sources' ? 'block' : 'hidden'),
+                splitLayout && 'block',
+              )}
+            >
+              {sourcesBody}
+            </aside>
+          ) : null}
 
           <section
             id={notebookPanelId('study')}
             role="tabpanel"
             aria-labelledby="notebook-study-heading"
-            {...notebookPanelConcealmentProps(notebookPanelIsConcealed('study', mobilePane, compact))}
-            className={`min-h-0 overflow-y-auto lg:block ${mobilePane === 'study' ? 'block' : 'hidden'}`}
+            {...notebookPanelConcealmentProps(
+              notebookPanelIsConcealed('study', mobilePane, layoutMode, sourcesDrawerOpen),
+            )}
+            className={cn(
+              PANE_SURFACE_MAIN,
+              tabsLayout && (mobilePane === 'study' ? 'block' : 'hidden'),
+              (drawerLayout || splitLayout) && 'block',
+            )}
           >
-            <h2 id="notebook-study-heading" className="mb-3 text-sm font-medium text-zinc-500">
+            <h2 id="notebook-study-heading" className={PANE_HEADING_CLASS}>
               要約・質問
             </h2>
             {view.status === 'ready' ? (
@@ -450,10 +535,14 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             id={notebookPanelId('memo')}
             role="tabpanel"
             aria-labelledby="notebook-memo-heading"
-            {...notebookPanelConcealmentProps(notebookPanelIsConcealed('memo', mobilePane, compact))}
-            className={`min-h-0 overflow-y-auto border-zinc-200 pl-0 dark:border-zinc-800 lg:block lg:border-l lg:pl-3 ${
-              mobilePane === 'memo' ? 'block' : 'hidden'
-            }`}
+            {...notebookPanelConcealmentProps(
+              notebookPanelIsConcealed('memo', mobilePane, layoutMode, sourcesDrawerOpen),
+            )}
+            className={cn(
+              PANE_SURFACE_SIDE,
+              tabsLayout && (mobilePane === 'memo' ? 'block' : 'hidden'),
+              (drawerLayout || splitLayout) && 'block',
+            )}
           >
             {view.status === 'ready' ? (
               <SourceMemoPane
@@ -463,7 +552,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
               />
             ) : (
               <>
-                <h2 id="notebook-memo-heading" className="mb-3 text-sm font-medium text-zinc-500">
+                <h2 id="notebook-memo-heading" className={PANE_HEADING_CLASS}>
                   メモ
                 </h2>
                 {view.status === 'sources-loading' ? (
@@ -479,6 +568,25 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             )}
           </aside>
         </div>
+
+        {drawerLayout ? (
+          <aside
+            id={notebookPanelId('sources')}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="notebook-sources-heading"
+            {...notebookPanelConcealmentProps(
+              notebookPanelIsConcealed('sources', mobilePane, layoutMode, sourcesDrawerOpen),
+            )}
+            className={cn(
+              PANE_SURFACE_SIDE,
+              'fixed inset-y-0 left-0 z-40 w-[min(20rem,92vw)] rounded-none shadow-xl',
+              sourcesDrawerOpen ? 'flex flex-col' : 'hidden',
+            )}
+          >
+            {sourcesBody}
+          </aside>
+        ) : null}
       </div>
 
       {pendingSource ? (

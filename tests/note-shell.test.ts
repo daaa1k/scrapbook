@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   cancelNotebookTitleEdit,
   nextSourceIdAfterDelete,
+  notebookLayoutModeFromMatches,
   notebookPanelId,
   notebookPanelIsConcealed,
   notebookStudySwitchAnnouncement,
@@ -209,16 +210,32 @@ describe('paneAfterTabKey', () => {
   })
 })
 
+describe('notebookLayoutModeFromMatches', () => {
+  it('uses tabs below md, drawer from md to lg, and split at lg', () => {
+    expect(notebookLayoutModeFromMatches(false, false)).toBe('tabs')
+    expect(notebookLayoutModeFromMatches(true, false)).toBe('drawer')
+    expect(notebookLayoutModeFromMatches(true, true)).toBe('split')
+    expect(notebookLayoutModeFromMatches(false, true)).toBe('split')
+  })
+})
+
 describe('notebookPanelIsConcealed', () => {
-  it('conceals only unselected panes in the compact layout', () => {
-    expect(notebookPanelIsConcealed('sources', 'study', true)).toBe(true)
-    expect(notebookPanelIsConcealed('study', 'study', true)).toBe(false)
-    expect(notebookPanelIsConcealed('memo', 'study', true)).toBe(true)
+  it('conceals only unselected panes in the tabs layout', () => {
+    expect(notebookPanelIsConcealed('sources', 'study', 'tabs')).toBe(true)
+    expect(notebookPanelIsConcealed('study', 'study', 'tabs')).toBe(false)
+    expect(notebookPanelIsConcealed('memo', 'study', 'tabs')).toBe(true)
   })
 
-  it('shows every pane in the expanded layout', () => {
-    expect(notebookPanelIsConcealed('sources', 'study', false)).toBe(false)
-    expect(notebookPanelIsConcealed('memo', 'memo', false)).toBe(false)
+  it('hides the source list in drawer layout until the drawer opens', () => {
+    expect(notebookPanelIsConcealed('sources', 'study', 'drawer', false)).toBe(true)
+    expect(notebookPanelIsConcealed('sources', 'study', 'drawer', true)).toBe(false)
+    expect(notebookPanelIsConcealed('study', 'sources', 'drawer', false)).toBe(false)
+    expect(notebookPanelIsConcealed('memo', 'sources', 'drawer', false)).toBe(false)
+  })
+
+  it('shows every pane in the split layout', () => {
+    expect(notebookPanelIsConcealed('sources', 'study', 'split')).toBe(false)
+    expect(notebookPanelIsConcealed('memo', 'memo', 'split')).toBe(false)
   })
 })
 
