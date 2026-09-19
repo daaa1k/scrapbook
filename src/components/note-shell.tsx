@@ -60,11 +60,11 @@ import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functio
 import { deleteRegisteredSource, listSources } from '~/server/functions/sources'
 
 const PANE_HEADING_CLASS =
-  'sticky top-0 z-[1] mb-3 bg-inherit py-1 text-sm font-medium text-zinc-500'
+  'sticky top-0 z-[1] mb-3 bg-inherit py-1 text-sm font-medium text-muted'
 const PANE_SURFACE_SIDE =
-  'min-h-0 overflow-y-auto rounded-md bg-zinc-100/80 p-3 dark:bg-zinc-900/60'
+  'min-h-0 overflow-y-auto rounded-md bg-surface-muted p-3'
 const PANE_SURFACE_MAIN =
-  'min-h-0 overflow-y-auto rounded-md bg-white/70 p-3 dark:bg-zinc-950/40'
+  'min-h-0 overflow-y-auto rounded-md bg-surface p-3'
 
 function notebookIdFromParams(params: object): string | undefined {
   if (!('notebookId' in params)) return undefined
@@ -241,7 +241,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   if (frame.status === 'catalog-loading' || frame.status === 'catalog-error') {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <header className="shrink-0 space-y-3 border-b border-zinc-200 pb-3 dark:border-zinc-800">
+        <header className="shrink-0 space-y-3 border-b border-border pb-3">
           <NotebookBreadcrumb current="ノート" />
           {frame.status === 'catalog-error' ? (
             <ErrorRetry onRetry={() => void catalog.refetch()}>
@@ -311,7 +311,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         ) : null}
       </div>
       {tabsLayout ? (
-        <p id={NOTEBOOK_SOURCE_STUDY_HINT_ID} className="mb-3 text-xs text-zinc-500">
+        <p id={NOTEBOOK_SOURCE_STUDY_HINT_ID} className="mb-3 text-xs text-muted">
           {NOTEBOOK_SOURCE_STUDY_HINT}
         </p>
       ) : null}
@@ -358,16 +358,16 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <header className="shrink-0 space-y-3 border-b border-zinc-200 bg-zinc-50 pb-3 dark:border-zinc-800 dark:bg-zinc-950">
+      <header className="shrink-0 space-y-3 border-b border-border bg-canvas pb-3">
         <NotebookBreadcrumb current={view.notebook.title} />
         {blocker.status === 'blocked' ? (
           <div
             role="alertdialog"
             aria-labelledby="memo-leave-title"
             aria-describedby="memo-leave-desc"
-            className="space-y-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/40"
+            className="space-y-2 rounded-md border border-danger-border bg-danger-subtle p-3 text-sm"
           >
-            <p id="memo-leave-title" className="font-medium text-red-800 dark:text-red-200">
+            <p id="memo-leave-title" className="font-medium text-danger-subtle-ink">
               メモを保存できませんでした
             </p>
             <p id="memo-leave-desc">再試行するか、変更を破棄して移動できます。</p>
@@ -477,7 +477,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         {drawerLayout && sourcesDrawerOpen ? (
           <button
             type="button"
-            className="fixed inset-0 z-30 bg-zinc-950/40"
+            className="fixed inset-0 z-30 bg-overlay"
             aria-label={NOTEBOOK_SOURCES_DRAWER_CLOSE_LABEL}
             onClick={() => setSourcesDrawerOpen(false)}
           />
@@ -527,7 +527,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                 {SOURCE_LIST_LOAD_ERROR}
               </ErrorRetry>
             ) : (
-              <p className="text-sm text-zinc-500">{SOURCE_LIST_EMPTY_COPY}</p>
+              <p className="text-sm text-muted">{SOURCE_LIST_EMPTY_COPY}</p>
             )}
           </section>
 
@@ -562,7 +562,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                     {SOURCE_LIST_LOAD_ERROR}
                   </ErrorRetry>
                 ) : (
-                  <p className="text-sm text-zinc-500">ソースを選ぶとメモを書けます。</p>
+                  <p className="text-sm text-muted">ソースを選ぶとメモを書けます。</p>
                 )}
               </>
             )}
@@ -630,14 +630,14 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
 function NotebookBreadcrumb({ current }: { current: string }) {
   return (
     <nav aria-label="パンくず">
-      <ol className="m-0 flex list-none flex-wrap items-center gap-x-2 gap-y-1 p-0 text-sm text-zinc-500">
+      <ol className="m-0 flex list-none flex-wrap items-center gap-x-2 gap-y-1 p-0 text-sm text-muted">
         <li>
           <Link to="/" className="hover:underline">
             ホーム
           </Link>
         </li>
         <li aria-hidden="true">/</li>
-        <li aria-current="page" className="min-w-0 break-anywhere text-zinc-700 dark:text-zinc-300">
+        <li aria-current="page" className="min-w-0 break-anywhere text-ink">
           {current}
         </li>
       </ol>
@@ -648,7 +648,7 @@ function NotebookBreadcrumb({ current }: { current: string }) {
 function SourceKindMark({ kind }: { kind: SourceListKind }) {
   const label = sourceListKindLabel(kind)
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-zinc-500">
+    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 16 16"
@@ -708,8 +708,8 @@ function SourceRow({
       <div
         className={
           focused
-            ? 'rounded-md border border-zinc-900 p-2 dark:border-zinc-100'
-            : 'rounded-md border border-transparent p-2 hover:border-zinc-200 dark:hover:border-zinc-700'
+            ? 'rounded-md border border-inverse p-2'
+            : 'rounded-md border border-transparent p-2 hover:border-border'
         }
         aria-busy={deleting || undefined}
       >
@@ -726,7 +726,7 @@ function SourceRow({
             >
               <span className={`line-clamp-2 break-anywhere ${focused ? 'font-bold' : ''}`}>{label}</span>
               {focused ? (
-                <span className="mt-0.5 block text-xs font-medium text-zinc-500">
+                <span className="mt-0.5 block text-xs font-medium text-muted">
                   {SOURCE_LIST_SELECTED_LABEL}
                 </span>
               ) : null}
@@ -737,7 +737,7 @@ function SourceRow({
               href={source.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="tap-target inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+              className="tap-target inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-muted hover:text-ink"
               aria-label={`${label}を新しいタブで開く`}
             >
               <svg
@@ -758,7 +758,7 @@ function SourceRow({
             </a>
           ) : null}
           {deleting ? (
-            <span className="inline-flex shrink-0 items-center gap-1 text-xs text-zinc-500">
+            <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted">
               <PendingMark />
               {SOURCE_DELETING_STATUS}
             </span>
@@ -774,7 +774,7 @@ function SourceRow({
         {chip ? (
           <p
             className={`mt-2 flex items-center gap-2 text-xs ${
-              chip.tone === 'failure' ? 'text-red-600' : 'text-zinc-500'
+              chip.tone === 'failure' ? 'text-danger' : 'text-muted'
             }`}
           >
             {chip.tone === 'pending' ? <PendingMark /> : null}
@@ -782,7 +782,7 @@ function SourceRow({
           </p>
         ) : null}
         {busy ? (
-          <p id={busyReasonId} className="mt-1 text-xs text-zinc-500">
+          <p id={busyReasonId} className="mt-1 text-xs text-muted">
             {SOURCE_DELETE_BUSY_REASON}
           </p>
         ) : null}
@@ -842,12 +842,12 @@ function SourceRowMenu({
         <div
           id={menuId}
           role="menu"
-          className="absolute right-0 z-10 mt-1 min-w-40 rounded-md border border-zinc-200 bg-white p-1 shadow-md dark:border-zinc-700 dark:bg-zinc-950"
+          className="absolute right-0 z-10 mt-1 min-w-40 rounded-md border border-border bg-surface p-1 shadow-md"
         >
           <button
             type="button"
             role="menuitem"
-            className="tap-target flex min-h-11 w-full items-center rounded px-3 text-left text-sm text-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-300"
+            className="tap-target flex min-h-11 w-full items-center rounded px-3 text-left text-sm text-danger disabled:cursor-not-allowed disabled:text-disabled disabled:opacity-60"
             disabled={busy}
             aria-disabled={busy || undefined}
             aria-describedby={busy ? busyReasonId : undefined}

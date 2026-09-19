@@ -9,6 +9,7 @@ Keyboard users can see a high-contrast focus ring on every control, skip to `#ma
 - `notebook-h1` on `/notebooks/$notebookId` is the notebook title. The `ノート名` field is absent until `名前を変更`. Missing notebooks use `ノートが見つかりません`.
 - `pane-h2` labels are `ソース`, `要約・質問`, and `メモ`.
 - `focus-visible` paints a 3px ring on keyboard focus for links, buttons, inputs, and tabs. Mouse click does not keep a browser-default outline.
+- Theme uses `html[data-theme="light"|"dark"]` (resolved) and `html[data-theme-pref="light"|"dark"|"system"]`. The site header cycles システム / ライト / ダーク. Focus ring color is `var(--focus)` from semantic tokens.
 
 ## How to get to it (user POV)
 

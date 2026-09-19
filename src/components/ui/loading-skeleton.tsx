@@ -21,7 +21,7 @@ export function LoadingSkeleton({
         {Array.from({ length: lines }, (_, index) => (
           <div
             key={index}
-            className="h-16 animate-pulse rounded-lg bg-zinc-200 dark:bg-zinc-800 motion-reduce:animate-none"
+            className="h-16 animate-pulse rounded-lg bg-surface-muted motion-reduce:animate-none"
           />
         ))}
       </div>
