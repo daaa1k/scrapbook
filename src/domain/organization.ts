@@ -107,6 +107,7 @@ export function redirectFromSourceDetail(
 }
 
 export function formatNotebookUpdatedAt(updatedAt: number, now = Date.now()): string {
+  if (!Number.isFinite(updatedAt)) return '日時不明'
   const delta = now - updatedAt
   if (delta < 60_000) return 'たった今'
   if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}分前`
@@ -117,6 +118,10 @@ export function formatNotebookUpdatedAt(updatedAt: number, now = Date.now()): st
     month: 'long',
     day: 'numeric',
   }).format(new Date(updatedAt))
+}
+
+export function notebookUpdatedAtLabel(updatedAt: number, now = Date.now()): string {
+  return `更新 ${formatNotebookUpdatedAt(updatedAt, now)}`
 }
 
 export function sourceListFilterFromSourcesPageSearch(search: {
