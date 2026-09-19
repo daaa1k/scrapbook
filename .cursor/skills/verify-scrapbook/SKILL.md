@@ -86,7 +86,7 @@ Subcommands:
 - `screenshot --path <file> [--url <path>]` — capture a page.
 - `snapshot --path <file> [--url <path>]` — accessibility snapshot text.
 
-Prefer role + accessible name. Example names already in the app: `新しいノート`, `ページのURL`, `タイトル`, `本文`, `ノート名`, `ソースのメモ`, `質問`, buttons `URLを登録`, `本文を保存`, `名前を変更`, `削除`, `ソースを追加`, `{title}の操作`, `この質問と回答を削除`, `質問する`, `要約する`, `再試行`, `本文を貼り付ける`, tablist `入力方法`, live text `要約が完了しました` / `回答が完了しました`, row text `選択中` / `処理中のため削除できません`.
+Prefer role + accessible name. Example names already in the app: `新しいノート`, `ページのURL`, `タイトル`, `本文`, `ノート名`, `ソースのメモ`, `質問`, buttons `URLを登録`, `本文を保存`, `名前を変更`, `保存`, `キャンセル`, `削除`, `ソースを追加`, `{title}の操作`, `この質問と回答を削除`, `質問する`, `要約する`, `再試行`, `本文を貼り付ける`, breadcrumb `ホーム`, tablist `入力方法`, live text `要約が完了しました` / `回答が完了しました`, row text `選択中` / `処理中のため削除できません`.
 
 ## Evidence
 

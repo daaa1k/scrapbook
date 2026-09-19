@@ -140,6 +140,34 @@ export function sourceListKindLabel(kind: SourceListKind): string {
   }
 }
 
+export type NotebookTitleEditor =
+  | { status: 'viewing' }
+  | { status: 'editing'; draft: string }
+
+export type NotebookTitleCommit =
+  | { action: 'unchanged' }
+  | { action: 'invalid' }
+  | { action: 'submit'; title: string }
+
+export function startNotebookTitleEdit(savedTitle: string): NotebookTitleEditor {
+  return { status: 'editing', draft: savedTitle }
+}
+
+export function cancelNotebookTitleEdit(): NotebookTitleEditor {
+  return { status: 'viewing' }
+}
+
+export function notebookTitleDraftChanged(draft: string): NotebookTitleEditor {
+  return { status: 'editing', draft }
+}
+
+export function notebookTitleCommit(draft: string, savedTitle: string): NotebookTitleCommit {
+  const title = draft.trim()
+  if (title.length === 0) return { action: 'invalid' }
+  if (title === savedTitle) return { action: 'unchanged' }
+  return { action: 'submit', title }
+}
+
 export function sourceRowJobChip(source: {
   jobStatus: JobStatus | null
   jobKind: JobKind | null
