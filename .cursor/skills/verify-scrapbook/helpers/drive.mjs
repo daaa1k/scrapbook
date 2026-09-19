@@ -532,7 +532,7 @@ async function jobProgress(argv) {
 }
 
 async function notebookTitle(argv) {
-  const stamp = runId.replace(/[^a-zA-Z0-9_-]/g, '').slice(-8)
+  const stamp = `${runId.replace(/[^a-zA-Z0-9_-]/g, '').slice(-8)}-${Date.now().toString(36).slice(-4)}`
   const sourceTitle = `見出し元 ${stamp}`
   const renamed = `見出し後 ${stamp}`
   const body = 'ノート見出し確認用の本文です。'
