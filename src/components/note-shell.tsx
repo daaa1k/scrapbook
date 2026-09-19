@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  focusNotebookTab,
+  MobileNotebookTabs,
+  notebookPanelConcealmentProps,
+  useCompactNotebookLayout,
+} from '~/components/mobile-notebook-tabs'
 import { SourceInvestigate } from '~/components/source-investigate'
 import { SourceMemoPane } from '~/components/source-memo-pane'
 import { SourceModal } from '~/components/source-modal'
@@ -10,7 +16,16 @@ import { ConfirmDialog } from '~/components/ui/confirm-dialog'
 import { Input } from '~/components/ui/input'
 import { sourceDeleteConfirm } from '~/domain/destructive-confirm'
 import { isLeavingNotebook, type MemoSessionHandle } from '~/domain/memo-save'
-import { resolveNoteShellView, type NoteShellSearch } from '~/domain/note-shell'
+import {
+  NOTEBOOK_SOURCE_STUDY_HINT,
+  NOTEBOOK_SOURCE_STUDY_HINT_ID,
+  notebookPanelId,
+  notebookPanelIsConcealed,
+  notebookStudySwitchAnnouncement,
+  resolveNoteShellView,
+  type NotebookMobilePane,
+  type NoteShellSearch,
+} from '~/domain/note-shell'
 import { sourceListFilterFromSourcesPageSearch } from '~/domain/organization'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { isTerminalJobStatus, userFacingError } from '~/lib/utils'
@@ -34,8 +49,10 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const registerMemoSession = useCallback((session: MemoSessionHandle) => {
     memoSessionRef.current = session
   }, [])
-  const [mobilePane, setMobilePane] = useState<'sources' | 'study' | 'memo'>('study')
+  const [mobilePane, setMobilePane] = useState<NotebookMobilePane>('study')
+  const [paneAnnounce, setPaneAnnounce] = useState('')
   const [pendingSource, setPendingSource] = useState<{ id: string; label: string } | null>(null)
+  const compact = useCompactNotebookLayout()
 
   const shouldBlockLeave = useCallback(async (args: { current: { params: object }; next: { params: object } }) => {
     if (!isLeavingNotebook(notebookIdFromParams(args.current.params), notebookIdFromParams(args.next.params))) {
@@ -238,45 +255,17 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-4">
-          <div
-            className="flex gap-2 lg:hidden"
-            role="tablist"
-            aria-label="ノートの表示切替"
-          >
-            {(
-              [
-                { id: 'sources', label: 'ソース' },
-                { id: 'study', label: '要約・質問' },
-                { id: 'memo', label: 'メモ' },
-              ] as const
-            ).map((tab) => {
-              const selected = mobilePane === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  id={`notebook-tab-${tab.id}`}
-                  aria-controls={`notebook-panel-${tab.id}`}
-                  className={
-                    selected
-                      ? 'rounded-md border border-zinc-900 px-3 py-1.5 text-sm dark:border-zinc-100'
-                      : 'rounded-md border border-zinc-200 px-3 py-1.5 text-sm dark:border-zinc-700'
-                  }
-                  onClick={() => setMobilePane(tab.id)}
-                >
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
+          <MobileNotebookTabs selected={mobilePane} onSelect={setMobilePane} />
+          <p role="status" className="sr-only">
+            {paneAnnounce}
+          </p>
 
           <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
             <aside
-              id="notebook-panel-sources"
+              id={notebookPanelId('sources')}
               role="tabpanel"
               aria-labelledby="notebook-sources-heading"
+              {...notebookPanelConcealmentProps(notebookPanelIsConcealed('sources', mobilePane, compact))}
               className={`min-h-0 overflow-y-auto border-zinc-200 pr-0 dark:border-zinc-800 lg:block lg:border-r lg:pr-3 ${
                 mobilePane === 'sources' ? 'block' : 'hidden'
               }`}
@@ -284,6 +273,11 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
               <h2 id="notebook-sources-heading" className="mb-3 text-sm font-medium text-zinc-500">
                 ソース
               </h2>
+              {compact ? (
+                <p id={NOTEBOOK_SOURCE_STUDY_HINT_ID} className="mb-3 text-xs text-zinc-500">
+                  {NOTEBOOK_SOURCE_STUDY_HINT}
+                </p>
+              ) : null}
               <ul className="space-y-2">
                 {view.sources.map((source) => {
                   const focused = source.id === view.focusSourceId
@@ -303,9 +297,14 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                             type="button"
                             className="min-w-0 flex-1 truncate text-left text-sm"
                             aria-current={focused ? 'true' : undefined}
+                            aria-describedby={compact ? NOTEBOOK_SOURCE_STUDY_HINT_ID : undefined}
                             onClick={() => {
                               void focusSource(source.id)
                               setMobilePane('study')
+                              if (compact) {
+                                setPaneAnnounce(notebookStudySwitchAnnouncement(label))
+                                focusNotebookTab('study')
+                              }
                             }}
                           >
                             {label}
@@ -362,9 +361,10 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             </aside>
 
             <section
-              id="notebook-panel-study"
+              id={notebookPanelId('study')}
               role="tabpanel"
               aria-labelledby="notebook-study-heading"
+              {...notebookPanelConcealmentProps(notebookPanelIsConcealed('study', mobilePane, compact))}
               className={`min-h-0 overflow-y-auto lg:block ${mobilePane === 'study' ? 'block' : 'hidden'}`}
             >
               <h2 id="notebook-study-heading" className="mb-3 text-sm font-medium text-zinc-500">
@@ -374,9 +374,10 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             </section>
 
             <aside
-              id="notebook-panel-memo"
+              id={notebookPanelId('memo')}
               role="tabpanel"
               aria-labelledby="notebook-memo-heading"
+              {...notebookPanelConcealmentProps(notebookPanelIsConcealed('memo', mobilePane, compact))}
               className={`min-h-0 overflow-y-auto border-zinc-200 pl-0 dark:border-zinc-800 lg:block lg:border-l lg:pl-3 ${
                 mobilePane === 'memo' ? 'block' : 'hidden'
               }`}
