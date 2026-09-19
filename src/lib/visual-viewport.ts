@@ -50,3 +50,15 @@ export function syncAppViewportCssVars(root: HTMLElement = document.documentElem
   applyAppViewportCssVars(root.style, metrics)
   return metrics
 }
+
+/** Scrolls `el` so it sits inside the visual viewport when the keyboard covers it. */
+export function scrollElementIntoVisualViewport(el: Element): void {
+  const vv = window.visualViewport
+  if (!vv) {
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    return
+  }
+  const rect = el.getBoundingClientRect()
+  if (rect.top >= 0 && rect.bottom <= vv.height) return
+  el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+}

@@ -34,6 +34,7 @@ import {
 import { STUDY_LOADING_LABEL } from '~/domain/note-shell'
 import { sourceKeys } from '~/lib/query-keys'
 import { isTerminalJobStatus, userFacingError } from '~/lib/utils'
+import { scrollElementIntoVisualViewport } from '~/lib/visual-viewport'
 import {
   askSource,
   deleteSourceQaAnswer,
@@ -120,6 +121,21 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
     if (text) setCompletionAnnouncement(text)
     previousJobStatus.current = nextStatus
   }, [source?.job?.status, source?.job?.kind])
+
+  useEffect(() => {
+    function keepAskActionsVisible() {
+      if (document.activeElement?.id !== 'investigate-question') return
+      const actions = document.getElementById('investigate-ask-actions')
+      if (actions) scrollElementIntoVisualViewport(actions)
+    }
+    const vv = window.visualViewport
+    vv?.addEventListener('resize', keepAskActionsVisible)
+    vv?.addEventListener('scroll', keepAskActionsVisible)
+    return () => {
+      vv?.removeEventListener('resize', keepAskActionsVisible)
+      vv?.removeEventListener('scroll', keepAskActionsVisible)
+    }
+  }, [])
 
   const invalidateSource = async () => {
     await Promise.all([
@@ -241,7 +257,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-6" aria-busy={studyBusy || undefined}>
+    <div className="flex min-h-full flex-col gap-6" aria-busy={studyBusy || undefined}>
       <header className="space-y-2">
         <p className="break-anywhere text-lg font-semibold">
           {source.url ? (
@@ -406,7 +422,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
         <h3 className="text-sm font-medium text-zinc-500">質問</h3>
         {bodyForCursor ? (
           <form
-            className="space-y-3"
+            className="flex flex-col space-y-3"
             onSubmit={(event) => {
               event.preventDefault()
               ask.mutate(questionDraft)
@@ -421,12 +437,21 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
               required
               value={questionDraft}
               onChange={(event) => setQuestionDraft(event.target.value)}
+              onFocus={() => {
+                window.requestAnimationFrame(() => {
+                  const actions = document.getElementById('investigate-ask-actions')
+                  if (actions) scrollElementIntoVisualViewport(actions)
+                })
+              }}
               placeholder="このソースについて質問"
               maxLength={4000}
               disabled={ask.isPending}
               className="break-anywhere"
             />
-            <div className="sticky bottom-0 z-[1] -mx-1 space-y-2 bg-inherit px-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-2">
+            <div
+              id="investigate-ask-actions"
+              className="sticky bottom-0 z-[1] -mx-1 space-y-2 bg-inherit px-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-2"
+            >
               <Button
                 type="submit"
                 className="min-h-11 w-full gap-2 sm:w-auto"
