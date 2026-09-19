@@ -43,7 +43,7 @@ Preconditions:
 
 ## Gotchas
 
-- Summarize/ask need a non-empty stored body. Paste first.
+- Summarize/ask need a non-empty stored body. Paste first. Local mock ask can stick on `結果を保存しています` and then fail `ingest_failed`. `helpers/drive.mjs source-list-qa` finishes that job in local D1 so Q&A delete can run. The busy-row reason is checked while the ask job is still in flight.
 - In-flight jobs block source delete. Wait for terminal status or use paste-only sources for delete proofs. The busy reason is visible row text (`処理中のため削除できません`), not a `title` tooltip only. Open `{title}の操作` to see the disabled `削除` menuitem.
 - Source delete and Q&A delete both confirm in an in-app alertdialog, not `window.confirm`. Scope `キャンセル` / `削除` to that dialog. The leave-save alertdialog is a different one. Source delete is inside the row `操作` menu. Q&A delete is `この質問と回答を削除` on that turn.
 - Panes stay mounted on tab switch. Compact layout sets the HTML `hidden` attribute, `aria-hidden`, and `inert` on unselected panels. CSS `hidden lg:block` still covers the first paint before `matchMedia('(min-width: 64rem)')` hydrates. Do not remount via full navigation when only switching tabs. Do not move focus to a pane heading after a tab key. HTML `hidden` uses `display: none !important` in Chromium, so do not leave that attribute set at `lg` or the desktop three-pane layout disappears.

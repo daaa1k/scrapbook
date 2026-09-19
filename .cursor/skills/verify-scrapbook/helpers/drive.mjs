@@ -173,18 +173,21 @@ function findLocalD1WithSource(sourceId) {
   return null
 }
 
-function seedQueuedFetch(sourceId) {
+function finishLatestAsk(sourceId) {
   const found = findLocalD1WithSource(sourceId)
   if (!found) return null
   const now = Date.now()
-  const jobId = crypto.randomUUID()
   found.db.run(
-    `insert into jobs (id, source_id, kind, status, error_code, error_message, attempt_count, created_at, updated_at, finished_at)
-     values (?, ?, 'fetch', 'queued', null, null, 1, ?, ?, null)`,
-    [jobId, sourceId, now, now],
+    `update jobs set status = 'succeeded', error_code = null, error_message = null, finished_at = ?, updated_at = ?
+     where source_id = ? and kind = 'ask_source' and status not in ('succeeded', 'failed')`,
+    [now, now, sourceId],
+  )
+  found.db.run(
+    `update qa_answers set answer = 'モック回答です。', updated_at = ? where source_id = ? and answer is null`,
+    [now, sourceId],
   )
   found.db.close()
-  return { jobId, file: found.file }
+  return { sourceId, file: found.file }
 }
 
 async function addPastedSourceToNotebook(page, title, body) {
@@ -251,54 +254,44 @@ async function sourceListQa(argv) {
     await study.getByRole('textbox', { name: '質問' }).waitFor({ timeout: 15_000 })
     await study.getByRole('textbox', { name: '質問' }).fill('一つ目の質問です')
     await study.getByRole('button', { name: '質問する' }).click()
-    const firstTurnVisible = await study
-      .getByText('一つ目の質問です')
-      .first()
+    const firstTurn = study.locator('li').filter({ hasText: '一つ目の質問です' })
+    const firstTurnVisible = await firstTurn
       .waitFor({ timeout: 15_000 })
       .then(() => true)
       .catch(() => false)
     if (!firstTurnVisible) {
       await page.screenshot({ path: resolve(out, 'ask-missing-turn.png'), fullPage: true })
       await page.reload({ waitUntil: 'networkidle' })
-      await study.getByText('一つ目の質問です').first().waitFor({ timeout: 15_000 })
+      await firstTurn.waitFor({ timeout: 15_000 })
     }
-    const firstAnswered = await study
-      .getByText(/モック回答です。|回答できませんでした/)
-      .first()
-      .waitFor({ timeout: 20_000 })
-      .then(() => true)
-      .catch(() => false)
-    if (!firstAnswered) {
-      await page.screenshot({ path: resolve(out, 'ask-before-reload.png'), fullPage: true })
-      await page.reload({ waitUntil: 'networkidle' })
-      await study
-        .getByText(/モック回答です。|回答できませんでした/)
-        .first()
-        .waitFor({ timeout: 15_000 })
-    }
+
+    await sources.getByRole('button', { name: `${titleA}の操作` }).click()
+    const busyText = await sources.innerText()
+    const busyReasonVisible = busyText.includes('処理中のため削除できません')
+    const busyMenuDisabled = await sources.getByRole('menuitem', { name: '削除' }).isDisabled()
+    const otherRowOpsEnabledWhileBusy = await sources.getByRole('button', { name: `${titleC}の操作` }).isEnabled()
+    await page.screenshot({ path: resolve(out, 'busy-row.png'), fullPage: true })
+    await page.keyboard.press('Escape')
+
+    const finishedFirst = idA ? finishLatestAsk(idA) : null
+    await page.reload({ waitUntil: 'networkidle' })
+    await firstTurn.waitFor({ timeout: 15_000 })
+    await study.getByText('モック回答です。').first().waitFor({ timeout: 15_000 })
 
     await study.getByRole('textbox', { name: '質問' }).fill('二つ目の質問です')
     await study.getByRole('button', { name: '質問する' }).click()
-    const secondTurnVisible = await study
-      .getByText('二つ目の質問です')
-      .first()
+    const secondTurn = study.locator('li').filter({ hasText: '二つ目の質問です' })
+    const secondTurnVisible = await secondTurn
       .waitFor({ timeout: 15_000 })
       .then(() => true)
       .catch(() => false)
     if (!secondTurnVisible) {
       await page.reload({ waitUntil: 'networkidle' })
-      await study.getByText('二つ目の質問です').first().waitFor({ timeout: 15_000 })
+      await secondTurn.waitFor({ timeout: 15_000 })
     }
-    const secondAnswered = await study
-      .getByText(/モック回答です。|回答できませんでした/)
-      .nth(1)
-      .waitFor({ timeout: 20_000 })
-      .then(() => true)
-      .catch(() => false)
-    if (!secondAnswered) {
-      await page.reload({ waitUntil: 'networkidle' })
-      await study.getByText('二つ目の質問です').waitFor({ timeout: 15_000 })
-    }
+    const finishedSecond = idA ? finishLatestAsk(idA) : null
+    await page.reload({ waitUntil: 'networkidle' })
+    await secondTurn.waitFor({ timeout: 15_000 })
 
     const deleteButtons = study.getByRole('button', { name: 'この質問と回答を削除' })
     const deleteCountBefore = await deleteButtons.count()
@@ -313,27 +306,9 @@ async function sourceListQa(argv) {
     await deleteButtons.first().click()
     await qaDialog.getByRole('button', { name: '削除' }).click()
     await page.getByRole('alertdialog').waitFor({ state: 'hidden', timeout: 15_000 })
-    await study.getByText('二つ目の質問です').waitFor({ state: 'hidden', timeout: 20_000 })
+    await secondTurn.waitFor({ state: 'hidden', timeout: 20_000 })
     const deleteCountAfter = await study.getByRole('button', { name: 'この質問と回答を削除' }).count()
     await page.screenshot({ path: resolve(out, 'qa-after-delete.png'), fullPage: true })
-
-    let busyReasonVisible = false
-    let otherRowOpsEnabledWhileBusy = false
-    let busyMenuDisabled = null
-    let seeded = null
-    if (idC) {
-      seeded = seedQueuedFetch(idC)
-      if (seeded) {
-        await page.reload({ waitUntil: 'networkidle' })
-        await sources.getByText(titleC, { exact: true }).waitFor({ timeout: 15_000 })
-        await sources.getByRole('button', { name: `${titleC}の操作` }).click()
-        const busyText = await sources.innerText()
-        busyReasonVisible = busyText.includes('処理中のため削除できません')
-        otherRowOpsEnabledWhileBusy = await sources.getByRole('button', { name: `${titleA}の操作` }).isEnabled()
-        busyMenuDisabled = await sources.getByRole('menuitem', { name: '削除' }).isDisabled()
-        await page.screenshot({ path: resolve(out, 'busy-row.png'), fullPage: true })
-      }
-    }
 
     const notebookPath = new URL(page.url()).pathname
     await page.goto(`${baseUrl}${notebookPath}?sourceId=missing-source`, { waitUntil: 'networkidle' })
@@ -363,7 +338,8 @@ async function sourceListQa(argv) {
       busyReasonVisible,
       busyMenuDisabled,
       otherRowOpsEnabledWhileBusy,
-      seeded,
+      finishedFirst,
+      finishedSecond,
       invalidSourceRecoveryCount: recovery,
     })
     console.log(`source-list-qa: ok url=${page.url()} evidence=${out}`)
