@@ -604,6 +604,21 @@ async function notebookTitle(argv) {
   })
 }
 
+function isCatalogServerFn(request) {
+  if (request.headers()['x-tsr-serverfn'] !== 'true') return false
+  if (request.method() !== 'GET') return false
+  const url = request.url()
+  if (url.includes('getOrganizationCatalog')) return true
+  try {
+    const segment = new URL(url).pathname.split('/').pop() ?? ''
+    const asUrl = Buffer.from(segment, 'base64url').toString('utf8')
+    const asStd = Buffer.from(segment, 'base64').toString('utf8')
+    return asUrl.includes('getOrganizationCatalog') || asStd.includes('getOrganizationCatalog')
+  } catch {
+    return false
+  }
+}
+
 async function homeCatalog(argv) {
   const out = resolve(argValue(argv, '--out') ?? resolve(evidenceRoot, 'home'))
   await mkdir(out, { recursive: true })
@@ -619,20 +634,12 @@ async function homeCatalog(argv) {
 
     await page.route('**/*', async (route) => {
       const request = route.request()
-      const headers = request.headers()
-      const isServerFn = headers['x-tsr-serverfn'] === 'true'
-      const url = request.url()
-      const looksLikeCatalog =
-        isServerFn &&
-        request.method() === 'GET' &&
-        (url.includes('getOrganizationCatalog') ||
-          url.includes('organization') ||
-          url.toLowerCase().includes('catalog'))
+      const looksLikeCatalog = isCatalogServerFn(request)
       if (!looksLikeCatalog) {
         await route.continue()
         return
       }
-      catalogRequests.push({ url, mode: catalogMode })
+      catalogRequests.push({ url: request.url(), mode: catalogMode })
       if (catalogMode === 'fail') {
         await route.abort('failed')
         return
@@ -685,35 +692,57 @@ async function homeCatalog(argv) {
     const ariaReady = await page.locator('body').ariaSnapshot()
     await writeFile(resolve(out, 'aria-ready.txt'), `${ariaReady}\n`)
 
-    catalogMode = 'fail'
-    await page.reload({ waitUntil: 'networkidle' })
-    const retry = page.getByRole('button', { name: '再試行' })
-    const retryVisible = (await retry.count()) > 0 && (await retry.first().isVisible())
-    let loadingLabelVisible = false
-    let emptyDuringError = false
-    let retryRecovered = false
-    if (retryVisible) {
-      emptyDuringError = (await emptyTitle.count()) > 0
-      if (emptyDuringError) throw new Error('empty state shown with catalog error')
-      await page.screenshot({ path: resolve(out, 'error.png'), fullPage: true })
-      catalogMode = 'hold'
-      const retryClick = retry.first().click()
-      loadingLabelVisible = await page
-        .getByText('ノート一覧を読み込み中…')
-        .waitFor({ timeout: 5_000 })
-        .then(() => true)
-        .catch(() => false)
-      const emptyDuringLoad = (await emptyTitle.count()) > 0
-      await page.screenshot({ path: resolve(out, 'loading.png'), fullPage: true })
-      catalogMode = 'pass'
-      if (releaseHold) releaseHold()
-      await retryClick
-      await heading.waitFor({ timeout: 15_000 })
-      retryRecovered = (await retry.count()) === 0 || !(await retry.first().isVisible())
-      if (emptyDuringLoad) throw new Error('empty state flashed during catalog retry loading')
-    } else {
-      catalogMode = 'pass'
+    await page.evaluate(() => {
+      const qc = window.__TSR_ROUTER__.options.context.queryClient
+      qc.setQueryData(['organization', 'catalog'], { notebooks: [], tags: [] })
+    })
+    await emptyTitle.waitFor({ timeout: 10_000 })
+    const emptyCreateCount = await createButtons.count()
+    const emptyHeaderCreate = await headerCreate.count()
+    if (emptyCreateCount !== 1) throw new Error(`empty state CTA count ${emptyCreateCount}`)
+    if (emptyHeaderCreate !== 0) throw new Error('empty state still has header 新しいノート')
+    const emptyText = await page.locator('main').innerText()
+    if (!emptyText.includes('URL') || !emptyText.includes('PDF') || !emptyText.includes('貼り付け')) {
+      throw new Error(`empty copy missing methods: ${emptyText}`)
     }
+    await page.screenshot({ path: resolve(out, 'empty.png'), fullPage: true })
+    const ariaEmpty = await page.locator('body').ariaSnapshot()
+    await writeFile(resolve(out, 'aria-empty.txt'), `${ariaEmpty}\n`)
+
+    catalogMode = 'fail'
+    await page.evaluate(async () => {
+      const qc = window.__TSR_ROUTER__.options.context.queryClient
+      try {
+        await qc.resetQueries({ queryKey: ['organization', 'catalog'] })
+      } catch {
+        return
+      }
+    })
+    const retry = page.getByRole('button', { name: '再試行' })
+    await retry.waitFor({ timeout: 20_000 })
+    const emptyDuringError = (await emptyTitle.count()) > 0
+    if (emptyDuringError) throw new Error('empty state shown with catalog error')
+    await page.screenshot({ path: resolve(out, 'error.png'), fullPage: true })
+    const ariaError = await page.locator('body').ariaSnapshot()
+    await writeFile(resolve(out, 'aria-error.txt'), `${ariaError}\n`)
+
+    catalogMode = 'hold'
+    const retryClick = retry.click()
+    const loadingLabelVisible = await page
+      .getByText('ノート一覧を読み込み中…')
+      .waitFor({ timeout: 8_000 })
+      .then(() => true)
+      .catch(() => false)
+    const emptyDuringLoad = (await emptyTitle.count()) > 0
+    await page.screenshot({ path: resolve(out, 'loading.png'), fullPage: true })
+    catalogMode = 'pass'
+    if (releaseHold) releaseHold()
+    await retryClick
+    await heading.waitFor({ timeout: 15_000 })
+    const retryRecovered = (await retry.count()) === 0 || !(await retry.isVisible())
+    if (emptyDuringLoad) throw new Error('empty state flashed during catalog retry loading')
+    if (!loadingLabelVisible) throw new Error('retry did not show ノート一覧を読み込み中…')
+    if (!retryRecovered) throw new Error('retry left 再試行 visible')
 
     const aria = await page.locator('body').ariaSnapshot()
     await writeFile(resolve(out, 'aria.txt'), `${aria}\n`)
@@ -726,15 +755,15 @@ async function homeCatalog(argv) {
       headerCreateCount,
       sameRow: emptyVisible ? null : true,
       openCount,
-      retryVisible,
+      emptyCreateCount,
+      emptyHeaderCreate,
+      retryVisible: true,
       loadingLabelVisible,
       emptyDuringError,
       retryRecovered,
       catalogRequests,
     })
-    console.log(
-      `home-catalog: ok empty=${Boolean(emptyVisible)} retryVisible=${retryVisible} evidence=${out}`,
-    )
+    console.log(`home-catalog: ok emptyCta=${emptyCreateCount} loading=${loadingLabelVisible} evidence=${out}`)
   })
 }
 

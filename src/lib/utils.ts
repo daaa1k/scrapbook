@@ -52,6 +52,9 @@ export function sourceKindLabel(value: string): string {
 }
 
 export function userFacingError(error: unknown): string {
+  if (error instanceof TypeError && /failed to fetch/i.test(error.message)) {
+    return '通信に失敗しました'
+  }
   const message = error instanceof Error ? error.message : '操作に失敗しました'
   return JOB_ERROR_LABEL[message] ?? message
 }

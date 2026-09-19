@@ -35,5 +35,6 @@ Preconditions:
 
 - The home route loader swallows a catalog failure so the page can render the error and `再試行`. A thrown loader would hide that UI.
 - Missing catalog data is loading or error, never empty. Empty is a successful `[]`.
+- Local D1 often already has notebooks. `home-catalog` proves empty by writing `{ notebooks: [] }` into the page QueryClient, then proves error by aborting the decoded `_serverFn` GET for `getOrganizationCatalog`.
 - Delete confirm is the P1.3 alertdialog. Scope `削除` to the card or the dialog. Only that card shows `削除しています`.
 - `helpers/drive.mjs paste-source` and friends still open `新しいノート`. They use `.first()` and assume exactly one of that name.
