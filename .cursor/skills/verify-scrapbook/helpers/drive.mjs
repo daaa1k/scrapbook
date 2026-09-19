@@ -18,6 +18,7 @@ function usage() {
   drive.mjs pdf-source --file <path> [--out <dir>]
   drive.mjs job-progress [--out <dir>]
   drive.mjs source-list-qa [--out <dir>]
+  drive.mjs notebook-title [--out <dir>]
   drive.mjs screenshot --path <file> [--url <path>]
   drive.mjs snapshot --path <file> [--url <path>]`)
   process.exit(2)
@@ -530,6 +531,78 @@ async function jobProgress(argv) {
   })
 }
 
+async function notebookTitle(argv) {
+  const stamp = runId.replace(/[^a-zA-Z0-9_-]/g, '').slice(-8)
+  const sourceTitle = `見出し元 ${stamp}`
+  const renamed = `見出し後 ${stamp}`
+  const body = 'ノート見出し確認用の本文です。'
+  const out = resolve(argValue(argv, '--out') ?? resolve(evidenceRoot, 'note-shell'))
+  await mkdir(out, { recursive: true })
+
+  await withPage(async (page) => {
+    const dialog = await openCreateDialog(page)
+    await dialog.getByRole('tab', { name: '貼り付け' }).click()
+    await dialog.getByRole('textbox', { name: 'タイトル' }).fill(sourceTitle)
+    await dialog.getByRole('textbox', { name: '本文' }).fill(body)
+    await dialog.getByRole('button', { name: '本文を保存' }).click()
+    await page.waitForURL(/\/notebooks\/[^/]+/, { timeout: 30_000 })
+    const heading = page.getByRole('heading', { level: 1, name: sourceTitle })
+    await heading.waitFor({ timeout: 30_000 })
+    const initialTitle = (await heading.innerText()).trim()
+    const crumbs = page.getByRole('navigation', { name: 'パンくず' })
+    const homeCount = await crumbs.getByRole('link', { name: 'ホーム' }).count()
+    const crumbText = await crumbs.innerText()
+    const titleFieldViewing = await page.getByRole('textbox', { name: 'ノート名' }).count()
+    const headingCount = await heading.count()
+    await page.screenshot({ path: resolve(out, 'viewing.png'), fullPage: true })
+
+    if (headingCount !== 1) throw new Error(`expected one h1, got ${headingCount}`)
+    if (titleFieldViewing !== 0) throw new Error('viewing showed ノート名')
+    if (homeCount !== 1) throw new Error('breadcrumb missing ホーム')
+    if (!crumbText.includes(initialTitle)) throw new Error(`breadcrumb missing title: ${crumbText}`)
+
+    await page.getByRole('button', { name: '名前を変更' }).click()
+    const titleField = page.getByRole('textbox', { name: 'ノート名' })
+    await titleField.waitFor({ timeout: 10_000 })
+    await titleField.fill('破棄する名前')
+    await page.screenshot({ path: resolve(out, 'editing.png'), fullPage: true })
+    await page.getByRole('button', { name: 'キャンセル' }).click()
+    await heading.filter({ hasText: initialTitle }).waitFor({ timeout: 10_000 })
+    const titleFieldAfterCancel = await page.getByRole('textbox', { name: 'ノート名' }).count()
+    const titleAfterCancel = (await heading.innerText()).trim()
+    await page.screenshot({ path: resolve(out, 'after-cancel.png'), fullPage: true })
+    if (titleFieldAfterCancel !== 0) throw new Error('cancel left ノート名')
+    if (titleAfterCancel !== initialTitle) throw new Error(`cancel changed heading to ${titleAfterCancel}`)
+
+    await page.getByRole('button', { name: '名前を変更' }).click()
+    await titleField.waitFor({ timeout: 10_000 })
+    await titleField.fill(renamed)
+    await page.getByRole('button', { name: '保存' }).click()
+    await heading.filter({ hasText: renamed }).waitFor({ timeout: 15_000 })
+    const titleFieldAfterSave = await page.getByRole('textbox', { name: 'ノート名' }).count()
+    const titleAfterSave = (await heading.innerText()).trim()
+    await page.screenshot({ path: resolve(out, 'after-save.png'), fullPage: true })
+    const aria = await page.locator('body').ariaSnapshot()
+    await writeFile(resolve(out, 'aria.txt'), `${aria}\n`)
+    if (titleFieldAfterSave !== 0) throw new Error('save left ノート名')
+    if (titleAfterSave !== renamed) throw new Error(`save heading was ${titleAfterSave}`)
+
+    await writeMeta(out, {
+      featureId: 'note-shell',
+      entryPoint: '/#notebook-title',
+      resultUrl: page.url(),
+      initialTitle,
+      renamed,
+      titleFieldViewing,
+      titleFieldAfterCancel,
+      titleFieldAfterSave,
+      homeCount,
+      crumbText,
+    })
+    console.log(`notebook-title: ok url=${page.url()} evidence=${out}`)
+  })
+}
+
 async function screenshot(argv) {
   const path = argValue(argv, '--path')
   if (!path) usage()
@@ -564,6 +637,7 @@ else if (cmd === 'url-source') await urlSource(argv)
 else if (cmd === 'pdf-source') await pdfSource(argv)
 else if (cmd === 'job-progress') await jobProgress(argv)
 else if (cmd === 'source-list-qa') await sourceListQa(argv)
+else if (cmd === 'notebook-title') await notebookTitle(argv)
 else if (cmd === 'screenshot') await screenshot(argv)
 else if (cmd === 'snapshot') await snapshot(argv)
 else usage()

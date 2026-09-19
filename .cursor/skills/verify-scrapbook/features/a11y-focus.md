@@ -6,7 +6,7 @@ Keyboard users can see a high-contrast focus ring on every control, skip to `#ma
 
 - `skip-link` is the first tab stop. The label is `メインコンテンツへ移動`. Activating it focuses `#main-content`.
 - `home-h1` on `/` is `ノート`. The brand `Scrapbook` is a link, not a heading.
-- `notebook-h1` on `/notebooks/$notebookId` is the notebook title. Missing notebooks use `ノートが見つかりません`.
+- `notebook-h1` on `/notebooks/$notebookId` is the notebook title. The `ノート名` field is absent until `名前を変更`. Missing notebooks use `ノートが見つかりません`.
 - `pane-h2` labels are `ソース`, `要約・質問`, and `メモ`.
 - `focus-visible` paints a 3px ring on keyboard focus for links, buttons, inputs, and tabs. Mouse click does not keep a browser-default outline.
 

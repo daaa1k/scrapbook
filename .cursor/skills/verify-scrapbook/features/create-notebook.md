@@ -6,7 +6,7 @@ Create notebook lets a user open the first-source modal from home, land in a not
 
 - `notebook-create-cta` opens「新しいノート」and the `新しいノート` / `ソースを追加` dialog with `notebook: 'new'`.
 - `notebook-open` opens `/notebooks/$notebookId` from the title or `開く`.
-- `notebook-rename` renames from the notebook header (`ノート名` + `名前を変更`).
+- `notebook-rename` opens rename from the notebook header (`名前を変更`), then saves from the `ノート名` field.
 - `notebook-delete` deletes from home after confirm, including notebooks that still have sources.
 - `notebook-cancel` closes the create modal without leaving an empty notebook.
 
@@ -15,7 +15,7 @@ Create notebook lets a user open the first-source modal from home, land in a not
 - Open `/` (header brand `Scrapbook`, page heading `ノート`).
 - Choose `新しいノート`. The dialog opens on the URL method. Cancel with `閉じる` (icon button) when the fields are empty. Typed input asks `入力を破棄しますか？` instead.
 - Complete a paste or URL register in the modal to create and open the notebook. Pick the `貼り付け` tab before filling `タイトル` and `本文`. The URL tab uses `ページのURL`.
-- On the notebook page, edit `ノート名` and `名前を変更`.
+- On the notebook page, choose `名前を変更`, edit `ノート名`, then `保存` or `キャンセル`.
 - On home, choose `削除`. Confirm in the alertdialog that names the notebook and lists ソース, 要約, Q&A, メモ, PDF原本.
 
 ## Driving it with Playwright
@@ -28,7 +28,7 @@ Preconditions:
 - **Cancel.** Go to `/`. Click `新しいノート`. Dialog title is `新しいノート`. The tablist `入力方法` is visible and `ページのURL` is the only method form. Click `閉じる`. No discard alertdialog. Home still has no new empty notebook card for an untitled create.
 - **Create via paste.** Prefer `helpers/drive.mjs paste-source` (see paste-source feature). Result URL matches `/notebooks/<uuid>`.
 - **Open.** From `/`, click the notebook title or `開く`. URL is `/notebooks/<uuid>`.
-- **Rename.** On the notebook page, fill `getByRole('textbox', { name: 'ノート名' })`, click `名前を変更`.
+- **Rename.** On the notebook page, click `名前を変更`. Fill `getByRole('textbox', { name: 'ノート名' })`. Click `保存`. The page `h1` is the new title. `キャンセル` or Escape leaves the saved heading in place.
 - **Delete.** Return to `/`. Click `削除` for that card. An alertdialog opens with initial focus on `キャンセル`. The body lists ソース, 要約, Q&A, メモ, PDF原本. Click `削除` in the dialog. The card disappears. Esc or `キャンセル` leaves the card in place.
 - **Proof.** Screenshots under `$VERIFY_EVIDENCE_DIR/create-notebook/`. Brand `Scrapbook` visible.
 

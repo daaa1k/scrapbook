@@ -36,7 +36,7 @@ Each feature file: H1, one paragraph, then exactly four H2s in order: `Sub-featu
 - [Create a notebook](./create-notebook.md) covers home「新しいノート」, open, rename, and cascade delete.
 - [Paste a source](./paste-source.md) covers first-source paste via the home modal into `/notebooks/$id`.
 - [Register a URL](./register-url.md) covers first-source URL register via the same modal.
-- [Note shell](./note-shell.md) covers sources / summarize·ask / memo panes (and mobile tabs), source-list ops, and Q&A delete confirm.
+- [Note shell](./note-shell.md) covers the notebook title heading, breadcrumb, sources / summarize·ask / memo panes (and mobile tabs), source-list ops, and Q&A delete confirm.
 - [Job progress and recovery](./job-progress.md) covers Japanese job labels, per-question progress, failure recovery, and the summarize completion live region.
 - [Compat redirects](./compat-redirects.md) covers old `/sources` URLs landing on notebook routes or `/`.
 

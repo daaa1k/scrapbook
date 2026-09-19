@@ -24,15 +24,20 @@ import {
   SOURCE_DELETING_STATUS,
   SOURCE_LIST_EMPTY_COPY,
   SOURCE_LIST_SELECTED_LABEL,
+  cancelNotebookTitleEdit,
   nextSourceIdAfterDelete,
   notebookPanelId,
   notebookPanelIsConcealed,
   notebookStudySwitchAnnouncement,
+  notebookTitleCommit,
+  notebookTitleDraftChanged,
   resolveNoteShellView,
   sourceListKind,
   sourceListKindLabel,
   sourceRowJobChip,
+  startNotebookTitleEdit,
   type NotebookMobilePane,
+  type NotebookTitleEditor,
   type NoteShellSearch,
   type SourceListKind,
 } from '~/domain/note-shell'
@@ -53,9 +58,12 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [modalOpen, setModalOpen] = useState(false)
-  const [titleDraft, setTitleDraft] = useState('')
+  const [titleEditor, setTitleEditor] = useState<NotebookTitleEditor>({ status: 'viewing' })
   const [renameError, setRenameError] = useState<string | null>(null)
   const [paneError, setPaneError] = useState<string | null>(null)
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  const renameButtonRef = useRef<HTMLButtonElement>(null)
+  const restoreRenameFocusRef = useRef(false)
   const memoSessionRef = useRef<MemoSessionHandle | null>(null)
   const registerMemoSession = useCallback((session: MemoSessionHandle) => {
     memoSessionRef.current = session
@@ -119,17 +127,31 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     catalog.data && sourcesQuery.data !== undefined
       ? resolveNoteShellView({ notebookId, sourceId }, catalog.data, sourcesQuery.data)
       : null
-  const notebookTitle = view && view.status !== 'unknown-notebook' ? view.notebook.title : null
 
   useEffect(() => {
-    if (notebookTitle) setTitleDraft(notebookTitle)
-  }, [notebookTitle])
+    if (titleEditor.status === 'editing') {
+      const input = titleInputRef.current
+      if (!input) return
+      input.focus()
+      input.select()
+      return
+    }
+    if (!restoreRenameFocusRef.current) return
+    restoreRenameFocusRef.current = false
+    renameButtonRef.current?.focus()
+  }, [titleEditor.status])
+
+  function closeTitleEditor() {
+    setRenameError(null)
+    restoreRenameFocusRef.current = true
+    setTitleEditor(cancelNotebookTitleEdit())
+  }
 
   const rename = useMutation({
     mutationFn: (title: string) =>
       runOrganizationCommand({ data: { type: 'rename-notebook', notebookId, title } }),
     onSuccess: async () => {
-      setRenameError(null)
+      closeTitleEditor()
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
         queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
@@ -182,11 +204,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   if (view.status === 'unknown-notebook') {
     return (
       <div className="space-y-4">
-        <nav aria-label="パンくず">
-          <Link to="/" className="text-sm text-zinc-500 hover:underline">
-            ← ホームへ
-          </Link>
-        </nav>
+        <NotebookBreadcrumb current="ノートが見つかりません" />
         <h1 className="text-2xl font-semibold tracking-tight">ノートが見つかりません</h1>
       </div>
     )
@@ -195,12 +213,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   return (
     <div className="flex min-h-[70vh] flex-col gap-4">
       <header className="shrink-0 space-y-3 border-b border-zinc-200 pb-4 dark:border-zinc-800">
-        <nav aria-label="パンくず">
-          <Link to="/" className="text-sm text-zinc-500 hover:underline">
-            ← ホームへ
-          </Link>
-        </nav>
-        <h1 className="text-2xl font-semibold tracking-tight">{view.notebook.title}</h1>
+        <NotebookBreadcrumb current={view.notebook.title} />
         {blocker.status === 'blocked' ? (
           <div
             role="alertdialog"
@@ -223,30 +236,78 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           </div>
         ) : null}
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <form
-            className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row"
-            onSubmit={(event) => {
-              event.preventDefault()
-              rename.mutate(titleDraft)
-            }}
-          >
-            <Input
-              name="notebook-title"
-              required
-              maxLength={100}
-              value={titleDraft}
-              disabled={rename.isPending}
-              onChange={(event) => setTitleDraft(event.target.value)}
-              aria-label="ノート名"
-              aria-invalid={renameError ? true : undefined}
-              aria-describedby={renameError ? 'notebook-rename-error' : undefined}
-              aria-busy={rename.isPending || undefined}
-            />
-            <Button type="submit" disabled={rename.isPending || titleDraft === view.notebook.title}>
-              名前を変更
-            </Button>
-          </form>
-          <Button type="button" onClick={() => setModalOpen(true)}>
+          {titleEditor.status === 'viewing' ? (
+            <div className="min-w-0 flex-1 space-y-2">
+              <h1 className="text-2xl font-semibold tracking-tight break-words">{view.notebook.title}</h1>
+              <Button
+                ref={renameButtonRef}
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setRenameError(null)
+                  setTitleEditor(startNotebookTitleEdit(view.notebook.title))
+                }}
+              >
+                名前を変更
+              </Button>
+            </div>
+          ) : (
+            <form
+              className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const intent = notebookTitleCommit(titleEditor.draft, view.notebook.title)
+                if (intent.action === 'invalid') {
+                  setRenameError('ノート名を入力してください')
+                  return
+                }
+                if (intent.action === 'unchanged') {
+                  closeTitleEditor()
+                  return
+                }
+                rename.mutate(intent.title)
+              }}
+            >
+              <h1 className="sr-only">{view.notebook.title}</h1>
+              <Input
+                ref={titleInputRef}
+                name="notebook-title"
+                required
+                maxLength={100}
+                value={titleEditor.draft}
+                disabled={rename.isPending}
+                onChange={(event) => {
+                  setRenameError(null)
+                  setTitleEditor(notebookTitleDraftChanged(event.target.value))
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Escape') return
+                  event.preventDefault()
+                  closeTitleEditor()
+                }}
+                aria-label="ノート名"
+                aria-invalid={renameError ? true : undefined}
+                aria-describedby={renameError ? 'notebook-rename-error' : undefined}
+                aria-busy={rename.isPending || undefined}
+                className="text-xl font-semibold"
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" variant="secondary" disabled={rename.isPending}>
+                  保存
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={rename.isPending}
+                  onClick={closeTitleEditor}
+                >
+                  キャンセル
+                </Button>
+              </div>
+            </form>
+          )}
+          <Button type="button" variant="secondary" onClick={() => setModalOpen(true)}>
             ソースを追加
           </Button>
         </div>
@@ -397,6 +458,24 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         }}
       />
     </div>
+  )
+}
+
+function NotebookBreadcrumb({ current }: { current: string }) {
+  return (
+    <nav aria-label="パンくず">
+      <ol className="m-0 flex list-none flex-wrap items-center gap-x-2 gap-y-1 p-0 text-sm text-zinc-500">
+        <li>
+          <Link to="/" className="hover:underline">
+            ホーム
+          </Link>
+        </li>
+        <li aria-hidden="true">/</li>
+        <li aria-current="page" className="min-w-0 break-words text-zinc-700 dark:text-zinc-300">
+          {current}
+        </li>
+      </ol>
+    </nav>
   )
 }
 

@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cancelNotebookTitleEdit,
   nextSourceIdAfterDelete,
   notebookPanelId,
   notebookPanelIsConcealed,
   notebookStudySwitchAnnouncement,
   notebookTabId,
+  notebookTitleCommit,
+  notebookTitleDraftChanged,
   paneAfterTabKey,
   resolveNoteShellView,
   sourceListKind,
   sourceListKindLabel,
   sourceRowJobChip,
+  startNotebookTitleEdit,
 } from '../src/domain/note-shell'
 import {
   notebookIdSchema,
@@ -177,6 +181,20 @@ describe('notebookPanelIsConcealed', () => {
   it('shows every pane in the expanded layout', () => {
     expect(notebookPanelIsConcealed('sources', 'study', false)).toBe(false)
     expect(notebookPanelIsConcealed('memo', 'memo', false)).toBe(false)
+  })
+})
+
+describe('notebook title editor', () => {
+  it('starts from the saved title and cancel returns to viewing', () => {
+    expect(startNotebookTitleEdit('研究')).toEqual({ status: 'editing', draft: '研究' })
+    expect(cancelNotebookTitleEdit()).toEqual({ status: 'viewing' })
+  })
+
+  it('keeps a typed draft in editing and commits only a changed name', () => {
+    expect(notebookTitleDraftChanged('論文')).toEqual({ status: 'editing', draft: '論文' })
+    expect(notebookTitleCommit('研究', '研究')).toEqual({ action: 'unchanged' })
+    expect(notebookTitleCommit('  論文  ', '研究')).toEqual({ action: 'submit', title: '論文' })
+    expect(notebookTitleCommit('   ', '研究')).toEqual({ action: 'invalid' })
   })
 })
 
