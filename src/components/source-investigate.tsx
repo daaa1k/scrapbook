@@ -14,6 +14,7 @@ import {
   jobCompletionAnnouncement,
   jobCopyInputFromSource,
   jobProgressView,
+  jobStatusAlertText,
   qaTurnView,
   studyScopeLabel,
   type JobCopyInput,
@@ -254,9 +255,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
 
       {showJobRecoveryCard ? (
         <div className="space-y-3">
-          <Alert id="investigate-job-error">
-            {progress.detail ? `${progress.label} ${progress.detail}` : progress.label}
-          </Alert>
+          <Alert id="investigate-job-error">{jobStatusAlertText(progress)}</Alert>
           {recoveryActions.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {recoveryActions.map((action) => (
@@ -467,11 +466,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                     <ProgressLine view={turnView.progress} />
                   ) : (
                     <div className="space-y-2">
-                      <Alert>
-                        {turnView.progress.detail
-                          ? `${turnView.progress.label} ${turnView.progress.detail}`
-                          : turnView.progress.label}
-                      </Alert>
+                      <Alert>{jobStatusAlertText(turnView.progress)}</Alert>
                       {(turnView.progress.recovery ?? []).map((action) => (
                         <Button
                           key={action.id}

@@ -153,6 +153,11 @@ export function jobCompletionAnnouncement(
   return '処理が完了しました'
 }
 
+export function jobStatusAlertText(view: Pick<JobStatusView, 'label' | 'detail'>): string {
+  if (!view.detail) return view.label
+  return joinCopy(view.label, view.detail)
+}
+
 export function cursorBodyBudgetCopy(truncated: boolean): { label: string; detail: string } | null {
   if (!truncated) return null
   const limit = MAX_CURSOR_BODY_CHARS.toLocaleString('ja-JP')
@@ -241,7 +246,9 @@ function failedView(input: JobCopyInput, kind: JobKind): JobStatusView {
     }
     const impact =
       kind === 'fetch'
-        ? '要約と質問は本文が揃ってから使えます。もう一度取得するか、本文を貼り付けてください。'
+        ? input.hasUrl
+          ? '要約と質問は本文が揃ってから使えます。もう一度取得するか、本文を貼り付けてください。'
+          : '要約と質問は本文が揃ってから使えます。本文を貼り付けて続けてください。'
         : 'もう一度試せます。'
     return {
       label,

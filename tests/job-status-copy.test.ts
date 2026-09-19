@@ -4,6 +4,7 @@ import {
   jobCompletionAnnouncement,
   jobCopyInputFromSource,
   jobProgressView,
+  jobStatusAlertText,
   qaTurnView,
   studyScopeLabel,
   type JobCopyInput,
@@ -113,6 +114,22 @@ describe('jobProgressView', () => {
         { id: 'retry', label: '再試行' },
         { id: 'paste-body', label: '本文を貼り付ける' },
       ],
+      pending: false,
+      tone: 'failure',
+    })
+    expect(
+      jobProgressView(
+        copy({
+          status: 'failed',
+          kind: 'fetch',
+          errorCode: 'timeout',
+          hasUrl: false,
+        }),
+      ),
+    ).toEqual({
+      label: '本文を取得できませんでした',
+      detail: '取得が時間切れになりました。要約と質問は本文が揃ってから使えます。本文を貼り付けて続けてください。',
+      recovery: [{ id: 'paste-body', label: '本文を貼り付ける' }],
       pending: false,
       tone: 'failure',
     })
@@ -280,5 +297,11 @@ describe('job copy helpers', () => {
     expect(jobStatusLabel('waiting_agent', 'fetch')).toBe('本文を取得しています')
     expect(jobStatusLabel('waiting_agent', 'summarize_body')).toBe('要約しています')
     expect(jobStatusLabel('waiting_agent', 'ask_source')).toBe('回答しています')
+    expect(
+      jobStatusAlertText({
+        label: '本文を取得できませんでした',
+        detail: '取得が時間切れになりました。本文を貼り付けて続けてください。',
+      }),
+    ).toBe('本文を取得できませんでした。取得が時間切れになりました。本文を貼り付けて続けてください。')
   })
 })
