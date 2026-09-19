@@ -75,9 +75,10 @@ describe('job transitions', () => {
     )
   })
 
-  it('labels in-flight summarize jobs as 要約中', () => {
-    expect(jobStatusLabel('waiting_agent', 'fetch')).toBe('取得中')
-    expect(jobStatusLabel('waiting_agent', 'summarize_body')).toBe('要約中')
-    expect(jobStatusLabel('waiting_agent', 'ask_source')).toBe('回答中')
+  it('labels in-flight jobs in Japanese without internal status names', () => {
+    expect(jobStatusLabel('queued', 'fetch')).toBe('本文の取得を準備しています')
+    expect(jobStatusLabel('waiting_agent', 'fetch')).toBe('本文を取得しています')
+    expect(jobStatusLabel('waiting_agent', 'summarize_body')).toBe('要約しています')
+    expect(jobStatusLabel('waiting_agent', 'ask_source')).toBe('回答しています')
   })
 })
