@@ -243,7 +243,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   return (
     <div className="flex min-h-0 flex-col gap-6" aria-busy={studyBusy || undefined}>
       <header className="space-y-2">
-        <p className="text-lg font-semibold">
+        <p className="break-anywhere text-lg font-semibold">
           {source.url ? (
             <a
               href={source.url}
@@ -424,27 +424,30 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
               placeholder="このソースについて質問"
               maxLength={4000}
               disabled={ask.isPending}
+              className="break-anywhere"
             />
-            <Button
-              type="submit"
-              className="gap-2"
-              disabled={jobPending || ask.isPending || questionDraft.trim() === ''}
-            >
-              {ask.isPending ? <PendingMark /> : null}
-              質問する
-            </Button>
-            {jobPending && jobKind !== 'ask_source' ? (
-              <p className="text-sm text-zinc-500">処理中のため質問できません。</p>
-            ) : (
-              <p className="text-sm text-zinc-500" title={ASK_SCOPE_DETAIL}>
-                {STUDY_SCOPE_SHORT}
-              </p>
-            )}
-            {budget ? (
-              <p className="text-sm text-zinc-500" title={budget.detail}>
-                {budget.label}
-              </p>
-            ) : null}
+            <div className="sticky bottom-0 z-[1] -mx-1 space-y-2 bg-inherit px-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-2">
+              <Button
+                type="submit"
+                className="min-h-11 w-full gap-2 sm:w-auto"
+                disabled={jobPending || ask.isPending || questionDraft.trim() === ''}
+              >
+                {ask.isPending ? <PendingMark /> : null}
+                質問する
+              </Button>
+              {jobPending && jobKind !== 'ask_source' ? (
+                <p className="text-sm text-zinc-500">処理中のため質問できません。</p>
+              ) : (
+                <p className="text-sm text-zinc-500" title={ASK_SCOPE_DETAIL}>
+                  {STUDY_SCOPE_SHORT}
+                </p>
+              )}
+              {budget ? (
+                <p className="text-sm text-zinc-500" title={budget.detail}>
+                  {budget.label}
+                </p>
+              ) : null}
+            </div>
           </form>
         ) : (
           <p className="text-sm text-zinc-500">本文を貼り付けると質問できます。</p>
@@ -466,12 +469,12 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1 space-y-1 border-l-2 border-zinc-400 pl-3 dark:border-zinc-500">
                       <p className="text-xs font-semibold tracking-wide text-zinc-500">質問</p>
-                      <p className="whitespace-pre-wrap">{turn.question}</p>
+                      <p className="break-anywhere whitespace-pre-wrap">{turn.question}</p>
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="gap-2 text-red-700 dark:text-red-300"
+                      className="tap-target min-h-11 gap-2 text-red-700 dark:text-red-300"
                       disabled={!turn.canDelete || deletingThis}
                       aria-label="この質問と回答を削除"
                       aria-describedby={!turn.canDelete ? deleteBusyId : undefined}

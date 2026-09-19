@@ -185,7 +185,7 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" aria-busy={saveState === 'saving' || undefined}>
-      <div className="sticky top-0 z-[1] flex items-center justify-between gap-2 bg-inherit py-1">
+      <div className="sticky top-0 z-[1] flex min-h-11 items-center justify-between gap-2 bg-inherit py-1">
         <h2 id="notebook-memo-heading" className="text-sm font-medium text-zinc-500">
           メモ
         </h2>
@@ -202,7 +202,7 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
       </div>
       <Textarea
         name="source-memo"
-        className="min-h-[12rem] flex-1 resize-y"
+        className="break-anywhere min-h-[12rem] flex-1 resize-y"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={() => {
@@ -215,13 +215,13 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
         maxLength={20_000}
       />
       {error ? (
-        <div className="space-y-2">
+        <div className="sticky bottom-0 z-[1] space-y-2 bg-inherit pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-2">
           <Alert id={errorId}>{error}</Alert>
           <div className="flex gap-3">
-            <button type="button" className="text-sm underline" onClick={() => void saveIfDirty()}>
+            <button type="button" className="tap-target min-h-11 text-sm underline" onClick={() => void saveIfDirty()}>
               再試行
             </button>
-            <button type="button" className="text-sm underline" onClick={discardDraft}>
+            <button type="button" className="tap-target min-h-11 text-sm underline" onClick={discardDraft}>
               破棄
             </button>
           </div>

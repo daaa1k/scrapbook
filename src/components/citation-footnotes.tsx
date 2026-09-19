@@ -21,7 +21,7 @@ export function CitedProse({ text, citations, emptyLabel }: CitedProseProps) {
 
   return (
     <div>
-      <p className="whitespace-pre-wrap">
+      <p className="break-anywhere whitespace-pre-wrap">
         {text}
         {citations.length > 0 ? (
           <span className="ml-1 inline-flex flex-wrap items-baseline gap-0.5 align-baseline">
@@ -32,7 +32,7 @@ export function CitedProse({ text, citations, emptyLabel }: CitedProseProps) {
                 <button
                   key={citation.id}
                   type="button"
-                  className="align-super text-xs font-medium text-zinc-600 underline decoration-dotted underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                  className="tap-target inline-flex min-h-11 min-w-11 items-center justify-center align-super text-xs font-medium text-zinc-600 underline decoration-dotted underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
                   aria-label={label}
                   aria-expanded={expanded}
                   aria-controls={expanded ? panelId : undefined}
@@ -53,7 +53,7 @@ export function CitedProse({ text, citations, emptyLabel }: CitedProseProps) {
           className="mt-2 rounded-md border border-zinc-200 bg-white p-3 text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
         >
           <p className="mb-1 text-xs text-zinc-500 dark:text-zinc-400">{openLabel}</p>
-          <p className="whitespace-pre-wrap">{openCitation.excerpt}</p>
+          <p className="break-anywhere whitespace-pre-wrap">{openCitation.excerpt}</p>
         </aside>
       ) : null}
     </div>
