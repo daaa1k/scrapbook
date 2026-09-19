@@ -2,7 +2,7 @@ import type { InputHTMLAttributes, Ref } from 'react'
 import { cn } from '~/lib/utils'
 
 export const controlClassName =
-  'w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100'
+  'w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink disabled:cursor-not-allowed disabled:text-disabled disabled:opacity-60'
 
 export function Input({
   className,

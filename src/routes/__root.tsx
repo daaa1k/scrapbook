@@ -1,7 +1,9 @@
 import { HeadContent, Link, Outlet, Scripts, createRootRouteWithContext, useRouterState } from '@tanstack/react-router'
 import type { QueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
+import { ThemeToggle } from '~/components/theme-toggle'
 import { useAppViewportCssVars } from '~/hooks/use-app-viewport'
+import { THEME_BOOT_SCRIPT } from '~/lib/theme'
 import { cn } from '~/lib/utils'
 import appCss from '~/styles.css?url'
 
@@ -39,9 +41,10 @@ function RootDocument({ children }: { children: ReactNode }) {
   useAppViewportCssVars(notebookWorkspace)
 
   return (
-    <html lang="ja">
+    <html lang="ja" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body
         className={cn(
@@ -58,12 +61,19 @@ function RootDocument({ children }: { children: ReactNode }) {
               : 'mx-auto max-w-7xl px-4 py-8 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]'
           }
         >
-          <header className={notebookWorkspace ? 'mb-3 shrink-0' : 'mb-8'}>
+          <header
+            className={
+              notebookWorkspace
+                ? 'mb-3 flex shrink-0 items-center justify-between gap-3'
+                : 'mb-8 flex items-center justify-between gap-3'
+            }
+          >
             <nav aria-label="サイト">
               <Link to="/" className="text-xl font-semibold tracking-tight">
                 Scrapbook
               </Link>
             </nav>
+            <ThemeToggle />
           </header>
           <main
             id="main-content"

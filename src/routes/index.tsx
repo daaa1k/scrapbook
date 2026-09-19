@@ -161,11 +161,11 @@ function NotebookCard({
         <Link
           to="/notebooks/$notebookId"
           params={{ notebookId: notebook.id }}
-          className="min-w-0 flex-1 p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          className="min-w-0 flex-1 p-4 hover:bg-surface-muted"
         >
-          <span className="font-medium">{notebook.title}</span>
-          <p className="mt-1 text-sm text-zinc-500">{notebook.sourceCount}件のソース</p>
-          <p className="mt-1 text-sm text-zinc-500">{notebookUpdatedAtLabel(notebook.updatedAt)}</p>
+          <span className="font-medium text-ink">{notebook.title}</span>
+          <p className="mt-1 text-sm text-muted">{notebook.sourceCount}件のソース</p>
+          <p className="mt-1 text-sm text-muted">{notebookUpdatedAtLabel(notebook.updatedAt)}</p>
         </Link>
         <div className="flex shrink-0 items-start p-4 pl-0">
           <Button

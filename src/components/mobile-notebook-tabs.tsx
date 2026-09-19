@@ -70,7 +70,7 @@ export function MobileNotebookTabs({ selected, onSelect }: MobileNotebookTabsPro
 
   return (
     <div
-      className="sticky top-0 z-10 grid w-full shrink-0 grid-cols-3 border-b border-zinc-200 bg-zinc-50 md:hidden dark:border-zinc-800 dark:bg-zinc-950"
+      className="sticky top-0 z-10 grid w-full shrink-0 grid-cols-3 border-b border-border bg-canvas md:hidden"
       role="tablist"
       aria-label="ノートの表示切替"
       aria-orientation="horizontal"
@@ -90,8 +90,8 @@ export function MobileNotebookTabs({ selected, onSelect }: MobileNotebookTabsPro
             className={cn(
               'tap-target relative flex min-h-11 items-center justify-center px-2 text-sm',
               isSelected
-                ? 'bg-zinc-900 font-bold text-zinc-50 after:absolute after:inset-x-3 after:bottom-0 after:h-1 after:rounded-t-sm after:bg-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 dark:after:bg-zinc-900'
-                : 'font-medium text-zinc-600 dark:text-zinc-400',
+                ? 'bg-inverse font-bold text-canvas after:absolute after:inset-x-3 after:bottom-0 after:h-1 after:rounded-t-sm after:bg-canvas'
+                : 'font-medium text-muted',
             )}
             onClick={() => onSelect(tab.id)}
           >
