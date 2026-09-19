@@ -202,6 +202,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                 {view.sources.map((source) => {
                   const focused = source.id === view.focusSourceId
                   const busy = Boolean(source.jobStatus && !isTerminalJobStatus(source.jobStatus))
+                  const label = source.title ?? source.url ?? source.id
                   return (
                     <li key={source.id}>
                       <div
@@ -211,33 +212,44 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                             : 'rounded-md border border-transparent p-2 hover:border-zinc-200 dark:hover:border-zinc-700'
                         }
                       >
-                        {source.url ? (
-                          <a
-                            href={source.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block w-full truncate text-left text-sm underline"
-                            aria-current={focused ? 'true' : undefined}
-                            onClick={() => {
-                              void focusSource(source.id)
-                              setMobilePane('study')
-                            }}
-                          >
-                            {source.title ?? source.url ?? source.id}
-                          </a>
-                        ) : (
+                        <div className="flex min-w-0 items-start gap-1">
                           <button
                             type="button"
-                            className="w-full truncate text-left text-sm"
+                            className="min-w-0 flex-1 truncate text-left text-sm"
                             aria-current={focused ? 'true' : undefined}
                             onClick={() => {
                               void focusSource(source.id)
                               setMobilePane('study')
                             }}
                           >
-                            {source.title ?? source.url ?? source.id}
+                            {label}
                           </button>
-                        )}
+                          {source.url ? (
+                            <a
+                              href={source.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex shrink-0 rounded-md p-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                              aria-label={`${label}を新しいタブで開く`}
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 16 16"
+                                width="16"
+                                height="16"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M6.5 3.25H3.75A1.5 1.5 0 0 0 2.25 4.75v7.5a1.5 1.5 0 0 0 1.5 1.5h7.5a1.5 1.5 0 0 0 1.5-1.5V9.5" />
+                                <path d="M9.25 2.25h4.5v4.5M13.75 2.25 8 8" />
+                              </svg>
+                            </a>
+                          ) : null}
+                        </div>
                         <div className="mt-2 flex justify-end">
                           <Button
                             type="button"
@@ -249,7 +261,6 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                                 setPaneError('処理中のソースは削除できません')
                                 return
                               }
-                              const label = source.title ?? source.url ?? source.id
                               if (
                                 !window.confirm(
                                   `「${label}」を削除しますか？関連する要約・質問・メモも削除されます。`,
