@@ -159,6 +159,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
   const pdfInputRef = useRef<HTMLInputElement>(null)
   const ignoreNextCloseEvent = useRef(false)
   const methodRef = useRef<SourceAddMethod>('url')
+  const closeAfterDiscard = useRef(false)
   const queryClient = useQueryClient()
   const [method, setMethod] = useState<SourceAddMethod>('url')
   const [url, setUrl] = useState('')
@@ -222,6 +223,15 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
     })
     return () => cancelAnimationFrame(frame)
   }, [open])
+
+  useEffect(() => {
+    if (discardOpen || !closeAfterDiscard.current) return
+    closeAfterDiscard.current = false
+    const timer = window.setTimeout(() => {
+      dialogRef.current?.close()
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [discardOpen])
 
   async function invalidateAfterIngest(result: SourceAddedResult) {
     await Promise.all([
@@ -648,9 +658,8 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
         tone="default"
         onCancel={() => setDiscardOpen(false)}
         onConfirm={() => {
-          setDiscardOpen(false)
+          closeAfterDiscard.current = true
           resetSession()
-          dialogRef.current?.close()
         }}
       />
     </>
