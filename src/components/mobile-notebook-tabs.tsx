@@ -1,27 +1,45 @@
 import { useSyncExternalStore, type KeyboardEvent } from 'react'
 import {
   NOTEBOOK_MOBILE_TABS,
+  notebookLayoutModeFromMatches,
   notebookTabId,
   notebookPanelId,
   paneAfterTabKey,
+  type NotebookLayoutMode,
   type NotebookMobilePane,
 } from '~/domain/note-shell'
 import { cn } from '~/lib/utils'
 
+const MD_MEDIA = '(min-width: 48rem)'
 const LG_MEDIA = '(min-width: 64rem)'
 
-function subscribeLg(onStoreChange: () => void) {
-  const query = window.matchMedia(LG_MEDIA)
-  query.addEventListener('change', onStoreChange)
-  return () => query.removeEventListener('change', onStoreChange)
+function subscribeMedia(query: string, onStoreChange: () => void) {
+  const media = window.matchMedia(query)
+  media.addEventListener('change', onStoreChange)
+  return () => media.removeEventListener('change', onStoreChange)
 }
 
-function lgMatches() {
-  return window.matchMedia(LG_MEDIA).matches
+function mediaMatches(query: string) {
+  return window.matchMedia(query).matches
 }
 
+export function useNotebookLayoutMode(): NotebookLayoutMode {
+  const md = useSyncExternalStore(
+    (onStoreChange) => subscribeMedia(MD_MEDIA, onStoreChange),
+    () => mediaMatches(MD_MEDIA),
+    () => false,
+  )
+  const lg = useSyncExternalStore(
+    (onStoreChange) => subscribeMedia(LG_MEDIA, onStoreChange),
+    () => mediaMatches(LG_MEDIA),
+    () => false,
+  )
+  return notebookLayoutModeFromMatches(md, lg)
+}
+
+/** True when the shell uses the phone tablist (below md). */
 export function useCompactNotebookLayout() {
-  return !useSyncExternalStore(subscribeLg, lgMatches, () => true)
+  return useNotebookLayoutMode() === 'tabs'
 }
 
 export function focusNotebookTab(pane: NotebookMobilePane) {
@@ -52,7 +70,7 @@ export function MobileNotebookTabs({ selected, onSelect }: MobileNotebookTabsPro
 
   return (
     <div
-      className="sticky top-0 z-10 grid w-full grid-cols-3 border-b border-zinc-200 bg-zinc-50 lg:hidden dark:border-zinc-800 dark:bg-zinc-950"
+      className="sticky top-0 z-10 grid w-full grid-cols-3 border-b border-zinc-200 bg-zinc-50 md:hidden dark:border-zinc-800 dark:bg-zinc-950"
       role="tablist"
       aria-label="ノートの表示切替"
       aria-orientation="horizontal"

@@ -54,6 +54,9 @@ export const MEMO_LOADING_LABEL = 'メモを読み込み中…'
 export const NOTEBOOK_MOBILE_PANES = ['sources', 'study', 'memo'] as const
 export type NotebookMobilePane = (typeof NOTEBOOK_MOBILE_PANES)[number]
 
+/** Phone tabs, tablet source drawer, or desktop three-pane split. */
+export type NotebookLayoutMode = 'tabs' | 'drawer' | 'split'
+
 export const NOTEBOOK_MOBILE_TABS = [
   { id: 'sources', label: 'ソース' },
   { id: 'study', label: '要約・質問' },
@@ -62,6 +65,15 @@ export const NOTEBOOK_MOBILE_TABS = [
 
 export const NOTEBOOK_SOURCE_STUDY_HINT_ID = 'notebook-source-study-hint'
 export const NOTEBOOK_SOURCE_STUDY_HINT = 'ソースを選ぶと要約・質問タブに切り替わります'
+export const NOTEBOOK_SOURCES_DRAWER_OPEN_LABEL = 'ソース一覧'
+export const NOTEBOOK_SOURCES_DRAWER_CLOSE_LABEL = 'ソース一覧を閉じる'
+
+/** md = 48rem, lg = 64rem — matches Tailwind defaults used by the shell chrome. */
+export function notebookLayoutModeFromMatches(md: boolean, lg: boolean): NotebookLayoutMode {
+  if (lg) return 'split'
+  if (md) return 'drawer'
+  return 'tabs'
+}
 
 export function notebookTabId(pane: NotebookMobilePane): `notebook-tab-${NotebookMobilePane}` {
   return `notebook-tab-${pane}`
@@ -85,9 +97,12 @@ export function paneAfterTabKey(current: NotebookMobilePane, key: string): Noteb
 export function notebookPanelIsConcealed(
   pane: NotebookMobilePane,
   selected: NotebookMobilePane,
-  compact: boolean,
+  mode: NotebookLayoutMode,
+  sourcesDrawerOpen = false,
 ): boolean {
-  return compact && pane !== selected
+  if (mode === 'tabs') return pane !== selected
+  if (mode === 'drawer' && pane === 'sources') return !sourcesDrawerOpen
+  return false
 }
 
 export function notebookStudySwitchAnnouncement(sourceLabel: string): string {

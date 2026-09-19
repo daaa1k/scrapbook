@@ -160,7 +160,7 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
   if (query.isError && !query.data) {
     return (
       <div className="flex h-full min-h-0 flex-col gap-3">
-        <h2 id="notebook-memo-heading" className="text-sm font-medium text-zinc-500">
+        <h2 id="notebook-memo-heading" className="sticky top-0 z-[1] bg-inherit py-1 text-sm font-medium text-zinc-500">
           メモ
         </h2>
         <ErrorRetry onRetry={() => void query.refetch()}>{userFacingError(query.error)}</ErrorRetry>
@@ -171,7 +171,7 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
   if (!query.data) {
     return (
       <div className="flex h-full min-h-0 flex-col gap-3">
-        <h2 id="notebook-memo-heading" className="text-sm font-medium text-zinc-500">
+        <h2 id="notebook-memo-heading" className="sticky top-0 z-[1] bg-inherit py-1 text-sm font-medium text-zinc-500">
           メモ
         </h2>
         <LoadingSkeleton label={MEMO_LOADING_LABEL} lines={3} />
@@ -185,7 +185,7 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" aria-busy={saveState === 'saving' || undefined}>
-      <div className="flex items-center justify-between gap-2">
+      <div className="sticky top-0 z-[1] flex items-center justify-between gap-2 bg-inherit py-1">
         <h2 id="notebook-memo-heading" className="text-sm font-medium text-zinc-500">
           メモ
         </h2>
