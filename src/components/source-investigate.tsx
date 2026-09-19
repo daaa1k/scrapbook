@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from 'react'
 import { CitedProse } from '~/components/citation-footnotes'
 import { Alert } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
+import { ConfirmDialog } from '~/components/ui/confirm-dialog'
 import { Input } from '~/components/ui/input'
 import { Textarea } from '~/components/ui/textarea'
+import { qaDeleteConfirm } from '~/domain/destructive-confirm'
 import { MAX_CURSOR_BODY_CHARS, storedBodyText } from '~/domain/ingest-result'
 import {
   ASK_SCOPE_DETAIL,
@@ -75,6 +77,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const [pasteBodyError, setPasteBodyError] = useState<string | null>(null)
   const [pasteRequested, setPasteRequested] = useState(false)
   const [completionAnnouncement, setCompletionAnnouncement] = useState('')
+  const [pendingQa, setPendingQa] = useState<{ id: string; question: string } | null>(null)
   const previousJobStatus = useRef<JobStatus | null | undefined>(undefined)
   const pasteTitleSeeded = useRef(false)
 
@@ -191,7 +194,8 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const showPasteForm = pasteRequested || (!jobInput.hasBody && !jobPending)
   const pasteCount = sourceAddPasteBodyCount(pasteBody)
   const studyBusy =
-    summarize.isPending || ask.isPending || deleteQa.isPending || retry.isPending || paste.isPending || jobPending
+    summarize.isPending || ask.isPending || retry.isPending || paste.isPending || jobPending
+  const deletingQaId = deleteQa.isPending ? deleteQa.variables : undefined
   const recoveryActions = (progress.recovery ?? []).filter(
     (action) => action.id !== 'paste-body' || !showPasteForm,
   )
@@ -441,48 +445,63 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
         {source.qaAnswers.length === 0 ? (
           <p className="mt-2 text-sm text-zinc-500">まだ質問はありません</p>
         ) : (
-          <ul className="mt-2 space-y-4">
+          <ul className="mt-2 space-y-3">
             {source.qaAnswers.map((turn) => {
               const turnView = qaTurnView(turn, jobInput)
+              const deletingThis = deletingQaId === turn.id
+              const deleteBusyId = `${turn.id}-delete-busy`
               return (
-                <li key={turn.id} className="space-y-2 border-t border-zinc-200 pt-4 dark:border-zinc-700">
+                <li
+                  key={turn.id}
+                  className="rounded-md border border-zinc-200 p-3 dark:border-zinc-700"
+                  aria-busy={deletingThis || undefined}
+                >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <p className="text-sm text-zinc-500">質問</p>
+                    <div className="min-w-0 flex-1 space-y-1 border-l-2 border-zinc-400 pl-3 dark:border-zinc-500">
+                      <p className="text-xs font-semibold tracking-wide text-zinc-500">質問</p>
                       <p className="whitespace-pre-wrap">{turn.question}</p>
                     </div>
                     <Button
-                      variant="danger"
-                      disabled={!turn.canDelete || deleteQa.isPending}
-                      onClick={() => deleteQa.mutate(turn.id)}
+                      variant="ghost"
+                      size="sm"
+                      className="gap-2 text-red-700 dark:text-red-300"
+                      disabled={!turn.canDelete || deletingThis}
+                      aria-label="この質問と回答を削除"
+                      aria-describedby={!turn.canDelete ? deleteBusyId : undefined}
+                      onClick={() => setPendingQa({ id: turn.id, question: turn.question })}
                     >
-                      削除
+                      {deletingThis ? <PendingMark /> : null}
+                      {deletingThis ? '削除しています' : '削除'}
                     </Button>
                   </div>
-                  <p className="text-sm text-zinc-500">回答</p>
-                  {turnView.phase === 'ready' ? (
-                    <CitedProse text={turn.answer ?? ''} citations={turn.citations} emptyLabel="回答待ち…" />
-                  ) : turnView.phase === 'pending' ? (
-                    <ProgressLine view={turnView.progress} />
-                  ) : (
-                    <div className="space-y-2">
-                      <Alert>{jobStatusAlertText(turnView.progress)}</Alert>
-                      {(turnView.progress.recovery ?? []).map((action) => (
-                        <Button
-                          key={action.id}
-                          className="gap-2"
-                          variant={action.id === 'retry' ? 'primary' : 'secondary'}
-                          disabled={studyBusy}
-                          onClick={() => runRecovery(action, turn.question)}
-                        >
-                          {ask.isPending && action.id === 'retry' ? <PendingMark /> : null}
-                          {action.label}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
+                  <div className="mt-3 space-y-2 border-l-2 border-zinc-900 pl-3 dark:border-zinc-100">
+                    <p className="text-xs font-semibold tracking-wide text-zinc-500">回答</p>
+                    {turnView.phase === 'ready' ? (
+                      <CitedProse text={turn.answer ?? ''} citations={turn.citations} emptyLabel="回答待ち…" />
+                    ) : turnView.phase === 'pending' ? (
+                      <ProgressLine view={turnView.progress} />
+                    ) : (
+                      <div className="space-y-2">
+                        <Alert>{jobStatusAlertText(turnView.progress)}</Alert>
+                        {(turnView.progress.recovery ?? []).map((action) => (
+                          <Button
+                            key={action.id}
+                            className="gap-2"
+                            variant={action.id === 'retry' ? 'primary' : 'secondary'}
+                            disabled={studyBusy}
+                            onClick={() => runRecovery(action, turn.question)}
+                          >
+                            {ask.isPending && action.id === 'retry' ? <PendingMark /> : null}
+                            {action.label}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   {!turn.canDelete ? (
-                    <p className="text-sm text-zinc-500">処理中のため削除できません。</p>
+                    <p id={deleteBusyId} className="mt-2 text-sm text-zinc-500">
+                      処理中のため削除できません。
+                    </p>
                   ) : null}
                 </li>
               )
@@ -492,6 +511,19 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
       </section>
 
       {actionError ? <Alert id="investigate-action-error">{actionError}</Alert> : null}
+      {pendingQa ? (
+        <ConfirmDialog
+          open
+          {...qaDeleteConfirm(pendingQa.question)}
+          tone="danger"
+          onCancel={() => setPendingQa(null)}
+          onConfirm={() => {
+            const qaAnswerId = pendingQa.id
+            setPendingQa(null)
+            deleteQa.mutate(qaAnswerId)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

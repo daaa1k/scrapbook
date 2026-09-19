@@ -1,3 +1,5 @@
+import { jobProgressView } from '~/domain/job-status-copy'
+import type { JobKind, JobStatus } from '~/domain/jobs'
 import type {
   NotebookId,
   NotebookRef,
@@ -18,7 +20,23 @@ export type NoteShellView =
       notebook: NotebookRef
       sources: SourceListItem[]
       focusSourceId: string
+      invalidSourceId?: string
     }
+
+export type SourceListKind = 'web' | 'pdf' | 'paste'
+
+export type SourceRowJobChip = {
+  tone: 'pending' | 'failure'
+  label: string
+}
+
+export const INVALID_SOURCE_ID_RECOVERY =
+  '指定されたソースが見つからないため、先頭のソースを表示しています。'
+
+export const SOURCE_DELETE_BUSY_REASON = '処理中のため削除できません'
+export const SOURCE_DELETING_STATUS = '削除しています'
+export const SOURCE_LIST_EMPTY_COPY = 'まだソースがありません。追加すると要約と質問が使えます。'
+export const SOURCE_LIST_SELECTED_LABEL = '選択中'
 
 export const NOTEBOOK_MOBILE_PANES = ['sources', 'study', 'memo'] as const
 export type NotebookMobilePane = (typeof NOTEBOOK_MOBILE_PANES)[number]
@@ -75,14 +93,68 @@ export function resolveNoteShellView(
   if (sources.length === 0) {
     return { status: 'empty', notebook }
   }
-  const focusSourceId =
-    search.sourceId && sources.some((row) => row.id === search.sourceId)
-      ? search.sourceId
-      : sources[0]!.id
+  const requested = search.sourceId
+  const matched = Boolean(requested && sources.some((row) => row.id === requested))
+  const focusSourceId = matched && requested ? requested : sources[0]!.id
   return {
     status: 'ready',
     notebook,
     sources: [...sources],
     focusSourceId,
+    ...(requested && !matched ? { invalidSourceId: requested } : {}),
   }
+}
+
+export function nextSourceIdAfterDelete(
+  sourceIds: readonly string[],
+  deletedId: string,
+  focusedId?: string,
+): string | undefined {
+  const remaining = sourceIds.filter((id) => id !== deletedId)
+  if (focusedId && focusedId !== deletedId && remaining.includes(focusedId)) {
+    return focusedId
+  }
+  const index = sourceIds.indexOf(deletedId)
+  if (index === -1) return remaining[0]
+  return remaining[index] ?? remaining[index - 1]
+}
+
+export function sourceListKind(source: { kind: string; acquiredVia: string }): SourceListKind {
+  if (source.kind === 'pdf') return 'pdf'
+  if (source.acquiredVia === 'paste') return 'paste'
+  return 'web'
+}
+
+export function sourceListKindLabel(kind: SourceListKind): string {
+  switch (kind) {
+    case 'web':
+      return 'Web'
+    case 'pdf':
+      return 'PDF'
+    case 'paste':
+      return '貼り付け'
+    default: {
+      const _never: never = kind
+      return _never
+    }
+  }
+}
+
+export function sourceRowJobChip(source: {
+  jobStatus: JobStatus | null
+  jobKind: JobKind | null
+}): SourceRowJobChip | null {
+  if (!source.jobStatus || source.jobStatus === 'succeeded') return null
+  const view = jobProgressView({
+    status: source.jobStatus,
+    kind: source.jobKind,
+    errorCode: null,
+    errorMessage: null,
+    hasBody: true,
+    hasUrl: true,
+  })
+  if (view.tone === 'pending' || view.tone === 'failure') {
+    return { tone: view.tone, label: view.label }
+  }
+  return null
 }

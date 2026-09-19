@@ -18,3 +18,11 @@ export function sourceDeleteConfirm(label: string): ConfirmCopy {
     description: '関連する要約、質問、メモも削除されます。この操作は取り消せません。',
   }
 }
+
+export function qaDeleteConfirm(question: string): ConfirmCopy {
+  const clipped = question.length > 40 ? `${question.slice(0, 40)}…` : question
+  return {
+    title: 'この質問と回答を削除します',
+    description: `「${clipped}」とその回答が削除されます。この操作は取り消せません。`,
+  }
+}

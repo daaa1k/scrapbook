@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  nextSourceIdAfterDelete,
   notebookPanelId,
   notebookPanelIsConcealed,
   notebookStudySwitchAnnouncement,
   notebookTabId,
   paneAfterTabKey,
   resolveNoteShellView,
+  sourceListKind,
+  sourceListKindLabel,
+  sourceRowJobChip,
 } from '../src/domain/note-shell'
 import {
   notebookIdSchema,
@@ -95,7 +99,47 @@ describe('resolveNoteShellView', () => {
       notebook: notebookRef,
       sources,
       focusSourceId: 'src-1',
+      invalidSourceId: 'missing',
     })
+  })
+})
+
+describe('nextSourceIdAfterDelete', () => {
+  it('selects the source that occupied the delete index, else the previous', () => {
+    expect(nextSourceIdAfterDelete(['a', 'b', 'c'], 'b', 'b')).toBe('c')
+    expect(nextSourceIdAfterDelete(['a', 'b', 'c'], 'c', 'c')).toBe('b')
+    expect(nextSourceIdAfterDelete(['a', 'b', 'c'], 'a', 'a')).toBe('b')
+    expect(nextSourceIdAfterDelete(['a'], 'a', 'a')).toBe(undefined)
+  })
+
+  it('keeps the focused source when a different row is deleted', () => {
+    expect(nextSourceIdAfterDelete(['a', 'b', 'c'], 'b', 'a')).toBe('a')
+    expect(nextSourceIdAfterDelete(['a', 'b', 'c'], 'a', 'c')).toBe('c')
+  })
+})
+
+describe('source list kind and row job chip', () => {
+  it('maps PDF, paste, and fetched URL to list kinds', () => {
+    expect(sourceListKind({ kind: 'pdf', acquiredVia: 'upload' })).toBe('pdf')
+    expect(sourceListKindLabel(sourceListKind({ kind: 'pdf', acquiredVia: 'upload' }))).toBe('PDF')
+    expect(sourceListKind({ kind: 'url', acquiredVia: 'paste' })).toBe('paste')
+    expect(sourceListKindLabel('paste')).toBe('貼り付け')
+    expect(sourceListKind({ kind: 'url', acquiredVia: 'fetch' })).toBe('web')
+    expect(sourceListKind({ kind: 'x', acquiredVia: 'fetch' })).toBe('web')
+    expect(sourceListKindLabel('web')).toBe('Web')
+  })
+
+  it('shows pending or failed job copy on the row and hides succeeded', () => {
+    expect(sourceRowJobChip({ jobStatus: 'queued', jobKind: 'fetch' })).toEqual({
+      tone: 'pending',
+      label: '本文の取得を準備しています',
+    })
+    expect(sourceRowJobChip({ jobStatus: 'failed', jobKind: 'summarize_body' })).toEqual({
+      tone: 'failure',
+      label: '要約できませんでした',
+    })
+    expect(sourceRowJobChip({ jobStatus: 'succeeded', jobKind: 'ask_source' })).toBe(null)
+    expect(sourceRowJobChip({ jobStatus: null, jobKind: null })).toBe(null)
   })
 })
 

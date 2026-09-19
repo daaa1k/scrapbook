@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import {
   focusNotebookTab,
   MobileNotebookTabs,
@@ -17,16 +17,27 @@ import { Input } from '~/components/ui/input'
 import { sourceDeleteConfirm } from '~/domain/destructive-confirm'
 import { isLeavingNotebook, type MemoSessionHandle } from '~/domain/memo-save'
 import {
+  INVALID_SOURCE_ID_RECOVERY,
   NOTEBOOK_SOURCE_STUDY_HINT,
   NOTEBOOK_SOURCE_STUDY_HINT_ID,
+  SOURCE_DELETE_BUSY_REASON,
+  SOURCE_DELETING_STATUS,
+  SOURCE_LIST_EMPTY_COPY,
+  SOURCE_LIST_SELECTED_LABEL,
+  nextSourceIdAfterDelete,
   notebookPanelId,
   notebookPanelIsConcealed,
   notebookStudySwitchAnnouncement,
   resolveNoteShellView,
+  sourceListKind,
+  sourceListKindLabel,
+  sourceRowJobChip,
   type NotebookMobilePane,
   type NoteShellSearch,
+  type SourceListKind,
 } from '~/domain/note-shell'
 import { sourceListFilterFromSourcesPageSearch } from '~/domain/organization'
+import type { SourceListItem } from '~/domain/source-views'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { isTerminalJobStatus, userFacingError } from '~/lib/utils'
 import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
@@ -128,18 +139,14 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   })
 
   const removeSource = useMutation({
-    mutationFn: (id: string) => deleteRegisteredSource({ data: { sourceId: id } }),
-    onSuccess: async (_result, deletedId) => {
+    mutationFn: ({ deletedId }: { deletedId: string; nextId?: string }) =>
+      deleteRegisteredSource({ data: { sourceId: deletedId } }),
+    onSuccess: async (_result, { nextId }) => {
       setPaneError(null)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
         queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
       ])
-      const remaining =
-        view && view.status === 'ready'
-          ? view.sources.filter((row) => row.id !== deletedId)
-          : []
-      const nextId = remaining[0]?.id
       await navigate({
         to: '/notebooks/$notebookId',
         params: { notebookId },
@@ -148,6 +155,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     },
     onError: (error) => setPaneError(userFacingError(error)),
   })
+  const deletingSourceId = removeSource.isPending ? removeSource.variables.deletedId : undefined
 
   async function focusSource(nextSourceId: string) {
     if (view?.status === 'ready' && view.focusSourceId === nextSourceId) return
@@ -246,151 +254,113 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         {paneError ? <Alert id="notebook-pane-error">{paneError}</Alert> : null}
       </header>
 
-      {view.status === 'empty' ? (
-        <div className="rounded-md border border-dashed border-zinc-300 p-6 dark:border-zinc-700">
-          <p className="mb-3">まだソースがありません。追加すると要約と質問が使えます。</p>
-          <Button type="button" onClick={() => setModalOpen(true)}>
-            ソースを追加
-          </Button>
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-          <MobileNotebookTabs selected={mobilePane} onSelect={setMobilePane} />
-          <p role="status" className="sr-only">
-            {paneAnnounce}
-          </p>
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <MobileNotebookTabs selected={mobilePane} onSelect={setMobilePane} />
+        <p role="status" className="sr-only">
+          {paneAnnounce}
+        </p>
 
-          <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
-            <aside
-              id={notebookPanelId('sources')}
-              role="tabpanel"
-              aria-labelledby="notebook-sources-heading"
-              {...notebookPanelConcealmentProps(notebookPanelIsConcealed('sources', mobilePane, compact))}
-              className={`min-h-0 overflow-y-auto border-zinc-200 pr-0 dark:border-zinc-800 lg:block lg:border-r lg:pr-3 ${
-                mobilePane === 'sources' ? 'block' : 'hidden'
-              }`}
-            >
-              <h2 id="notebook-sources-heading" className="mb-3 text-sm font-medium text-zinc-500">
-                ソース
-              </h2>
-              {compact ? (
-                <p id={NOTEBOOK_SOURCE_STUDY_HINT_ID} className="mb-3 text-xs text-zinc-500">
-                  {NOTEBOOK_SOURCE_STUDY_HINT}
-                </p>
-              ) : null}
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
+          <aside
+            id={notebookPanelId('sources')}
+            role="tabpanel"
+            aria-labelledby="notebook-sources-heading"
+            {...notebookPanelConcealmentProps(notebookPanelIsConcealed('sources', mobilePane, compact))}
+            className={`min-h-0 overflow-y-auto border-zinc-200 pr-0 dark:border-zinc-800 lg:block lg:border-r lg:pr-3 ${
+              mobilePane === 'sources' ? 'block' : 'hidden'
+            }`}
+          >
+            <h2 id="notebook-sources-heading" className="mb-3 text-sm font-medium text-zinc-500">
+              ソース
+            </h2>
+            {compact ? (
+              <p id={NOTEBOOK_SOURCE_STUDY_HINT_ID} className="mb-3 text-xs text-zinc-500">
+                {NOTEBOOK_SOURCE_STUDY_HINT}
+              </p>
+            ) : null}
+            {view.status === 'ready' && view.invalidSourceId ? (
+              <Alert id="notebook-invalid-source" className="mb-3">
+                {INVALID_SOURCE_ID_RECOVERY}
+              </Alert>
+            ) : null}
+            {view.status === 'empty' ? (
+              <div className="rounded-md border border-dashed border-zinc-300 p-4 dark:border-zinc-700">
+                <p className="mb-3 text-sm">{SOURCE_LIST_EMPTY_COPY}</p>
+                <Button type="button" onClick={() => setModalOpen(true)}>
+                  ソースを追加
+                </Button>
+              </div>
+            ) : (
               <ul className="space-y-2">
-                {view.sources.map((source) => {
-                  const focused = source.id === view.focusSourceId
-                  const busy = Boolean(source.jobStatus && !isTerminalJobStatus(source.jobStatus))
-                  const label = source.title ?? source.url ?? source.id
-                  return (
-                    <li key={source.id}>
-                      <div
-                        className={
-                          focused
-                            ? 'rounded-md border border-zinc-900 p-2 dark:border-zinc-100'
-                            : 'rounded-md border border-transparent p-2 hover:border-zinc-200 dark:hover:border-zinc-700'
-                        }
-                      >
-                        <div className="flex min-w-0 items-start gap-1">
-                          <button
-                            type="button"
-                            className="min-w-0 flex-1 truncate text-left text-sm"
-                            aria-current={focused ? 'true' : undefined}
-                            aria-describedby={compact ? NOTEBOOK_SOURCE_STUDY_HINT_ID : undefined}
-                            onClick={() => {
-                              void focusSource(source.id)
-                              setMobilePane('study')
-                              if (compact) {
-                                setPaneAnnounce(notebookStudySwitchAnnouncement(label))
-                                focusNotebookTab('study')
-                              }
-                            }}
-                          >
-                            {label}
-                          </button>
-                          {source.url ? (
-                            <a
-                              href={source.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex shrink-0 rounded-md p-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-                              aria-label={`${label}を新しいタブで開く`}
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 16 16"
-                                width="16"
-                                height="16"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden="true"
-                              >
-                                <path d="M6.5 3.25H3.75A1.5 1.5 0 0 0 2.25 4.75v7.5a1.5 1.5 0 0 0 1.5 1.5h7.5a1.5 1.5 0 0 0 1.5-1.5V9.5" />
-                                <path d="M9.25 2.25h4.5v4.5M13.75 2.25 8 8" />
-                              </svg>
-                            </a>
-                          ) : null}
-                        </div>
-                        <div className="mt-2 flex justify-end">
-                          <Button
-                            type="button"
-                            variant="danger"
-                            size="sm"
-                            disabled={busy || removeSource.isPending}
-                            aria-label={`${source.title ?? source.id}を削除`}
-                            onClick={() => {
-                              if (busy) {
-                                setPaneError('処理中のソースは削除できません')
-                                return
-                              }
-                              setPendingSource({ id: source.id, label })
-                            }}
-                          >
-                            削除
-                          </Button>
-                        </div>
-                      </div>
-                    </li>
-                  )
-                })}
+                {view.sources.map((source) => (
+                  <SourceRow
+                    key={source.id}
+                    source={source}
+                    focused={source.id === view.focusSourceId}
+                    compact={compact}
+                    deleting={deletingSourceId === source.id}
+                    onFocus={() => {
+                      void focusSource(source.id)
+                      setMobilePane('study')
+                      if (compact) {
+                        const label = source.title ?? source.url ?? source.id
+                        setPaneAnnounce(notebookStudySwitchAnnouncement(label))
+                        focusNotebookTab('study')
+                      }
+                    }}
+                    onDelete={() => {
+                      const label = source.title ?? source.url ?? source.id
+                      setPendingSource({ id: source.id, label })
+                    }}
+                  />
+                ))}
               </ul>
-            </aside>
+            )}
+          </aside>
 
-            <section
-              id={notebookPanelId('study')}
-              role="tabpanel"
-              aria-labelledby="notebook-study-heading"
-              {...notebookPanelConcealmentProps(notebookPanelIsConcealed('study', mobilePane, compact))}
-              className={`min-h-0 overflow-y-auto lg:block ${mobilePane === 'study' ? 'block' : 'hidden'}`}
-            >
-              <h2 id="notebook-study-heading" className="mb-3 text-sm font-medium text-zinc-500">
-                要約・質問
-              </h2>
+          <section
+            id={notebookPanelId('study')}
+            role="tabpanel"
+            aria-labelledby="notebook-study-heading"
+            {...notebookPanelConcealmentProps(notebookPanelIsConcealed('study', mobilePane, compact))}
+            className={`min-h-0 overflow-y-auto lg:block ${mobilePane === 'study' ? 'block' : 'hidden'}`}
+          >
+            <h2 id="notebook-study-heading" className="mb-3 text-sm font-medium text-zinc-500">
+              要約・質問
+            </h2>
+            {view.status === 'ready' ? (
               <SourceInvestigate key={view.focusSourceId} sourceId={view.focusSourceId} />
-            </section>
+            ) : (
+              <p className="text-sm text-zinc-500">{SOURCE_LIST_EMPTY_COPY}</p>
+            )}
+          </section>
 
-            <aside
-              id={notebookPanelId('memo')}
-              role="tabpanel"
-              aria-labelledby="notebook-memo-heading"
-              {...notebookPanelConcealmentProps(notebookPanelIsConcealed('memo', mobilePane, compact))}
-              className={`min-h-0 overflow-y-auto border-zinc-200 pl-0 dark:border-zinc-800 lg:block lg:border-l lg:pl-3 ${
-                mobilePane === 'memo' ? 'block' : 'hidden'
-              }`}
-            >
+          <aside
+            id={notebookPanelId('memo')}
+            role="tabpanel"
+            aria-labelledby="notebook-memo-heading"
+            {...notebookPanelConcealmentProps(notebookPanelIsConcealed('memo', mobilePane, compact))}
+            className={`min-h-0 overflow-y-auto border-zinc-200 pl-0 dark:border-zinc-800 lg:block lg:border-l lg:pl-3 ${
+              mobilePane === 'memo' ? 'block' : 'hidden'
+            }`}
+          >
+            {view.status === 'ready' ? (
               <SourceMemoPane
                 key={view.focusSourceId}
                 sourceId={view.focusSourceId}
                 registerMemoSession={registerMemoSession}
               />
-            </aside>
-          </div>
+            ) : (
+              <>
+                <h2 id="notebook-memo-heading" className="mb-3 text-sm font-medium text-zinc-500">
+                  メモ
+                </h2>
+                <p className="text-sm text-zinc-500">ソースを選ぶとメモを書けます。</p>
+              </>
+            )}
+          </aside>
         </div>
-      )}
+      </div>
 
       {pendingSource ? (
         <ConfirmDialog
@@ -399,9 +369,12 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           tone="danger"
           onCancel={() => setPendingSource(null)}
           onConfirm={() => {
-            const sourceIdToDelete = pendingSource.id
+            const deletedId = pendingSource.id
+            const ids = view.status === 'ready' ? view.sources.map((row) => row.id) : []
+            const focusedId = view.status === 'ready' ? view.focusSourceId : undefined
+            const nextId = nextSourceIdAfterDelete(ids, deletedId, focusedId)
             setPendingSource(null)
-            removeSource.mutate(sourceIdToDelete)
+            removeSource.mutate({ deletedId, nextId })
           }}
         />
       ) : null}
@@ -423,6 +396,234 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           })
         }}
       />
+    </div>
+  )
+}
+
+function PendingMark() {
+  return (
+    <span
+      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
+      aria-hidden="true"
+    />
+  )
+}
+
+function SourceKindMark({ kind }: { kind: SourceListKind }) {
+  const label = sourceListKindLabel(kind)
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-zinc-500">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 16 16"
+        width="16"
+        height="16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {kind === 'pdf' ? (
+          <>
+            <path d="M4.25 2.25h5.5L12.75 5.25v8.5H4.25z" />
+            <path d="M9.75 2.25v3h3" />
+          </>
+        ) : kind === 'paste' ? (
+          <>
+            <rect x="4.25" y="3.25" width="7.5" height="10.5" rx="1" />
+            <path d="M6.25 3.25V2.5a1.75 1.75 0 0 1 3.5 0v.75" />
+          </>
+        ) : (
+          <>
+            <circle cx="8" cy="8" r="5.5" />
+            <path d="M2.5 8h11M8 2.5c1.6 1.8 2.4 3.6 2.4 5.5S9.6 11.7 8 13.5C6.4 11.7 5.6 9.9 5.6 8S6.4 4.3 8 2.5z" />
+          </>
+        )}
+      </svg>
+      {label}
+    </span>
+  )
+}
+
+function SourceRow({
+  source,
+  focused,
+  compact,
+  deleting,
+  onFocus,
+  onDelete,
+}: {
+  source: SourceListItem
+  focused: boolean
+  compact: boolean
+  deleting: boolean
+  onFocus: () => void
+  onDelete: () => void
+}) {
+  const kind = sourceListKind(source)
+  const chip = sourceRowJobChip(source)
+  const busy = Boolean(source.jobStatus && !isTerminalJobStatus(source.jobStatus))
+  const label = source.title ?? source.url ?? source.id
+  const busyReasonId = `${source.id}-delete-busy`
+  return (
+    <li>
+      <div
+        className={
+          focused
+            ? 'rounded-md border border-zinc-900 p-2 dark:border-zinc-100'
+            : 'rounded-md border border-transparent p-2 hover:border-zinc-200 dark:hover:border-zinc-700'
+        }
+        aria-busy={deleting || undefined}
+      >
+        <div className="flex min-w-0 items-start gap-1">
+          <div className="min-w-0 flex-1 space-y-1">
+            <SourceKindMark kind={kind} />
+            <button
+              type="button"
+              className="w-full text-left text-sm"
+              title={label}
+              aria-current={focused ? 'true' : undefined}
+              aria-describedby={compact ? NOTEBOOK_SOURCE_STUDY_HINT_ID : undefined}
+              onClick={onFocus}
+            >
+              <span className={`line-clamp-2 break-words ${focused ? 'font-bold' : ''}`}>{label}</span>
+              {focused ? (
+                <span className="mt-0.5 block text-xs font-medium text-zinc-500">
+                  {SOURCE_LIST_SELECTED_LABEL}
+                </span>
+              ) : null}
+            </button>
+          </div>
+          {source.url ? (
+            <a
+              href={source.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 rounded-md p-1 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+              aria-label={`${label}を新しいタブで開く`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 16 16"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M6.5 3.25H3.75A1.5 1.5 0 0 0 2.25 4.75v7.5a1.5 1.5 0 0 0 1.5 1.5h7.5a1.5 1.5 0 0 0 1.5-1.5V9.5" />
+                <path d="M9.25 2.25h4.5v4.5M13.75 2.25 8 8" />
+              </svg>
+            </a>
+          ) : null}
+          {deleting ? (
+            <span className="inline-flex shrink-0 items-center gap-1 text-xs text-zinc-500">
+              <PendingMark />
+              {SOURCE_DELETING_STATUS}
+            </span>
+          ) : (
+            <SourceRowMenu
+              label={label}
+              busy={busy}
+              busyReasonId={busyReasonId}
+              onDelete={onDelete}
+            />
+          )}
+        </div>
+        {chip ? (
+          <p
+            className={`mt-2 flex items-center gap-2 text-xs ${
+              chip.tone === 'failure' ? 'text-red-600' : 'text-zinc-500'
+            }`}
+          >
+            {chip.tone === 'pending' ? <PendingMark /> : null}
+            {chip.label}
+          </p>
+        ) : null}
+        {busy ? (
+          <p id={busyReasonId} className="mt-1 text-xs text-zinc-500">
+            {SOURCE_DELETE_BUSY_REASON}
+          </p>
+        ) : null}
+      </div>
+    </li>
+  )
+}
+
+function SourceRowMenu({
+  label,
+  busy,
+  busyReasonId,
+  onDelete,
+}: {
+  label: string
+  busy: boolean
+  busyReasonId: string
+  onDelete: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const menuId = useId()
+
+  useEffect(() => {
+    if (!open) return
+    function onPointer(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={`${label}の操作`}
+        aria-describedby={busy ? busyReasonId : undefined}
+        onClick={() => setOpen((current) => !current)}
+      >
+        操作
+      </Button>
+      {open ? (
+        <div
+          id={menuId}
+          role="menu"
+          className="absolute right-0 z-10 mt-1 min-w-40 rounded-md border border-zinc-200 bg-white p-1 shadow-md dark:border-zinc-700 dark:bg-zinc-950"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center rounded px-2 py-1.5 text-left text-sm text-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-300"
+            disabled={busy}
+            aria-disabled={busy || undefined}
+            aria-describedby={busy ? busyReasonId : undefined}
+            onClick={() => {
+              if (busy) return
+              setOpen(false)
+              onDelete()
+            }}
+          >
+            削除
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }
