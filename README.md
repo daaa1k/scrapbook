@@ -96,6 +96,8 @@ bun run dev          # vite dev (Cloudflare Vite plugin)
 bun run migrate      # wrangler d1 migrations apply DB --local
 bun run cf-typegen   # wrangler types → worker-configuration.d.ts
 bun run secrets      # betterleaks v1.7.1
+bun run test:e2e     # Playwright axe + visual + web-vitals smoke (starts local Vite)
+bun run test:e2e:update  # refresh screenshot baselines
 ```
 
 Pre-commit (optional, not a substitute for CI): `bunx lefthook install`

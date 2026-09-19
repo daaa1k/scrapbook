@@ -65,3 +65,9 @@ dist
 # verify-scrapbook helper install
 .cursor/skills/verify-scrapbook/helpers/node_modules/
 
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
