@@ -67,6 +67,12 @@ describe('job transitions', () => {
   it('maps source_has_no_body for user-facing errors', () => {
     expect(userFacingError(new Error('source_has_no_body'))).toBe('このソースには使える本文がありません')
     expect(userFacingError(new Error('question_empty'))).toBe('質問を入力してください')
+    expect(userFacingError(new Error('invalid_url'))).toBe(
+      '有効なURLではありません。https://example.com のように入力してください',
+    )
+    expect(userFacingError(new Error('unsupported_protocol'))).toBe(
+      'http または https のURLだけ登録できます',
+    )
   })
 
   it('labels in-flight summarize jobs as 要約中', () => {

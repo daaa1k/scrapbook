@@ -31,6 +31,9 @@ describe('URL normalization', () => {
     expect(registerUrlInputSchema.safeParse({ url: 'https://example.com/ok', notebook: 'new' }).success).toBe(
       true,
     )
+    expect(
+      registerUrlInputSchema.safeParse({ url: '  https://example.com/ok  ', notebook: 'new' }).success,
+    ).toBe(true)
   })
 
   it('accepts paste as overwrite via sourceId or create via notebook, not both-optional', () => {

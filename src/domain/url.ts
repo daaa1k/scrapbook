@@ -1,5 +1,8 @@
 import { z } from 'zod'
 import { notebookTargetSchema } from '~/domain/organization'
+import { MAX_SOURCE_BODY_CHARS } from '~/domain/pdf'
+
+export const MAX_PASTE_TITLE_CHARS = 500
 
 export const sourceKindSchema = z.enum(['url', 'pdf', 'x'])
 export type SourceKind = z.infer<typeof sourceKindSchema>
@@ -44,7 +47,7 @@ export function sourceKindFromUrl(url: string): SourceKind {
 }
 
 export const registerUrlInputSchema = z.object({
-  url: z.url(),
+  url: z.preprocess((value) => (typeof value === 'string' ? value.trim() : value), z.url()),
   notebook: notebookTargetSchema,
 })
 
@@ -53,8 +56,8 @@ export const retrySourceInputSchema = z.object({
 })
 
 const pasteBodySchema = z.object({
-  title: z.string().trim().min(1).max(500),
-  body: z.string().trim().min(1).max(200_000),
+  title: z.string().trim().min(1).max(MAX_PASTE_TITLE_CHARS),
+  body: z.string().trim().min(1).max(MAX_SOURCE_BODY_CHARS),
   url: z.string().optional(),
 })
 
