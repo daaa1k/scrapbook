@@ -17,6 +17,7 @@ import { EmptyState } from '~/components/ui/empty-state'
 import { ErrorRetry } from '~/components/ui/error-retry'
 import { Input } from '~/components/ui/input'
 import { LoadingSkeleton, PendingMark } from '~/components/ui/loading-skeleton'
+import { ShortcutHelpDialog } from '~/components/ui/shortcut-help-dialog'
 import { asyncResourceView } from '~/domain/async-view'
 import { sourceDeleteConfirm } from '~/domain/destructive-confirm'
 import { isLeavingNotebook, type MemoSessionHandle } from '~/domain/memo-save'
@@ -60,6 +61,12 @@ import {
   sourceListSearchEmptyCopy,
   type SourceListSort,
 } from '~/domain/source-list-controls'
+import {
+  isShortcutHelpKey,
+  isTypingTarget,
+  SHORTCUT_HELP_TRIGGER_LABEL,
+  sourceNavDirection,
+} from '~/domain/shortcuts'
 import type { SourceListItem } from '~/domain/source-views'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { cn, isTerminalJobStatus, userFacingError } from '~/lib/utils'
@@ -99,6 +106,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const [sourcesDrawerOpen, setSourcesDrawerOpen] = useState(false)
   const [sourceSearch, setSourceSearch] = useState('')
   const [sourceSort, setSourceSort] = useState<SourceListSort>(SOURCE_LIST_SORT_DEFAULT)
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false)
   const deferredSourceSearch = useDeferredValue(sourceSearch.trim())
   const layoutMode = useNotebookLayoutMode()
   const tabsLayout = layoutMode === 'tabs'
@@ -186,6 +194,11 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     }),
   )
 
+  const sortedSources = useMemo(
+    () => (frame.status === 'ready' ? sortSourceListItems(frame.sources, sourceSort) : []),
+    [frame, sourceSort],
+  )
+
   useEffect(() => {
     if (titleEditor.status === 'editing') {
       const input = titleInputRef.current
@@ -251,6 +264,43 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     })
   }
 
+  function focusListedSource(source: SourceListItem) {
+    void focusSource(source.id)
+    setMobilePane('study')
+    if (tabsLayout) {
+      const label = source.title ?? source.url ?? source.id
+      setPaneAnnounce(notebookStudySwitchAnnouncement(label))
+      focusNotebookTab('study')
+    }
+    if (drawerLayout) {
+      setSourcesDrawerOpen(false)
+    }
+  }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (isTypingTarget(event.target)) return
+      if (isShortcutHelpKey(event)) {
+        event.preventDefault()
+        setShortcutHelpOpen(true)
+        return
+      }
+      const direction = sourceNavDirection(event)
+      if (!direction) return
+      if (frame.status !== 'ready' || sortedSources.length === 0) return
+      const ids = sortedSources.map((row) => row.id)
+      const index = ids.indexOf(frame.focusSourceId)
+      if (index < 0) return
+      const nextIndex = direction === 'next' ? index + 1 : index - 1
+      if (nextIndex < 0 || nextIndex >= ids.length) return
+      event.preventDefault()
+      const next = sortedSources[nextIndex]
+      if (next) focusListedSource(next)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
+
   if (frame.status === 'catalog-loading' || frame.status === 'catalog-error') {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-gap">
@@ -292,28 +342,11 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   }
 
   const view = frame
-  const sortedSources = useMemo(
-    () => (view.status === 'ready' ? sortSourceListItems(view.sources, sourceSort) : []),
-    [view, sourceSort],
-  )
   const paneGridClass = cn(
     'grid min-h-0 flex-1 gap-gap',
     splitLayout && 'grid-cols-[minmax(10rem,16rem)_minmax(0,1fr)_minmax(10rem,18rem)]',
     drawerLayout && 'grid-cols-[minmax(0,1fr)_minmax(11rem,18rem)]',
   )
-
-  function focusListedSource(source: SourceListItem) {
-    void focusSource(source.id)
-    setMobilePane('study')
-    if (tabsLayout) {
-      const label = source.title ?? source.url ?? source.id
-      setPaneAnnounce(notebookStudySwitchAnnouncement(label))
-      focusNotebookTab('study')
-    }
-    if (drawerLayout) {
-      setSourcesDrawerOpen(false)
-    }
-  }
 
   const sourcesBody = (
     <>
@@ -508,9 +541,20 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
               </div>
             </form>
           )}
-          <Button type="button" variant="secondary" onClick={() => setModalOpen(true)}>
-            ソースを追加
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShortcutHelpOpen(true)}
+              aria-haspopup="dialog"
+            >
+              {SHORTCUT_HELP_TRIGGER_LABEL}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setModalOpen(true)}>
+              ソースを追加
+            </Button>
+          </div>
         </div>
         {renameError ? <Alert id="notebook-rename-error">{renameError}</Alert> : null}
         {paneError ? <Alert id="notebook-pane-error">{paneError}</Alert> : null}
@@ -678,6 +722,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           })
         }}
       />
+      <ShortcutHelpDialog open={shortcutHelpOpen} onClose={() => setShortcutHelpOpen(false)} />
     </div>
   )
 }
