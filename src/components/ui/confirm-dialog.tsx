@@ -57,6 +57,7 @@ export function ConfirmDialog({
       className="m-auto w-[min(100%,28rem)] max-h-[90vh] overflow-y-auto rounded-lg border border-zinc-200 bg-white p-0 text-zinc-900 shadow-lg backdrop:bg-zinc-950/40 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
       onCancel={(event) => {
         event.preventDefault()
+        event.stopPropagation()
         onCancel()
       }}
       onClose={() => {
