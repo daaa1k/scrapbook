@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CitedProse } from '~/components/citation-footnotes'
 import { Alert } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
@@ -27,6 +27,12 @@ import {
 } from '~/domain/job-status-copy'
 import type { JobStatus } from '~/domain/jobs'
 import {
+  filterQaTurnsByQuery,
+  qaTurnsCollapsed,
+  QA_UNDO_WINDOW_MS,
+  type PendingQaUndo,
+} from '~/domain/qa-history'
+import {
   COPY_FAILURE_ANNOUNCEMENT,
   COPY_SUCCESS_ANNOUNCEMENT,
   QUESTION_EXAMPLES,
@@ -37,6 +43,7 @@ import {
   sourceAddPasteTitleIssue,
 } from '~/domain/source-add'
 import { STUDY_LOADING_LABEL } from '~/domain/note-shell'
+import { isModEnter } from '~/domain/shortcuts'
 import { copyText } from '~/lib/clipboard'
 import { sourceKeys } from '~/lib/query-keys'
 import { isTerminalJobStatus, userFacingError } from '~/lib/utils'
@@ -89,8 +96,13 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const [completionAnnouncement, setCompletionAnnouncement] = useState('')
   const [copyAnnouncement, setCopyAnnouncement] = useState('')
   const [pendingQa, setPendingQa] = useState<{ id: string; question: string } | null>(null)
+  const [qaUndo, setQaUndo] = useState<PendingQaUndo | null>(null)
+  const [qaSearch, setQaSearch] = useState('')
+  const [qaCollapsed, setQaCollapsed] = useState(true)
   const previousJobStatus = useRef<JobStatus | null | undefined>(undefined)
   const pasteTitleSeeded = useRef(false)
+  const qaUndoTimer = useRef<number | null>(null)
+  const qaListRef = useRef<HTMLUListElement | null>(null)
 
   const query = useQuery({
     queryKey: sourceKeys.detail(sourceId),
@@ -202,6 +214,61 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
     onError: (error) => setActionError(userFacingError(error)),
   })
 
+  useEffect(() => {
+    return () => {
+      if (qaUndoTimer.current != null) window.clearTimeout(qaUndoTimer.current)
+    }
+  }, [])
+
+  function clearQaUndoTimer() {
+    if (qaUndoTimer.current != null) {
+      window.clearTimeout(qaUndoTimer.current)
+      qaUndoTimer.current = null
+    }
+  }
+
+  function scheduleQaDelete(turn: {
+    id: string
+    question: string
+    answer: string | null
+    canDelete: boolean
+    citations: readonly unknown[]
+  }) {
+    clearQaUndoTimer()
+    const expiresAt = Date.now() + QA_UNDO_WINDOW_MS
+    setQaUndo({
+      id: turn.id,
+      question: turn.question,
+      answer: turn.answer,
+      canDelete: turn.canDelete,
+      citations: turn.citations,
+      expiresAt,
+    })
+    qaUndoTimer.current = window.setTimeout(() => {
+      setQaUndo(null)
+      qaUndoTimer.current = null
+      deleteQa.mutate(turn.id)
+    }, QA_UNDO_WINDOW_MS)
+  }
+
+  function undoQaDelete() {
+    clearQaUndoTimer()
+    setQaUndo(null)
+  }
+
+  const visibleQaAnswers = useMemo(() => {
+    if (!source) return []
+    const withoutPending = qaUndo
+      ? source.qaAnswers.filter((turn) => turn.id !== qaUndo.id)
+      : source.qaAnswers
+    return filterQaTurnsByQuery(withoutPending, qaSearch)
+  }, [source, qaUndo, qaSearch])
+
+  const { visible: listedQaAnswers, hiddenCount: collapsedHiddenCount } = useMemo(
+    () => qaTurnsCollapsed(visibleQaAnswers, qaCollapsed),
+    [visibleQaAnswers, qaCollapsed],
+  )
+
   if (query.isError && !source) {
     return (
       <ErrorRetry onRetry={() => void query.refetch()}>
@@ -266,6 +333,13 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   async function copyPlainText(text: string) {
     const result = await copyText(text)
     setCopyAnnouncement(result === 'ok' ? COPY_SUCCESS_ANNOUNCEMENT : COPY_FAILURE_ANNOUNCEMENT)
+  }
+
+  function scrollToLatestAnswer() {
+    const first = listedQaAnswers[0]
+    if (!first) return
+    const node = document.getElementById(`qa-turn-${first.id}`)
+    node?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   return (
@@ -469,6 +543,12 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
               required
               value={questionDraft}
               onChange={(event) => setQuestionDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (!isModEnter(event)) return
+                event.preventDefault()
+                if (jobPending || ask.isPending || questionDraft.trim() === '') return
+                ask.mutate(questionDraft)
+              }}
               onFocus={() => {
                 window.requestAnimationFrame(() => {
                   const actions = document.getElementById('investigate-ask-actions')
@@ -479,7 +559,11 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
               maxLength={4000}
               disabled={ask.isPending}
               className="break-anywhere"
+              aria-describedby="investigate-ask-shortcut"
             />
+            <p id="investigate-ask-shortcut" className="text-meta text-muted">
+              ⌘/Ctrl + Enter で送信
+            </p>
             <div
               id="investigate-ask-actions"
               className="sticky bottom-0 z-[1] -mx-1 space-y-2 bg-inherit px-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-2"
@@ -509,7 +593,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
         ) : (
           <p className="text-sm text-zinc-500">本文を貼り付けると質問できます。</p>
         )}
-        {source.qaAnswers.length === 0 ? (
+        {source.qaAnswers.length === 0 && !qaUndo ? (
           <div className="mt-2 space-y-3">
             <p className="text-sm text-zinc-500">まだ質問はありません</p>
             {bodyForCursor ? (
@@ -534,85 +618,132 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
             ) : null}
           </div>
         ) : (
-          <ul className="mt-2 space-y-3">
-            {source.qaAnswers.map((turn) => {
-              const turnView = qaTurnView(turn, jobInput)
-              const deletingThis = deletingQaId === turn.id
-              const deleteBusyId = `${turn.id}-delete-busy`
-              return (
-                <li
-                  key={turn.id}
-                  className="rounded-md border border-zinc-200 p-3 dark:border-zinc-700"
-                  aria-busy={deletingThis || undefined}
+          <div className="mt-2 space-y-3">
+            {qaUndo ? (
+              <div
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface-muted p-inset"
+                role="status"
+                aria-live="polite"
+              >
+                <p className="text-sm text-ink">質問を削除しました。取り消せます。</p>
+                <Button type="button" variant="secondary" size="sm" onClick={undoQaDelete}>
+                  元に戻す
+                </Button>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-end gap-gap">
+              <div className="min-w-[10rem] flex-1">
+                <label htmlFor="investigate-qa-search" className="mb-1 block text-meta font-medium text-muted">
+                  履歴を検索
+                </label>
+                <Input
+                  id="investigate-qa-search"
+                  type="search"
+                  value={qaSearch}
+                  onChange={(event) => setQaSearch(event.target.value)}
+                  placeholder="質問や回答"
+                  autoComplete="off"
+                />
+              </div>
+              <Button type="button" variant="secondary" size="sm" onClick={scrollToLatestAnswer}>
+                最新へ
+              </Button>
+              {visibleQaAnswers.length > 3 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setQaCollapsed((value) => !value)}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1 space-y-1 border-l-2 border-zinc-400 pl-3 dark:border-zinc-500">
-                      <p className="text-xs font-semibold tracking-wide text-zinc-500">質問</p>
-                      <p className="break-anywhere whitespace-pre-wrap">{turn.question}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="tap-target min-h-11 gap-2 text-red-700 dark:text-red-300"
-                      disabled={!turn.canDelete || deletingThis}
-                      aria-label="この質問と回答を削除"
-                      aria-describedby={!turn.canDelete ? deleteBusyId : undefined}
-                      onClick={() => setPendingQa({ id: turn.id, question: turn.question })}
+                  {qaCollapsed ? `古い質問を表示（${collapsedHiddenCount}）` : '折りたたむ'}
+                </Button>
+              ) : null}
+            </div>
+            {listedQaAnswers.length === 0 ? (
+              <p className="text-sm text-muted">一致する質問はありません</p>
+            ) : (
+              <ul ref={qaListRef} className="space-y-3">
+                {listedQaAnswers.map((turn) => {
+                  const turnView = qaTurnView(turn, jobInput)
+                  const deletingThis = deletingQaId === turn.id
+                  const deleteBusyId = `${turn.id}-delete-busy`
+                  return (
+                    <li
+                      id={`qa-turn-${turn.id}`}
+                      key={turn.id}
+                      className="rounded-md border border-zinc-200 p-3 dark:border-zinc-700"
+                      aria-busy={deletingThis || undefined}
                     >
-                      {deletingThis ? <PendingMark /> : null}
-                      {deletingThis ? '削除しています' : '削除'}
-                    </Button>
-                  </div>
-                  <div className="mt-3 space-y-2 border-l-2 border-zinc-900 pl-3 dark:border-zinc-100">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-semibold tracking-wide text-zinc-500">回答</p>
-                      {turnView.phase === 'ready' && turn.answer ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 space-y-1 border-l-2 border-zinc-400 pl-3 dark:border-zinc-500">
+                          <p className="text-xs font-semibold tracking-wide text-zinc-500">質問</p>
+                          <p className="break-anywhere whitespace-pre-wrap">{turn.question}</p>
+                        </div>
                         <Button
-                          type="button"
-                          variant="secondary"
+                          variant="ghost"
                           size="sm"
-                          onClick={() => void copyPlainText(turn.answer ?? '')}
+                          className="tap-target min-h-11 gap-2 text-red-700 dark:text-red-300"
+                          disabled={!turn.canDelete || deletingThis}
+                          aria-label="この質問と回答を削除"
+                          aria-describedby={!turn.canDelete ? deleteBusyId : undefined}
+                          onClick={() => setPendingQa({ id: turn.id, question: turn.question })}
                         >
-                          コピー
+                          {deletingThis ? <PendingMark /> : null}
+                          {deletingThis ? '削除しています' : '削除'}
                         </Button>
-                      ) : null}
-                    </div>
-                    {turnView.phase === 'ready' ? (
-                      <CitedProse
-                        text={turn.answer ?? ''}
-                        citations={turn.citations}
-                        emptyLabel="回答待ち…"
-                        onCopyAnnouncement={setCopyAnnouncement}
-                      />
-                    ) : turnView.phase === 'pending' ? (
-                      <ProgressLine view={turnView.progress} />
-                    ) : (
-                      <div className="space-y-2">
-                        <Alert>{jobStatusAlertText(turnView.progress)}</Alert>
-                        {(turnView.progress.recovery ?? []).map((action) => (
-                          <Button
-                            key={action.id}
-                            className="gap-2"
-                            variant={action.id === 'retry' ? 'primary' : 'secondary'}
-                            disabled={studyBusy}
-                            onClick={() => runRecovery(action, turn.question)}
-                          >
-                            {ask.isPending && action.id === 'retry' ? <PendingMark /> : null}
-                            {action.label}
-                          </Button>
-                        ))}
                       </div>
-                    )}
-                  </div>
-                  {!turn.canDelete ? (
-                    <p id={deleteBusyId} className="mt-2 text-sm text-zinc-500">
-                      処理中のため削除できません。
-                    </p>
-                  ) : null}
-                </li>
-              )
-            })}
-          </ul>
+                      <div className="mt-3 space-y-2 border-l-2 border-zinc-900 pl-3 dark:border-zinc-100">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-semibold tracking-wide text-zinc-500">回答</p>
+                          {turnView.phase === 'ready' && turn.answer ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => void copyPlainText(turn.answer ?? '')}
+                            >
+                              コピー
+                            </Button>
+                          ) : null}
+                        </div>
+                        {turnView.phase === 'ready' ? (
+                          <CitedProse
+                            text={turn.answer ?? ''}
+                            citations={turn.citations}
+                            emptyLabel="回答待ち…"
+                            onCopyAnnouncement={setCopyAnnouncement}
+                          />
+                        ) : turnView.phase === 'pending' ? (
+                          <ProgressLine view={turnView.progress} />
+                        ) : (
+                          <div className="space-y-2">
+                            <Alert>{jobStatusAlertText(turnView.progress)}</Alert>
+                            {(turnView.progress.recovery ?? []).map((action) => (
+                              <Button
+                                key={action.id}
+                                className="gap-2"
+                                variant={action.id === 'retry' ? 'primary' : 'secondary'}
+                                disabled={studyBusy}
+                                onClick={() => runRecovery(action, turn.question)}
+                              >
+                                {ask.isPending && action.id === 'retry' ? <PendingMark /> : null}
+                                {action.label}
+                              </Button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {!turn.canDelete ? (
+                        <p id={deleteBusyId} className="mt-2 text-sm text-zinc-500">
+                          処理中のため削除できません。
+                        </p>
+                      ) : null}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
         )}
       </section>
 
@@ -624,9 +755,10 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
           tone="danger"
           onCancel={() => setPendingQa(null)}
           onConfirm={() => {
-            const qaAnswerId = pendingQa.id
+            const turn = source.qaAnswers.find((row) => row.id === pendingQa.id)
             setPendingQa(null)
-            deleteQa.mutate(qaAnswerId)
+            if (!turn) return
+            scheduleQaDelete(turn)
           }}
         />
       ) : null}

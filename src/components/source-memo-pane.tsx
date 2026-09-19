@@ -1,9 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Alert } from '~/components/ui/alert'
+import { Button } from '~/components/ui/button'
 import { ErrorRetry } from '~/components/ui/error-retry'
 import { LoadingSkeleton } from '~/components/ui/loading-skeleton'
 import { Textarea } from '~/components/ui/textarea'
+import {
+  clearLocalMemoDraft,
+  readLocalMemoDraft,
+  shouldOfferMemoDraftRestore,
+  writeLocalMemoDraft,
+} from '~/domain/memo-draft-storage'
 import {
   applyServerMemo,
   discardedMemoSession,
@@ -31,6 +38,7 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
   const [draft, setDraft] = useState('')
   const [saveState, setSaveState] = useState<MemoSaveState>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [restoreOffer, setRestoreOffer] = useState<string | null>(null)
   const lastSaved = useRef('')
   const sessionSourceId = useRef(sourceId)
   const draftRef = useRef(draft)
@@ -65,7 +73,24 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
     setDraft(next.draft)
     setSaveState(next.saveState)
     setError(null)
+    const local = readLocalMemoDraft(sourceId)
+    if (shouldOfferMemoDraftRestore(next.lastSaved, local, next.saveState === 'idle')) {
+      setRestoreOffer(local)
+    } else {
+      setRestoreOffer(null)
+    }
   }, [sourceId, serverMemo])
+
+  useEffect(() => {
+    if (restoreOffer != null) return
+    if (saveState === 'idle' && draft === lastSaved.current) {
+      clearLocalMemoDraft(sourceId)
+      return
+    }
+    if (saveState === 'dirty' || saveState === 'error' || saveState === 'saving') {
+      writeLocalMemoDraft(sourceId, draft)
+    }
+  }, [draft, saveState, sourceId, restoreOffer])
 
   const save = useMutation({
     mutationFn: (memo: string) =>
@@ -79,6 +104,8 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
     onSuccess: async (_ack, memo) => {
       lastSaved.current = memo
       setSaveState('saved')
+      clearLocalMemoDraft(sourceId)
+      setRestoreOffer(null)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
         queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
@@ -200,6 +227,39 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
           </p>
         ) : null}
       </div>
+      {restoreOffer != null ? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface-muted p-inset"
+          role="status"
+        >
+          <p className="text-sm text-ink">この端末に未反映の下書きがあります。</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setDraft(restoreOffer)
+                setSaveState('dirty')
+                setRestoreOffer(null)
+              }}
+            >
+              下書きを復元
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                clearLocalMemoDraft(sourceId)
+                setRestoreOffer(null)
+              }}
+            >
+              破棄
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <Textarea
         name="source-memo"
         className="break-anywhere min-h-[12rem] flex-1 resize-y"
