@@ -120,13 +120,12 @@
   --spacing-gap: var(--space-gap);
 }
 
-html,
-body {
-  @apply bg-canvas text-ink text-body;
+html {
+  @apply bg-canvas;
 }
 
 body {
-  @apply min-h-screen antialiased;
+  @apply min-h-screen bg-canvas text-body text-ink antialiased;
 }
 
 /*
