@@ -13,17 +13,26 @@ import { SourceModal } from '~/components/source-modal'
 import { Alert } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
 import { ConfirmDialog } from '~/components/ui/confirm-dialog'
+import { EmptyState } from '~/components/ui/empty-state'
+import { ErrorRetry } from '~/components/ui/error-retry'
 import { Input } from '~/components/ui/input'
+import { LoadingSkeleton, PendingMark } from '~/components/ui/loading-skeleton'
+import { asyncResourceView } from '~/domain/async-view'
 import { sourceDeleteConfirm } from '~/domain/destructive-confirm'
 import { isLeavingNotebook, type MemoSessionHandle } from '~/domain/memo-save'
 import {
+  CATALOG_LOADING_LABEL,
   INVALID_SOURCE_ID_RECOVERY,
+  MEMO_LOADING_LABEL,
   NOTEBOOK_SOURCE_STUDY_HINT,
   NOTEBOOK_SOURCE_STUDY_HINT_ID,
   SOURCE_DELETE_BUSY_REASON,
   SOURCE_DELETING_STATUS,
   SOURCE_LIST_EMPTY_COPY,
+  SOURCE_LIST_LOAD_ERROR,
   SOURCE_LIST_SELECTED_LABEL,
+  SOURCES_LOADING_LABEL,
+  STUDY_LOADING_LABEL,
   cancelNotebookTitleEdit,
   nextSourceIdAfterDelete,
   notebookPanelId,
@@ -31,7 +40,7 @@ import {
   notebookStudySwitchAnnouncement,
   notebookTitleCommit,
   notebookTitleDraftChanged,
-  resolveNoteShellView,
+  resolveNoteShellFrame,
   sourceListKind,
   sourceListKindLabel,
   sourceRowJobChip,
@@ -123,10 +132,19 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     queryFn: () => listSources({ data: filter }),
   })
 
-  const view =
-    catalog.data && sourcesQuery.data !== undefined
-      ? resolveNoteShellView({ notebookId, sourceId }, catalog.data, sourcesQuery.data)
-      : null
+  const frame = resolveNoteShellFrame(
+    { notebookId, sourceId },
+    asyncResourceView({
+      data: catalog.data,
+      isError: catalog.isError,
+      isFetching: catalog.isFetching,
+    }),
+    asyncResourceView({
+      data: sourcesQuery.data,
+      isError: sourcesQuery.isError,
+      isFetching: sourcesQuery.isFetching,
+    }),
+  )
 
   useEffect(() => {
     if (titleEditor.status === 'editing') {
@@ -180,7 +198,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const deletingSourceId = removeSource.isPending ? removeSource.variables.deletedId : undefined
 
   async function focusSource(nextSourceId: string) {
-    if (view?.status === 'ready' && view.focusSourceId === nextSourceId) return
+    if (frame.status === 'ready' && frame.focusSourceId === nextSourceId) return
     try {
       await memoSessionRef.current?.flush()
     } catch {
@@ -193,15 +211,31 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     })
   }
 
-  if (!view) {
+  if (frame.status === 'catalog-loading' || frame.status === 'catalog-error') {
     return (
-      <p aria-live="polite" aria-busy="true">
-        読み込み中…
-      </p>
+      <div className="flex min-h-[70vh] flex-col gap-4">
+        <header className="shrink-0 space-y-3 border-b border-zinc-200 pb-4 dark:border-zinc-800">
+          <NotebookBreadcrumb current="ノート" />
+          {frame.status === 'catalog-error' ? (
+            <ErrorRetry onRetry={() => void catalog.refetch()}>
+              {userFacingError(catalog.error)}
+            </ErrorRetry>
+          ) : (
+            <LoadingSkeleton label={CATALOG_LOADING_LABEL} lines={2} />
+          )}
+        </header>
+        {frame.status === 'catalog-loading' ? (
+          <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
+            <LoadingSkeleton label={SOURCES_LOADING_LABEL} />
+            <LoadingSkeleton label={STUDY_LOADING_LABEL} />
+            <LoadingSkeleton label={MEMO_LOADING_LABEL} />
+          </div>
+        ) : null}
+      </div>
     )
   }
 
-  if (view.status === 'unknown-notebook') {
+  if (frame.status === 'unknown-notebook') {
     return (
       <div className="space-y-4">
         <NotebookBreadcrumb current="ノートが見つかりません" />
@@ -209,6 +243,8 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
       </div>
     )
   }
+
+  const view = frame
 
   return (
     <div className="flex min-h-[70vh] flex-col gap-4">
@@ -344,13 +380,21 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                 {INVALID_SOURCE_ID_RECOVERY}
               </Alert>
             ) : null}
-            {view.status === 'empty' ? (
-              <div className="rounded-md border border-dashed border-zinc-300 p-4 dark:border-zinc-700">
-                <p className="mb-3 text-sm">{SOURCE_LIST_EMPTY_COPY}</p>
-                <Button type="button" onClick={() => setModalOpen(true)}>
-                  ソースを追加
-                </Button>
-              </div>
+            {view.status === 'sources-loading' ? (
+              <LoadingSkeleton label={SOURCES_LOADING_LABEL} lines={4} />
+            ) : view.status === 'sources-error' ? (
+              <ErrorRetry onRetry={() => void sourcesQuery.refetch()}>
+                {userFacingError(sourcesQuery.error)}
+              </ErrorRetry>
+            ) : view.status === 'empty' ? (
+              <EmptyState
+                title={SOURCE_LIST_EMPTY_COPY}
+                action={
+                  <Button type="button" onClick={() => setModalOpen(true)}>
+                    ソースを追加
+                  </Button>
+                }
+              />
             ) : (
               <ul className="space-y-2">
                 {view.sources.map((source) => (
@@ -391,6 +435,12 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             </h2>
             {view.status === 'ready' ? (
               <SourceInvestigate key={view.focusSourceId} sourceId={view.focusSourceId} />
+            ) : view.status === 'sources-loading' ? (
+              <LoadingSkeleton label={STUDY_LOADING_LABEL} lines={4} />
+            ) : view.status === 'sources-error' ? (
+              <ErrorRetry onRetry={() => void sourcesQuery.refetch()}>
+                {SOURCE_LIST_LOAD_ERROR}
+              </ErrorRetry>
             ) : (
               <p className="text-sm text-zinc-500">{SOURCE_LIST_EMPTY_COPY}</p>
             )}
@@ -416,7 +466,15 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                 <h2 id="notebook-memo-heading" className="mb-3 text-sm font-medium text-zinc-500">
                   メモ
                 </h2>
-                <p className="text-sm text-zinc-500">ソースを選ぶとメモを書けます。</p>
+                {view.status === 'sources-loading' ? (
+                  <LoadingSkeleton label={MEMO_LOADING_LABEL} lines={3} />
+                ) : view.status === 'sources-error' ? (
+                  <ErrorRetry onRetry={() => void sourcesQuery.refetch()}>
+                    {SOURCE_LIST_LOAD_ERROR}
+                  </ErrorRetry>
+                ) : (
+                  <p className="text-sm text-zinc-500">ソースを選ぶとメモを書けます。</p>
+                )}
               </>
             )}
           </aside>
@@ -476,15 +534,6 @@ function NotebookBreadcrumb({ current }: { current: string }) {
         </li>
       </ol>
     </nav>
-  )
-}
-
-function PendingMark() {
-  return (
-    <span
-      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
-      aria-hidden="true"
-    />
   )
 }
 

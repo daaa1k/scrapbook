@@ -4,7 +4,9 @@ import { CitedProse } from '~/components/citation-footnotes'
 import { Alert } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
 import { ConfirmDialog } from '~/components/ui/confirm-dialog'
+import { ErrorRetry } from '~/components/ui/error-retry'
 import { Input } from '~/components/ui/input'
+import { LoadingSkeleton } from '~/components/ui/loading-skeleton'
 import { Textarea } from '~/components/ui/textarea'
 import { qaDeleteConfirm } from '~/domain/destructive-confirm'
 import { MAX_CURSOR_BODY_CHARS, storedBodyText } from '~/domain/ingest-result'
@@ -29,6 +31,7 @@ import {
   sourceAddPasteBodyIssue,
   sourceAddPasteTitleIssue,
 } from '~/domain/source-add'
+import { STUDY_LOADING_LABEL } from '~/domain/note-shell'
 import { sourceKeys } from '~/lib/query-keys'
 import { isTerminalJobStatus, userFacingError } from '~/lib/utils'
 import {
@@ -176,12 +179,16 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
     onError: (error) => setActionError(userFacingError(error)),
   })
 
-  if (!source || !jobInput || !progress) {
+  if (query.isError && !source) {
     return (
-      <p className="text-sm text-zinc-500" aria-live="polite" aria-busy="true">
-        読み込み中…
-      </p>
+      <ErrorRetry onRetry={() => void query.refetch()}>
+        {userFacingError(query.error)}
+      </ErrorRetry>
     )
+  }
+
+  if (!source || !jobInput || !progress) {
+    return <LoadingSkeleton label={STUDY_LOADING_LABEL} lines={4} />
   }
 
   const jobKind = source.job?.kind ?? null

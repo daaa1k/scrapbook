@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Alert } from '~/components/ui/alert'
+import { ErrorRetry } from '~/components/ui/error-retry'
+import { LoadingSkeleton } from '~/components/ui/loading-skeleton'
 import { Textarea } from '~/components/ui/textarea'
 import {
   applyServerMemo,
@@ -11,6 +13,7 @@ import {
   type MemoSession,
   type MemoSessionHandle,
 } from '~/domain/memo-save'
+import { MEMO_LOADING_LABEL } from '~/domain/note-shell'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { userFacingError } from '~/lib/utils'
 import { runOrganizationCommand } from '~/server/functions/organization'
@@ -154,11 +157,25 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
             ? '未保存'
             : null
 
+  if (query.isError && !query.data) {
+    return (
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <h2 id="notebook-memo-heading" className="text-sm font-medium text-zinc-500">
+          メモ
+        </h2>
+        <ErrorRetry onRetry={() => void query.refetch()}>{userFacingError(query.error)}</ErrorRetry>
+      </div>
+    )
+  }
+
   if (!query.data) {
     return (
-      <p className="text-sm text-zinc-500" aria-live="polite" aria-busy="true">
-        メモを読み込み中…
-      </p>
+      <div className="flex h-full min-h-0 flex-col gap-3">
+        <h2 id="notebook-memo-heading" className="text-sm font-medium text-zinc-500">
+          メモ
+        </h2>
+        <LoadingSkeleton label={MEMO_LOADING_LABEL} lines={3} />
+      </div>
     )
   }
 

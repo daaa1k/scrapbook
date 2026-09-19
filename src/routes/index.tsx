@@ -6,9 +6,19 @@ import { Alert } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { ConfirmDialog } from '~/components/ui/confirm-dialog'
+import { EmptyState } from '~/components/ui/empty-state'
+import { ErrorRetry } from '~/components/ui/error-retry'
+import { LoadingSkeleton, PendingMark } from '~/components/ui/loading-skeleton'
+import { asyncListView } from '~/domain/async-view'
 import { notebookDeleteConfirm } from '~/domain/destructive-confirm'
 import {
-  formatNotebookUpdatedAt,
+  HOME_CATALOG_LOADING_LABEL,
+  HOME_EMPTY_DESCRIPTION,
+  HOME_EMPTY_TITLE,
+  homeCreateCtaPlacement,
+} from '~/domain/home'
+import {
+  notebookUpdatedAtLabel,
   type NotebookId,
   type OrganizationCatalog,
 } from '~/domain/organization'
@@ -17,11 +27,16 @@ import { userFacingError } from '~/lib/utils'
 import { deleteNotebook, getOrganizationCatalog } from '~/server/functions/organization'
 
 export const Route = createFileRoute('/')({
-  loader: ({ context }) =>
-    context.queryClient.ensureQueryData({
-      queryKey: organizationKeys.catalog,
-      queryFn: () => getOrganizationCatalog(),
-    }),
+  loader: async ({ context }) => {
+    try {
+      await context.queryClient.ensureQueryData({
+        queryKey: organizationKeys.catalog,
+        queryFn: () => getOrganizationCatalog(),
+      })
+    } catch {
+      return
+    }
+  },
   component: HomePage,
 })
 
@@ -38,6 +53,12 @@ function HomePage() {
     queryKey: organizationKeys.catalog,
     queryFn: () => getOrganizationCatalog(),
   })
+  const list = asyncListView({
+    data: catalog.data?.notebooks,
+    isError: catalog.isError,
+    isFetching: catalog.isFetching,
+  })
+  const createCta = homeCreateCtaPlacement(list)
 
   const removeNotebook = useMutation({
     mutationFn: (notebookId: NotebookId) => deleteNotebook({ data: { notebookId } }),
@@ -49,38 +70,45 @@ function HomePage() {
       setListError(userFacingError(error))
     },
   })
-
-  const notebooks = catalog.data?.notebooks ?? []
+  const deletingNotebookId = removeNotebook.isPending ? removeNotebook.variables : undefined
 
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">ノート</h1>
-        <Button type="button" onClick={() => setCreateOpen(true)}>
-          新しいノート
-        </Button>
+        {createCta === 'header' ? (
+          <Button type="button" onClick={() => setCreateOpen(true)}>
+            新しいノート
+          </Button>
+        ) : null}
       </div>
-      {catalog.isError ? <Alert>{userFacingError(catalog.error)}</Alert> : null}
       {listError ? <Alert id="home-list-error">{listError}</Alert> : null}
-      <section aria-busy={catalog.isPending || removeNotebook.isPending || undefined}>
-        {catalog.isPending && !catalog.data ? (
-          <p aria-live="polite" aria-busy="true">
-            読み込み中…
-          </p>
-        ) : notebooks.length === 0 ? (
-          <Card>
-            <p className="mb-3">ノートはまだありません。</p>
-            <Button type="button" onClick={() => setCreateOpen(true)}>
-              新しいノート
-            </Button>
-          </Card>
+      <section aria-busy={catalog.isFetching || removeNotebook.isPending || undefined}>
+        {list.status === 'loading' ? (
+          <LoadingSkeleton label={HOME_CATALOG_LOADING_LABEL} lines={3} />
+        ) : list.status === 'error' ? (
+          <ErrorRetry id="home-catalog-error" onRetry={() => void catalog.refetch()}>
+            {userFacingError(catalog.error)}
+          </ErrorRetry>
+        ) : list.status === 'empty' ? (
+          <EmptyState
+            title={HOME_EMPTY_TITLE}
+            description={HOME_EMPTY_DESCRIPTION}
+            action={
+              createCta === 'empty' ? (
+                <Button type="button" onClick={() => setCreateOpen(true)}>
+                  新しいノート
+                </Button>
+              ) : null
+            }
+          />
         ) : (
           <ul className="space-y-3">
-            {notebooks.map((notebook) => (
+            {list.items.map((notebook) => (
               <li key={notebook.id}>
                 <NotebookCard
                   notebook={notebook}
-                  busy={removeNotebook.isPending}
+                  deleting={deletingNotebookId === notebook.id}
                   onDelete={() => setPendingNotebook(notebook)}
                 />
               </li>
@@ -120,43 +148,41 @@ function HomePage() {
 
 function NotebookCard({
   notebook,
-  busy,
+  deleting,
   onDelete,
 }: {
   notebook: OrganizationCatalog['notebooks'][number]
-  busy: boolean
+  deleting: boolean
   onDelete: () => void
 }) {
   return (
-    <Card>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Link
-            to="/notebooks/$notebookId"
-            params={{ notebookId: notebook.id }}
-            className="font-medium hover:underline"
-          >
-            {notebook.title}
-          </Link>
+    <Card className="p-0" aria-busy={deleting || undefined}>
+      <div className="flex items-stretch">
+        <Link
+          to="/notebooks/$notebookId"
+          params={{ notebookId: notebook.id }}
+          className="min-w-0 flex-1 p-4 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+        >
+          <span className="font-medium">{notebook.title}</span>
           <p className="mt-1 text-sm text-zinc-500">{notebook.sourceCount}件のソース</p>
-          <p className="mt-1 text-sm text-zinc-500">{formatNotebookUpdatedAt(notebook.updatedAt)}</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <Link
-            to="/notebooks/$notebookId"
-            params={{ notebookId: notebook.id }}
-            className="text-sm text-zinc-700 hover:underline dark:text-zinc-300"
-          >
-            開く
-          </Link>
+          <p className="mt-1 text-sm text-zinc-500">{notebookUpdatedAtLabel(notebook.updatedAt)}</p>
+        </Link>
+        <div className="flex shrink-0 items-start p-4 pl-0">
           <Button
             type="button"
             variant="danger"
-            disabled={busy}
+            disabled={deleting}
             onClick={onDelete}
             aria-label={`${notebook.title}を削除`}
           >
-            削除
+            {deleting ? (
+              <span className="inline-flex items-center gap-2">
+                <PendingMark />
+                削除しています
+              </span>
+            ) : (
+              '削除'
+            )}
           </Button>
         </div>
       </div>

@@ -24,25 +24,32 @@ export const Route = createFileRoute('/notebooks/$notebookId')({
   loader: async ({ context, params, deps }) => {
     const filter = sourceListFilterFromSourcesPageSearch({ notebookId: params.notebookId })
     const [sources, catalog] = await Promise.all([
-      context.queryClient.ensureQueryData({
-        queryKey: sourceKeys.list(filter),
-        queryFn: () => listSources({ data: filter }),
-      }),
-      context.queryClient.ensureQueryData({
-        queryKey: organizationKeys.catalog,
-        queryFn: () => getOrganizationCatalog(),
-      }),
+      context.queryClient
+        .ensureQueryData({
+          queryKey: sourceKeys.list(filter),
+          queryFn: () => listSources({ data: filter }),
+        })
+        .catch(() => undefined),
+      context.queryClient
+        .ensureQueryData({
+          queryKey: organizationKeys.catalog,
+          queryFn: () => getOrganizationCatalog(),
+        })
+        .catch(() => undefined),
     ])
+    if (!catalog || sources === undefined) return
     const view = resolveNoteShellView(
       { notebookId: params.notebookId, sourceId: deps.sourceId },
       catalog,
       sources,
     )
     if (view.status !== 'ready') return
-    await context.queryClient.ensureQueryData({
-      queryKey: sourceKeys.detail(view.focusSourceId),
-      queryFn: () => getSource({ data: { sourceId: view.focusSourceId } }),
-    })
+    await context.queryClient
+      .ensureQueryData({
+        queryKey: sourceKeys.detail(view.focusSourceId),
+        queryFn: () => getSource({ data: { sourceId: view.focusSourceId } }),
+      })
+      .catch(() => undefined)
   },
   component: NotebookPage,
 })
