@@ -90,6 +90,15 @@ export function jobProgressView(input: JobCopyInput): JobStatusView {
     return failedView(input, kind)
   }
   if (input.status === 'succeeded') {
+    if (!input.hasBody) {
+      return {
+        label: '本文がありません',
+        detail: '要約と質問には本文が必要です。ページからコピーして貼り付けてください。',
+        recovery: [PASTE_BODY],
+        pending: false,
+        tone: 'idle',
+      }
+    }
     return { label: '完了', pending: false, tone: 'success' }
   }
   return {

@@ -158,6 +158,13 @@ describe('jobProgressView', () => {
       pending: false,
       tone: 'idle',
     })
+    expect(jobProgressView(copy({ status: 'succeeded', hasBody: false, hasUrl: true }))).toEqual({
+      label: '本文がありません',
+      detail: '要約と質問には本文が必要です。ページからコピーして貼り付けてください。',
+      recovery: [{ id: 'paste-body', label: '本文を貼り付ける' }],
+      pending: false,
+      tone: 'idle',
+    })
   })
 })
 
