@@ -1,13 +1,22 @@
 import { expect, test } from '@playwright/test'
 
+/**
+ * Home shots use the viewport (not fullPage / not a tall content root).
+ * Catalog rows live under `main` and vary by local D1 size — mask them so
+ * empty CI migrate and seeded local DBs share the same chrome baseline.
+ */
+const homeShot = {
+  animations: 'disabled' as const,
+  fullPage: false,
+}
+
 test.describe('visual regression', () => {
   test('home chrome desktop light', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 })
     await page.goto('/')
     await expect(page.getByRole('heading', { level: 1, name: 'ノート' })).toBeVisible()
-    // Catalog contents vary by local D1; compare brand + page chrome only.
-    await expect(page.locator('body > div').first()).toHaveScreenshot('home-chrome-desktop.png', {
-      animations: 'disabled',
+    await expect(page).toHaveScreenshot('home-chrome-desktop.png', {
+      ...homeShot,
       mask: [page.locator('main')],
     })
   })
@@ -29,8 +38,8 @@ test.describe('visual regression', () => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/')
     await expect(page.getByRole('heading', { level: 1, name: 'ノート' })).toBeVisible()
-    await expect(page.locator('body > div').first()).toHaveScreenshot('home-chrome-mobile.png', {
-      animations: 'disabled',
+    await expect(page).toHaveScreenshot('home-chrome-mobile.png', {
+      ...homeShot,
       mask: [page.locator('main')],
     })
   })
