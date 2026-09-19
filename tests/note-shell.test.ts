@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { resolveNoteShellView } from '../src/domain/note-shell'
+import {
+  notebookPanelId,
+  notebookPanelIsConcealed,
+  notebookStudySwitchAnnouncement,
+  notebookTabId,
+  paneAfterTabKey,
+  resolveNoteShellView,
+} from '../src/domain/note-shell'
 import {
   notebookIdSchema,
   notebookTitleSchema,
@@ -89,5 +96,50 @@ describe('resolveNoteShellView', () => {
       sources,
       focusSourceId: 'src-1',
     })
+  })
+})
+
+describe('paneAfterTabKey', () => {
+  it('moves across the three panes and wraps at the ends', () => {
+    expect(paneAfterTabKey('sources', 'ArrowRight')).toBe('study')
+    expect(paneAfterTabKey('study', 'ArrowRight')).toBe('memo')
+    expect(paneAfterTabKey('memo', 'ArrowRight')).toBe('sources')
+    expect(paneAfterTabKey('sources', 'ArrowLeft')).toBe('memo')
+    expect(paneAfterTabKey('study', 'ArrowLeft')).toBe('sources')
+    expect(paneAfterTabKey('memo', 'ArrowLeft')).toBe('study')
+  })
+
+  it('jumps to the first or last pane on Home and End', () => {
+    expect(paneAfterTabKey('memo', 'Home')).toBe('sources')
+    expect(paneAfterTabKey('sources', 'End')).toBe('memo')
+    expect(paneAfterTabKey('study', 'Home')).toBe('sources')
+    expect(paneAfterTabKey('study', 'End')).toBe('memo')
+  })
+
+  it('ignores keys that are not part of the tablist pattern', () => {
+    expect(paneAfterTabKey('study', 'ArrowDown')).toBe(null)
+    expect(paneAfterTabKey('study', 'Tab')).toBe(null)
+    expect(paneAfterTabKey('study', 'Enter')).toBe(null)
+  })
+})
+
+describe('notebookPanelIsConcealed', () => {
+  it('conceals only unselected panes in the compact layout', () => {
+    expect(notebookPanelIsConcealed('sources', 'study', true)).toBe(true)
+    expect(notebookPanelIsConcealed('study', 'study', true)).toBe(false)
+    expect(notebookPanelIsConcealed('memo', 'study', true)).toBe(true)
+  })
+
+  it('shows every pane in the expanded layout', () => {
+    expect(notebookPanelIsConcealed('sources', 'study', false)).toBe(false)
+    expect(notebookPanelIsConcealed('memo', 'memo', false)).toBe(false)
+  })
+})
+
+describe('notebook tab ids and study switch copy', () => {
+  it('names the study tab, panel, and source-driven announcement', () => {
+    expect(notebookTabId('study')).toBe('notebook-tab-study')
+    expect(notebookPanelId('memo')).toBe('notebook-panel-memo')
+    expect(notebookStudySwitchAnnouncement('記事')).toBe('記事を選び、要約・質問を表示しています')
   })
 })
