@@ -17,6 +17,7 @@ function usage() {
   drive.mjs url-source --url <url> [--out <dir>]
   drive.mjs pdf-source --file <path> [--out <dir>]
   drive.mjs job-progress [--out <dir>]
+  drive.mjs source-list-qa [--out <dir>]
   drive.mjs screenshot --path <file> [--url <path>]
   drive.mjs snapshot --path <file> [--url <path>]`)
   process.exit(2)
@@ -170,6 +171,179 @@ function findLocalD1WithSource(sourceId) {
     db.close()
   }
   return null
+}
+
+function finishLatestAsk(sourceId) {
+  const found = findLocalD1WithSource(sourceId)
+  if (!found) return null
+  const now = Date.now()
+  found.db.run(
+    `update jobs set status = 'succeeded', error_code = null, error_message = null, finished_at = ?, updated_at = ?
+     where source_id = ? and kind = 'ask_source' and status not in ('succeeded', 'failed')`,
+    [now, now, sourceId],
+  )
+  found.db.run(
+    `update qa_answers set answer = 'モック回答です。', updated_at = ? where source_id = ? and answer is null`,
+    [now, sourceId],
+  )
+  found.db.close()
+  return { sourceId, file: found.file }
+}
+
+async function addPastedSourceToNotebook(page, title, body) {
+  await page.getByRole('button', { name: 'ソースを追加' }).first().click()
+  const dialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'ソースを追加' }) })
+  await dialog.getByRole('heading', { name: 'ソースを追加' }).waitFor()
+  await dialog.getByRole('tab', { name: '貼り付け' }).click()
+  await dialog.getByRole('textbox', { name: 'タイトル' }).fill(title)
+  await dialog.getByRole('textbox', { name: '本文' }).fill(body)
+  await dialog.getByRole('button', { name: '本文を保存' }).click()
+  await page.waitForURL(/sourceId=/, { timeout: 30_000 })
+  const sources = page.locator('#notebook-panel-sources')
+  await sources.getByText(title, { exact: true }).first().waitFor({ timeout: 30_000 })
+  return sourceIdFromUrl(page.url())
+}
+
+function sourceSelectButton(sources, title) {
+  return sources.getByRole('button', { name: new RegExp(title) }).filter({ hasNotText: '操作' })
+}
+
+async function sourceListQa(argv) {
+  const stamp = runId.replace(/[^a-zA-Z0-9_-]/g, '').slice(-8)
+  const titleA = `ソースA ${stamp}`
+  const titleB = `ソースB ${stamp}`
+  const titleC = `ソースC ${stamp}`
+  const body = 'ソース一覧とQ&A操作の確認用本文です。'
+  const out = resolve(argValue(argv, '--out') ?? resolve(evidenceRoot, 'note-shell'))
+  await mkdir(out, { recursive: true })
+
+  await withPage(async (page) => {
+    const dialog = await openCreateDialog(page)
+    await dialog.getByRole('tab', { name: '貼り付け' }).click()
+    await dialog.getByRole('textbox', { name: 'タイトル' }).fill(titleA)
+    await dialog.getByRole('textbox', { name: '本文' }).fill(body)
+    await dialog.getByRole('button', { name: '本文を保存' }).click()
+    await page.waitForURL(/\/notebooks\/[^/]+/, { timeout: 30_000 })
+    const sources = page.locator('#notebook-panel-sources')
+    await sources.getByText(titleA, { exact: true }).first().waitFor({ timeout: 30_000 })
+    const idA = sourceIdFromUrl(page.url())
+
+    const idB = await addPastedSourceToNotebook(page, titleB, body)
+    const idC = await addPastedSourceToNotebook(page, titleC, body)
+
+    await sourceSelectButton(sources, titleB).click()
+    await page.waitForURL(new RegExp(`sourceId=${idB}`), { timeout: 15_000 })
+    await page.screenshot({ path: resolve(out, 'before-delete.png'), fullPage: true })
+
+    const otherOpsBefore = await sources.getByRole('button', { name: `${titleC}の操作` }).isEnabled()
+    await sources.getByRole('button', { name: `${titleB}の操作` }).click()
+    await sources.getByRole('menuitem', { name: '削除' }).click()
+    const deleteDialog = page.getByRole('alertdialog')
+    await deleteDialog.getByRole('heading', { name: new RegExp(titleB) }).waitFor()
+    await deleteDialog.getByRole('button', { name: '削除' }).click()
+    await page.waitForURL(new RegExp(`sourceId=${idA}`), { timeout: 20_000 })
+    await sources.getByText(titleB, { exact: true }).waitFor({ state: 'hidden', timeout: 20_000 })
+    const afterDeleteSourceId = sourceIdFromUrl(page.url())
+    await page.screenshot({ path: resolve(out, 'after-delete.png'), fullPage: true })
+
+    const selectedName = await sourceSelectButton(sources, titleA).getAttribute('aria-current')
+    const selectedLabel = await sources.getByText('選択中').count()
+    const kindPaste = await sources.getByText('貼り付け').count()
+
+    const study = page.locator('#notebook-panel-study')
+    await study.getByRole('textbox', { name: '質問' }).waitFor({ timeout: 15_000 })
+    await study.getByRole('textbox', { name: '質問' }).fill('一つ目の質問です')
+    await study.getByRole('button', { name: '質問する' }).click()
+    const firstTurn = study.locator('li').filter({ hasText: '一つ目の質問です' })
+    const firstTurnVisible = await firstTurn
+      .waitFor({ timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!firstTurnVisible) {
+      await page.screenshot({ path: resolve(out, 'ask-missing-turn.png'), fullPage: true })
+      await page.reload({ waitUntil: 'networkidle' })
+      await firstTurn.waitFor({ timeout: 15_000 })
+    }
+
+    await sources.getByRole('button', { name: `${titleA}の操作` }).click()
+    const busyText = await sources.innerText()
+    const busyReasonVisible = busyText.includes('処理中のため削除できません')
+    const busyMenuDisabled = await sources.getByRole('menuitem', { name: '削除' }).isDisabled()
+    const otherRowOpsEnabledWhileBusy = await sources.getByRole('button', { name: `${titleC}の操作` }).isEnabled()
+    await page.screenshot({ path: resolve(out, 'busy-row.png'), fullPage: true })
+    await page.keyboard.press('Escape')
+
+    const finishedFirst = idA ? finishLatestAsk(idA) : null
+    await page.reload({ waitUntil: 'networkidle' })
+    await firstTurn.waitFor({ timeout: 15_000 })
+    await study.getByText(/モック回答です。|回答できませんでした/).first().waitFor({ timeout: 15_000 })
+
+    await study.getByRole('textbox', { name: '質問' }).fill('二つ目の質問です')
+    await study.getByRole('button', { name: '質問する' }).click()
+    const secondTurn = study.locator('li').filter({ hasText: '二つ目の質問です' })
+    const secondTurnVisible = await secondTurn
+      .waitFor({ timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!secondTurnVisible) {
+      await page.reload({ waitUntil: 'networkidle' })
+      await secondTurn.waitFor({ timeout: 15_000 })
+    }
+    const finishedSecond = idA ? finishLatestAsk(idA) : null
+    await page.reload({ waitUntil: 'networkidle' })
+    await secondTurn.waitFor({ timeout: 15_000 })
+
+    const deleteButtons = study.getByRole('button', { name: 'この質問と回答を削除' })
+    const deleteCountBefore = await deleteButtons.count()
+    await deleteButtons.first().click()
+    const qaDialog = page.getByRole('alertdialog')
+    await qaDialog.getByRole('heading', { name: 'この質問と回答を削除します' }).waitFor()
+    await page.screenshot({ path: resolve(out, 'qa-confirm.png'), fullPage: true })
+    const otherDeleteEnabledDuringConfirm = await deleteButtons.nth(1).isEnabled()
+    await qaDialog.getByRole('button', { name: 'キャンセル' }).click()
+    await qaDialog.waitFor({ state: 'hidden' })
+    const stillTwo = await deleteButtons.count()
+    await deleteButtons.first().click()
+    await qaDialog.getByRole('button', { name: '削除' }).click()
+    await page.getByRole('alertdialog').waitFor({ state: 'hidden', timeout: 15_000 })
+    await secondTurn.waitFor({ state: 'hidden', timeout: 20_000 })
+    const deleteCountAfter = await study.getByRole('button', { name: 'この質問と回答を削除' }).count()
+    await page.screenshot({ path: resolve(out, 'qa-after-delete.png'), fullPage: true })
+
+    const notebookPath = new URL(page.url()).pathname
+    await page.goto(`${baseUrl}${notebookPath}?sourceId=missing-source`, { waitUntil: 'networkidle' })
+    const recovery = await page.getByText('指定されたソースが見つからないため、先頭のソースを表示しています。').count()
+    await page.screenshot({ path: resolve(out, 'invalid-source.png'), fullPage: true })
+
+    const aria = await page.locator('body').ariaSnapshot()
+    await writeFile(resolve(out, 'aria.txt'), `${aria}\n`)
+    await writeMeta(out, {
+      featureId: 'note-shell',
+      entryPoint: '/#source-list-qa',
+      resultUrl: page.url(),
+      idA,
+      idB,
+      idC,
+      afterDeleteSourceId,
+      expectedNextId: idA,
+      neighborSelected: afterDeleteSourceId === idA,
+      otherOpsBefore,
+      selectedAriaCurrent: selectedName,
+      selectedLabelCount: selectedLabel,
+      kindPasteCount: kindPaste,
+      deleteCountBefore,
+      stillTwoAfterCancel: stillTwo,
+      otherDeleteEnabledDuringConfirm,
+      deleteCountAfter,
+      busyReasonVisible,
+      busyMenuDisabled,
+      otherRowOpsEnabledWhileBusy,
+      finishedFirst,
+      finishedSecond,
+      invalidSourceRecoveryCount: recovery,
+    })
+    console.log(`source-list-qa: ok url=${page.url()} evidence=${out}`)
+  })
 }
 
 function seedAskJob(sourceId, status, errorCode = null) {
@@ -389,6 +563,7 @@ if (cmd === 'paste-source') await pasteSource(argv)
 else if (cmd === 'url-source') await urlSource(argv)
 else if (cmd === 'pdf-source') await pdfSource(argv)
 else if (cmd === 'job-progress') await jobProgress(argv)
+else if (cmd === 'source-list-qa') await sourceListQa(argv)
 else if (cmd === 'screenshot') await screenshot(argv)
 else if (cmd === 'snapshot') await snapshot(argv)
 else usage()

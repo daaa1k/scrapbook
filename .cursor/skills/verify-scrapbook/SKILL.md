@@ -82,10 +82,11 @@ Subcommands:
 - `url-source --url <url>` — home「新しいノート」modal URL method; prove `/notebooks/$id`.
 - `pdf-source --file <path>` — home「新しいノート」modal PDF method; prove `/notebooks/$id`.
 - `job-progress` — paste a source, exercise summarize/ask labels, and seed a local failed job when D1 is reachable.
+- `source-list-qa` — paste three sources, delete the middle row from `操作`, confirm Q&A delete, and seed a busy row to prove the visible delete reason.
 - `screenshot --path <file> [--url <path>]` — capture a page.
 - `snapshot --path <file> [--url <path>]` — accessibility snapshot text.
 
-Prefer role + accessible name. Example names already in the app: `新しいノート`, `ページのURL`, `タイトル`, `本文`, `ノート名`, `ソースのメモ`, `質問`, buttons `URLを登録`, `本文を保存`, `名前を変更`, `削除`, `ソースを追加`, `質問する`, `要約する`, `再試行`, `本文を貼り付ける`, tablist `入力方法`, live text `要約が完了しました` / `回答が完了しました`.
+Prefer role + accessible name. Example names already in the app: `新しいノート`, `ページのURL`, `タイトル`, `本文`, `ノート名`, `ソースのメモ`, `質問`, buttons `URLを登録`, `本文を保存`, `名前を変更`, `削除`, `ソースを追加`, `{title}の操作`, `この質問と回答を削除`, `質問する`, `要約する`, `再試行`, `本文を貼り付ける`, tablist `入力方法`, live text `要約が完了しました` / `回答が完了しました`, row text `選択中` / `処理中のため削除できません`.
 
 ## Evidence
 
