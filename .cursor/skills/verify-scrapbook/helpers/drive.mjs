@@ -70,9 +70,9 @@ async function pasteSource(argv) {
 
   await withPage(async (page) => {
     const dialog = await openCreateDialog(page)
+    await dialog.getByRole('tab', { name: '貼り付け' }).click()
     await page.screenshot({ path: resolve(out, 'before.png'), fullPage: true })
 
-    await dialog.getByRole('tab', { name: '貼り付け' }).click()
     await dialog.getByRole('textbox', { name: 'タイトル' }).fill(title)
     await dialog.getByRole('textbox', { name: '本文' }).fill(body)
     await dialog.getByRole('button', { name: '本文を保存' }).click()
