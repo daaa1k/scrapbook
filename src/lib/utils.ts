@@ -1,20 +1,12 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { AcquiredVia, FetchStatus, SourceKind } from '~/domain/url'
+import { jobProgressView } from '~/domain/job-status-copy'
 import type { JobKind, JobStatus } from '~/domain/jobs'
 import { isTerminalJobStatus, jobErrorReason, JOB_ERROR_LABEL } from '~/domain/jobs'
+import type { AcquiredVia, FetchStatus, SourceKind } from '~/domain/url'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
-}
-
-const JOB_STATUS_LABEL: Record<JobStatus, string> = {
-  queued: 'キュー待ち',
-  starting_agent: 'Agent起動中',
-  waiting_agent: '取得中',
-  persisting: '保存中',
-  succeeded: '完了',
-  failed: '失敗しました',
 }
 
 const FETCH_STATUS_LABEL: Record<FetchStatus, string> = {
@@ -37,10 +29,14 @@ const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
 }
 
 export function jobStatusLabel(status: JobStatus | null, kind: JobKind | null = 'fetch'): string {
-  if (!status) return '未処理'
-  if (kind === 'summarize_body' && status === 'waiting_agent') return '要約中'
-  if (kind === 'ask_source' && status === 'waiting_agent') return '回答中'
-  return JOB_STATUS_LABEL[status]
+  return jobProgressView({
+    status,
+    kind,
+    errorCode: null,
+    errorMessage: null,
+    hasBody: true,
+    hasUrl: true,
+  }).label
 }
 
 export function fetchStatusLabel(status: string): string {
