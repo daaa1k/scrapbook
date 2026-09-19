@@ -73,6 +73,7 @@ describe('job transitions', () => {
     expect(userFacingError(new Error('unsupported_protocol'))).toBe(
       'http または https のURLだけ登録できます',
     )
+    expect(userFacingError(new TypeError('Failed to fetch'))).toBe('通信に失敗しました')
   })
 
   it('labels in-flight jobs in Japanese without internal status names', () => {

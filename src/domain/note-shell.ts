@@ -1,3 +1,4 @@
+import type { AsyncResourceView } from '~/domain/async-view'
 import { jobProgressView } from '~/domain/job-status-copy'
 import type { JobKind, JobStatus } from '~/domain/jobs'
 import type {
@@ -23,6 +24,13 @@ export type NoteShellView =
       invalidSourceId?: string
     }
 
+export type NoteShellFrame =
+  | { status: 'catalog-loading' }
+  | { status: 'catalog-error' }
+  | { status: 'sources-loading'; notebook: NotebookRef }
+  | { status: 'sources-error'; notebook: NotebookRef }
+  | NoteShellView
+
 export type SourceListKind = 'web' | 'pdf' | 'paste'
 
 export type SourceRowJobChip = {
@@ -36,7 +44,12 @@ export const INVALID_SOURCE_ID_RECOVERY =
 export const SOURCE_DELETE_BUSY_REASON = '処理中のため削除できません'
 export const SOURCE_DELETING_STATUS = '削除しています'
 export const SOURCE_LIST_EMPTY_COPY = 'まだソースがありません。追加すると要約と質問が使えます。'
+export const SOURCE_LIST_LOAD_ERROR = 'ソース一覧を読み込めませんでした。'
 export const SOURCE_LIST_SELECTED_LABEL = '選択中'
+export const CATALOG_LOADING_LABEL = 'ノートを読み込み中…'
+export const SOURCES_LOADING_LABEL = 'ソースを読み込み中…'
+export const STUDY_LOADING_LABEL = '要約と質問を読み込み中…'
+export const MEMO_LOADING_LABEL = 'メモを読み込み中…'
 
 export const NOTEBOOK_MOBILE_PANES = ['sources', 'study', 'memo'] as const
 export type NotebookMobilePane = (typeof NOTEBOOK_MOBILE_PANES)[number]
@@ -103,6 +116,22 @@ export function resolveNoteShellView(
     focusSourceId,
     ...(requested && !matched ? { invalidSourceId: requested } : {}),
   }
+}
+
+export function resolveNoteShellFrame(
+  search: NoteShellSearch,
+  catalog: AsyncResourceView<OrganizationCatalog>,
+  sources: AsyncResourceView<readonly SourceListItem[]>,
+): NoteShellFrame {
+  if (catalog.status === 'loading') return { status: 'catalog-loading' }
+  if (catalog.status === 'error') return { status: 'catalog-error' }
+  const notebook = catalog.data.notebooks.find((row) => row.id === search.notebookId)
+  if (!notebook) {
+    return { status: 'unknown-notebook', notebookId: search.notebookId }
+  }
+  if (sources.status === 'loading') return { status: 'sources-loading', notebook }
+  if (sources.status === 'error') return { status: 'sources-error', notebook }
+  return resolveNoteShellView(search, catalog.data, sources.data)
 }
 
 export function nextSourceIdAfterDelete(

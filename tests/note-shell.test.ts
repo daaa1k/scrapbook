@@ -9,6 +9,7 @@ import {
   notebookTitleCommit,
   notebookTitleDraftChanged,
   paneAfterTabKey,
+  resolveNoteShellFrame,
   resolveNoteShellView,
   sourceListKind,
   sourceListKindLabel,
@@ -105,6 +106,43 @@ describe('resolveNoteShellView', () => {
       focusSourceId: 'src-1',
       invalidSourceId: 'missing',
     })
+  })
+})
+
+describe('resolveNoteShellFrame', () => {
+  it('keeps catalog and source fetches as separate loading and error states', () => {
+    const catalog = catalogWithNotebook()
+    expect(
+      resolveNoteShellFrame({ notebookId }, { status: 'loading' }, { status: 'loading' }),
+    ).toEqual({ status: 'catalog-loading' })
+    expect(
+      resolveNoteShellFrame({ notebookId }, { status: 'error' }, { status: 'loading' }),
+    ).toEqual({ status: 'catalog-error' })
+    expect(
+      resolveNoteShellFrame(
+        { notebookId },
+        { status: 'ready', data: catalog },
+        { status: 'loading' },
+      ),
+    ).toEqual({ status: 'sources-loading', notebook: catalog.notebooks[0] })
+    expect(
+      resolveNoteShellFrame(
+        { notebookId },
+        { status: 'ready', data: catalog },
+        { status: 'error' },
+      ),
+    ).toEqual({ status: 'sources-error', notebook: catalog.notebooks[0] })
+  })
+
+  it('delegates to the resolved view when both fetches succeeded', () => {
+    const catalog = catalogWithNotebook()
+    expect(
+      resolveNoteShellFrame(
+        { notebookId },
+        { status: 'ready', data: catalog },
+        { status: 'ready', data: [] },
+      ),
+    ).toEqual({ status: 'empty', notebook: catalog.notebooks[0] })
   })
 })
 
