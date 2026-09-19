@@ -5,7 +5,9 @@ import { SourceInvestigate } from '~/components/source-investigate'
 import { SourceMemoPane } from '~/components/source-memo-pane'
 import { SourceModal } from '~/components/source-modal'
 import { Button } from '~/components/ui/button'
+import { ConfirmDialog } from '~/components/ui/confirm-dialog'
 import { Input } from '~/components/ui/input'
+import { sourceDeleteConfirm } from '~/domain/destructive-confirm'
 import { isLeavingNotebook, type MemoSessionHandle } from '~/domain/memo-save'
 import { resolveNoteShellView, type NoteShellSearch } from '~/domain/note-shell'
 import { sourceListFilterFromSourcesPageSearch } from '~/domain/organization'
@@ -32,6 +34,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     memoSessionRef.current = session
   }, [])
   const [mobilePane, setMobilePane] = useState<'sources' | 'study' | 'memo'>('study')
+  const [pendingSource, setPendingSource] = useState<{ id: string; label: string } | null>(null)
 
   const shouldBlockLeave = useCallback(async (args: { current: { params: object }; next: { params: object } }) => {
     if (!isLeavingNotebook(notebookIdFromParams(args.current.params), notebookIdFromParams(args.next.params))) {
@@ -322,7 +325,8 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                         <div className="mt-2 flex justify-end">
                           <Button
                             type="button"
-                            className="text-xs"
+                            variant="danger"
+                            size="sm"
                             disabled={busy || removeSource.isPending}
                             aria-label={`${source.title ?? source.id}を削除`}
                             onClick={() => {
@@ -330,14 +334,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                                 setPaneError('処理中のソースは削除できません')
                                 return
                               }
-                              if (
-                                !window.confirm(
-                                  `「${label}」を削除しますか？関連する要約・質問・メモも削除されます。`,
-                                )
-                              ) {
-                                return
-                              }
-                              removeSource.mutate(source.id)
+                              setPendingSource({ id: source.id, label })
                             }}
                           >
                             削除
@@ -379,6 +376,19 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         </div>
       )}
 
+      {pendingSource ? (
+        <ConfirmDialog
+          open
+          {...sourceDeleteConfirm(pendingSource.label)}
+          tone="danger"
+          onCancel={() => setPendingSource(null)}
+          onConfirm={() => {
+            const sourceIdToDelete = pendingSource.id
+            setPendingSource(null)
+            removeSource.mutate(sourceIdToDelete)
+          }}
+        />
+      ) : null}
       <SourceModal
         notebook={notebookId}
         open={modalOpen}

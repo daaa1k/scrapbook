@@ -4,9 +4,10 @@ import { useState } from 'react'
 import { SourceModal } from '~/components/source-modal'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
+import { ConfirmDialog } from '~/components/ui/confirm-dialog'
+import { notebookDeleteConfirm } from '~/domain/destructive-confirm'
 import {
   formatNotebookUpdatedAt,
-  notebookDeleteConfirmMessage,
   type NotebookId,
   type OrganizationCatalog,
 } from '~/domain/organization'
@@ -28,6 +29,9 @@ function HomePage() {
   const navigate = useNavigate()
   const [createOpen, setCreateOpen] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
+  const [pendingNotebook, setPendingNotebook] = useState<OrganizationCatalog['notebooks'][number] | null>(
+    null,
+  )
 
   const catalog = useQuery({
     queryKey: organizationKeys.catalog,
@@ -70,16 +74,26 @@ function HomePage() {
                 <NotebookCard
                   notebook={notebook}
                   busy={removeNotebook.isPending}
-                  onDelete={() => {
-                    if (!window.confirm(notebookDeleteConfirmMessage(notebook.title))) return
-                    removeNotebook.mutate(notebook.id)
-                  }}
+                  onDelete={() => setPendingNotebook(notebook)}
                 />
               </li>
             ))}
           </ul>
         )}
       </section>
+      {pendingNotebook ? (
+        <ConfirmDialog
+          open
+          {...notebookDeleteConfirm(pendingNotebook.title)}
+          tone="danger"
+          onCancel={() => setPendingNotebook(null)}
+          onConfirm={() => {
+            const notebookId = pendingNotebook.id
+            setPendingNotebook(null)
+            removeNotebook.mutate(notebookId)
+          }}
+        />
+      ) : null}
       <SourceModal
         notebook="new"
         open={createOpen}
@@ -128,7 +142,13 @@ function NotebookCard({
           >
             開く
           </Link>
-          <Button type="button" disabled={busy} onClick={onDelete} aria-label={`${notebook.title}を削除`}>
+          <Button
+            type="button"
+            variant="danger"
+            disabled={busy}
+            onClick={onDelete}
+            aria-label={`${notebook.title}を削除`}
+          >
             削除
           </Button>
         </div>

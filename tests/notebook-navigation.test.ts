@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatNotebookUpdatedAt,
-  notebookDeleteConfirmMessage,
   notebookIdSchema,
   parseNotebookPageSearch,
   parseSourcesPageSearch,
@@ -65,13 +64,5 @@ describe('formatNotebookUpdatedAt', () => {
 
   it('uses a Japanese date after a week', () => {
     expect(formatNotebookUpdatedAt(Date.UTC(2026, 0, 8), now)).toBe('2026年1月8日')
-  })
-})
-
-describe('notebookDeleteConfirmMessage', () => {
-  it('names the notebook and lists what cascade delete removes', () => {
-    expect(notebookDeleteConfirmMessage('研究')).toBe(
-      '「研究」を削除します。ソース、要約、Q&A、メモ、PDF原本は完全に削除され、元に戻せません。',
-    )
   })
 })
