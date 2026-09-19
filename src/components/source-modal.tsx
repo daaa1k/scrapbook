@@ -226,8 +226,8 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
 
   useEffect(() => {
     if (discardOpen || !closeAfterDiscard.current) return
-    closeAfterDiscard.current = false
     const timer = window.setTimeout(() => {
+      closeAfterDiscard.current = false
       dialogRef.current?.close()
     }, 0)
     return () => window.clearTimeout(timer)
