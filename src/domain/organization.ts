@@ -119,10 +119,6 @@ export function formatNotebookUpdatedAt(updatedAt: number, now = Date.now()): st
   }).format(new Date(updatedAt))
 }
 
-export function notebookDeleteConfirmMessage(title: string): string {
-  return `「${title}」を削除します。ソース、要約、Q&A、メモ、PDF原本は完全に削除され、元に戻せません。`
-}
-
 export function sourceListFilterFromSourcesPageSearch(search: {
   notebookId?: NotebookId
 }): SourceListFilter {

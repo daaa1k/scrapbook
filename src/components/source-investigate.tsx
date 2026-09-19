@@ -171,6 +171,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                     <p className="whitespace-pre-wrap">{turn.question}</p>
                   </div>
                   <Button
+                    variant="danger"
                     disabled={!turn.canDelete || deleteQa.isPending}
                     onClick={() => deleteQa.mutate(turn.id)}
                   >
