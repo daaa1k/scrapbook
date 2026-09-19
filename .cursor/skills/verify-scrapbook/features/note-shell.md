@@ -4,7 +4,7 @@ Note shell is the `/notebooks/$notebookId` three-pane experience: sources on the
 
 ## Sub-features
 
-- `shell-open` opens a notebook with optional `?sourceId=`. The header breadcrumb is `ホーム / {notebook title}`. `ホーム` goes to `/`. The title is the only `h1`. There is no `ノート名` textbox until rename starts.
+- `shell-open` opens a notebook with optional `?sourceId=`. The header breadcrumb is `ホーム / {notebook title}`. `ホーム` goes to `/`. The title is the only `h1`. There is no `ノート名` textbox until rename starts. Catalog and source-list fetches each have their own loading skeleton or `再試行`. The page does not show a single `読み込み中…` for the whole shell.
 - `shell-rename` starts from `名前を変更` (ghost). The heading becomes an `ノート名` field with `保存` and `キャンセル`. `保存` writes the new title and returns to the heading. `キャンセル` or Escape restores the saved title. `ソースを追加` in the header stays `secondary`.
 - `shell-select` focuses a source from the left list and updates the URL.
 - `shell-summarize` / `shell-ask` run from the center pane. In-flight jobs use Japanese labels and a spinner (`要約を準備しています`, `回答しています`). A waiting turn does not say `回答待ち…`. Failures use an alert with a next action. See [Job progress and recovery](./job-progress.md).

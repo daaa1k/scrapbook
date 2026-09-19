@@ -19,6 +19,7 @@ function usage() {
   drive.mjs job-progress [--out <dir>]
   drive.mjs source-list-qa [--out <dir>]
   drive.mjs notebook-title [--out <dir>]
+  drive.mjs home-catalog [--out <dir>]
   drive.mjs screenshot --path <file> [--url <path>]
   drive.mjs snapshot --path <file> [--url <path>]`)
   process.exit(2)
@@ -603,6 +604,140 @@ async function notebookTitle(argv) {
   })
 }
 
+async function homeCatalog(argv) {
+  const out = resolve(argValue(argv, '--out') ?? resolve(evidenceRoot, 'home'))
+  await mkdir(out, { recursive: true })
+
+  await withPage(async (page) => {
+    const catalogRequests = []
+    let catalogMode = 'pass'
+    let releaseHold = null
+    const holdGate = () =>
+      new Promise((resolveHold) => {
+        releaseHold = resolveHold
+      })
+
+    await page.route('**/*', async (route) => {
+      const request = route.request()
+      const headers = request.headers()
+      const isServerFn = headers['x-tsr-serverfn'] === 'true'
+      const url = request.url()
+      const looksLikeCatalog =
+        isServerFn &&
+        request.method() === 'GET' &&
+        (url.includes('getOrganizationCatalog') ||
+          url.includes('organization') ||
+          url.toLowerCase().includes('catalog'))
+      if (!looksLikeCatalog) {
+        await route.continue()
+        return
+      }
+      catalogRequests.push({ url, mode: catalogMode })
+      if (catalogMode === 'fail') {
+        await route.abort('failed')
+        return
+      }
+      if (catalogMode === 'hold') {
+        await holdGate()
+        await route.continue()
+        return
+      }
+      await route.continue()
+    })
+
+    await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' })
+    const heading = page.getByRole('heading', { level: 1, name: 'ノート' })
+    await heading.waitFor({ timeout: 15_000 })
+    const createButtons = page.getByRole('button', { name: '新しいノート' })
+    const createCount = await createButtons.count()
+    if (createCount !== 1) throw new Error(`expected one 新しいノート, got ${createCount}`)
+
+    const emptyTitle = page.getByText('ノートはまだありません', { exact: true })
+    const emptyVisible = await emptyTitle.count()
+    const openLinks = page.getByRole('link', { name: '開く' })
+    const openCount = await openLinks.count()
+    if (openCount !== 0) throw new Error(`expected no 開く links, got ${openCount}`)
+
+    const headerCreate = heading.locator('xpath=../button[normalize-space()="新しいノート"]')
+    const headerCreateCount = await headerCreate.count()
+    const emptyCopy = emptyVisible
+      ? (await page.locator('main').innerText())
+      : ''
+    if (emptyVisible) {
+      if (headerCreateCount !== 0) throw new Error('empty state still has header 新しいノート')
+      if (!emptyCopy.includes('URL') || !emptyCopy.includes('PDF') || !emptyCopy.includes('貼り付け')) {
+        throw new Error(`empty copy missing methods: ${emptyCopy}`)
+      }
+    } else {
+      if (headerCreateCount !== 1) throw new Error('list is missing header 新しいノート')
+      const updated = page.getByText('更新', { exact: false })
+      await updated.first().waitFor({ timeout: 10_000 })
+      const headingBox = await heading.boundingBox()
+      const createBox = await createButtons.first().boundingBox()
+      const sameRow =
+        headingBox &&
+        createBox &&
+        Math.abs(headingBox.y + headingBox.height / 2 - (createBox.y + createBox.height / 2)) < 24
+      if (!sameRow) throw new Error('新しいノート is not in the heading row')
+    }
+
+    await page.screenshot({ path: resolve(out, 'ready.png'), fullPage: true })
+    const ariaReady = await page.locator('body').ariaSnapshot()
+    await writeFile(resolve(out, 'aria-ready.txt'), `${ariaReady}\n`)
+
+    catalogMode = 'fail'
+    await page.reload({ waitUntil: 'networkidle' })
+    const retry = page.getByRole('button', { name: '再試行' })
+    const retryVisible = (await retry.count()) > 0 && (await retry.first().isVisible())
+    let loadingLabelVisible = false
+    let emptyDuringError = false
+    let retryRecovered = false
+    if (retryVisible) {
+      emptyDuringError = (await emptyTitle.count()) > 0
+      if (emptyDuringError) throw new Error('empty state shown with catalog error')
+      await page.screenshot({ path: resolve(out, 'error.png'), fullPage: true })
+      catalogMode = 'hold'
+      const retryClick = retry.first().click()
+      loadingLabelVisible = await page
+        .getByText('ノート一覧を読み込み中…')
+        .waitFor({ timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false)
+      const emptyDuringLoad = (await emptyTitle.count()) > 0
+      await page.screenshot({ path: resolve(out, 'loading.png'), fullPage: true })
+      catalogMode = 'pass'
+      if (releaseHold) releaseHold()
+      await retryClick
+      await heading.waitFor({ timeout: 15_000 })
+      retryRecovered = (await retry.count()) === 0 || !(await retry.first().isVisible())
+      if (emptyDuringLoad) throw new Error('empty state flashed during catalog retry loading')
+    } else {
+      catalogMode = 'pass'
+    }
+
+    const aria = await page.locator('body').ariaSnapshot()
+    await writeFile(resolve(out, 'aria.txt'), `${aria}\n`)
+    await page.screenshot({ path: resolve(out, 'after.png'), fullPage: true })
+    await writeMeta(out, {
+      featureId: 'home',
+      entryPoint: '/',
+      createCount,
+      emptyVisible: Boolean(emptyVisible),
+      headerCreateCount,
+      sameRow: emptyVisible ? null : true,
+      openCount,
+      retryVisible,
+      loadingLabelVisible,
+      emptyDuringError,
+      retryRecovered,
+      catalogRequests,
+    })
+    console.log(
+      `home-catalog: ok empty=${Boolean(emptyVisible)} retryVisible=${retryVisible} evidence=${out}`,
+    )
+  })
+}
+
 async function screenshot(argv) {
   const path = argValue(argv, '--path')
   if (!path) usage()
@@ -638,6 +773,7 @@ else if (cmd === 'pdf-source') await pdfSource(argv)
 else if (cmd === 'job-progress') await jobProgress(argv)
 else if (cmd === 'source-list-qa') await sourceListQa(argv)
 else if (cmd === 'notebook-title') await notebookTitle(argv)
+else if (cmd === 'home-catalog') await homeCatalog(argv)
 else if (cmd === 'screenshot') await screenshot(argv)
 else if (cmd === 'snapshot') await snapshot(argv)
 else usage()
