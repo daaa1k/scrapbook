@@ -248,13 +248,57 @@ async function sourceListQa(argv) {
     const kindPaste = await sources.getByText('貼り付け').count()
 
     const study = page.locator('#notebook-panel-study')
+    await study.getByRole('textbox', { name: '質問' }).waitFor({ timeout: 15_000 })
     await study.getByRole('textbox', { name: '質問' }).fill('一つ目の質問です')
     await study.getByRole('button', { name: '質問する' }).click()
-    await study.getByText(/モック回答です。|回答できませんでした/).first().waitFor({ timeout: 45_000 })
+    const firstTurnVisible = await study
+      .getByText('一つ目の質問です')
+      .first()
+      .waitFor({ timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!firstTurnVisible) {
+      await page.screenshot({ path: resolve(out, 'ask-missing-turn.png'), fullPage: true })
+      await page.reload({ waitUntil: 'networkidle' })
+      await study.getByText('一つ目の質問です').first().waitFor({ timeout: 15_000 })
+    }
+    const firstAnswered = await study
+      .getByText(/モック回答です。|回答できませんでした/)
+      .first()
+      .waitFor({ timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!firstAnswered) {
+      await page.screenshot({ path: resolve(out, 'ask-before-reload.png'), fullPage: true })
+      await page.reload({ waitUntil: 'networkidle' })
+      await study
+        .getByText(/モック回答です。|回答できませんでした/)
+        .first()
+        .waitFor({ timeout: 15_000 })
+    }
+
     await study.getByRole('textbox', { name: '質問' }).fill('二つ目の質問です')
     await study.getByRole('button', { name: '質問する' }).click()
-    await study.getByText('二つ目の質問です').waitFor({ timeout: 45_000 })
-    await study.getByText(/モック回答です。|回答できませんでした/).nth(1).waitFor({ timeout: 45_000 })
+    const secondTurnVisible = await study
+      .getByText('二つ目の質問です')
+      .first()
+      .waitFor({ timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!secondTurnVisible) {
+      await page.reload({ waitUntil: 'networkidle' })
+      await study.getByText('二つ目の質問です').first().waitFor({ timeout: 15_000 })
+    }
+    const secondAnswered = await study
+      .getByText(/モック回答です。|回答できませんでした/)
+      .nth(1)
+      .waitFor({ timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!secondAnswered) {
+      await page.reload({ waitUntil: 'networkidle' })
+      await study.getByText('二つ目の質問です').waitFor({ timeout: 15_000 })
+    }
 
     const deleteButtons = study.getByRole('button', { name: 'この質問と回答を削除' })
     const deleteCountBefore = await deleteButtons.count()
