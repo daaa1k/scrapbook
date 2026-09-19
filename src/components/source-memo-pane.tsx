@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { Textarea } from '~/components/ui/textarea'
-import { shouldSaveMemo } from '~/domain/memo-save'
+import {
+  applyServerMemo,
+  discardedMemoSession,
+  memoNeedsLeaveGuard,
+  shouldSaveMemo,
+  type MemoSaveState,
+  type MemoSession,
+  type MemoSessionHandle,
+} from '~/domain/memo-save'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { userFacingError } from '~/lib/utils'
 import { runOrganizationCommand } from '~/server/functions/organization'
@@ -9,22 +17,28 @@ import { getSource } from '~/server/functions/sources'
 
 const MEMO_DEBOUNCE_MS = 600
 
-export type MemoSaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
-
 type SourceMemoPaneProps = {
   sourceId: string
-  registerFlush: (flush: () => Promise<void>) => void
+  registerMemoSession: (session: MemoSessionHandle) => void
 }
 
-export function SourceMemoPane({ sourceId, registerFlush }: SourceMemoPaneProps) {
+export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPaneProps) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')
   const [saveState, setSaveState] = useState<MemoSaveState>('idle')
   const [error, setError] = useState<string | null>(null)
   const lastSaved = useRef('')
+  const sessionSourceId = useRef(sourceId)
   const draftRef = useRef(draft)
+  const saveStateRef = useRef(saveState)
   const savePromise = useRef<Promise<void> | null>(null)
+  const sessionHandle = useRef<MemoSessionHandle>({
+    needsGuard: false,
+    flush: async () => {},
+    discard: () => {},
+  })
   draftRef.current = draft
+  saveStateRef.current = saveState
 
   const query = useQuery({
     queryKey: sourceKeys.detail(sourceId),
@@ -34,9 +48,18 @@ export function SourceMemoPane({ sourceId, registerFlush }: SourceMemoPaneProps)
   const serverMemo = query.data?.organization.memo ?? ''
 
   useEffect(() => {
-    setDraft(serverMemo)
-    lastSaved.current = serverMemo
-    setSaveState('idle')
+    const current: MemoSession = {
+      sourceId: sessionSourceId.current,
+      draft: draftRef.current,
+      lastSaved: lastSaved.current,
+      saveState: saveStateRef.current,
+    }
+    const next = applyServerMemo(current, { sourceId, serverMemo })
+    if (next === current) return
+    sessionSourceId.current = next.sourceId
+    lastSaved.current = next.lastSaved
+    setDraft(next.draft)
+    setSaveState(next.saveState)
     setError(null)
   }, [sourceId, serverMemo])
 
@@ -63,22 +86,52 @@ export function SourceMemoPane({ sourceId, registerFlush }: SourceMemoPaneProps)
     },
   })
 
-  function saveIfDirty(): Promise<void> {
+  async function saveIfDirty(): Promise<void> {
+    const inFlight = savePromise.current
+    if (inFlight) {
+      try {
+        await inFlight
+      } catch {
+        // Retry the current draft after the previous attempt fails.
+      }
+    }
     const next = draftRef.current
-    if (!shouldSaveMemo(next, lastSaved.current)) return Promise.resolve()
+    if (!shouldSaveMemo(next, lastSaved.current)) return
     if (savePromise.current) return savePromise.current
-    savePromise.current = save
+    const pending = save
       .mutateAsync(next)
       .then(() => undefined)
       .finally(() => {
-        savePromise.current = null
+        if (savePromise.current === pending) savePromise.current = null
       })
-    return savePromise.current
+    savePromise.current = pending
+    return pending
   }
 
-  useEffect(() => {
-    registerFlush(() => saveIfDirty())
+  function discardDraft() {
+    const next = discardedMemoSession({
+      sourceId: sessionSourceId.current,
+      draft: draftRef.current,
+      lastSaved: lastSaved.current,
+      saveState: saveStateRef.current,
+    })
+    lastSaved.current = next.lastSaved
+    setDraft(next.draft)
+    setSaveState(next.saveState)
+    setError(null)
+  }
+
+  sessionHandle.current.needsGuard = memoNeedsLeaveGuard({
+    draft,
+    lastSaved: lastSaved.current,
+    saveState,
   })
+  sessionHandle.current.flush = saveIfDirty
+  sessionHandle.current.discard = discardDraft
+
+  useEffect(() => {
+    registerMemoSession(sessionHandle.current)
+  }, [registerMemoSession])
 
   useEffect(() => {
     if (!shouldSaveMemo(draft, lastSaved.current)) return
@@ -128,9 +181,14 @@ export function SourceMemoPane({ sourceId, registerFlush }: SourceMemoPaneProps)
       {error ? (
         <div className="space-y-2">
           <p className="text-sm text-red-600">{error}</p>
-          <button type="button" className="text-sm underline" onClick={() => void saveIfDirty()}>
-            再試行
-          </button>
+          <div className="flex gap-3">
+            <button type="button" className="text-sm underline" onClick={() => void saveIfDirty()}>
+              再試行
+            </button>
+            <button type="button" className="text-sm underline" onClick={discardDraft}>
+              破棄
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
