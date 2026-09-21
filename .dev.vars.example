@@ -1,2 +1,7 @@
 # Copy to .dev.vars (gitignored). Never commit real secrets.
+ENVIRONMENT=development
+ALLOW_INSECURE_AUTH_BYPASS=true
+ACCESS_TEAM_DOMAIN=https://example.cloudflareaccess.com
+ACCESS_AUD=replace-me
+ACCESS_ALLOWED_EMAILS=you@example.com
 CURSOR_API_KEY=

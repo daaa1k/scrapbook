@@ -102,7 +102,7 @@ bun run test:e2e:update  # refresh screenshot baselines
 
 Pre-commit (optional, not a substitute for CI): `bunx lefthook install`
 
-Copy `.dev.vars.example` to `.dev.vars` and set `CURSOR_API_KEY` if you want a live agent. With `ALLOW_INSECURE_AUTH_BYPASS=true` and `ENVIRONMENT=development`, an unset key uses the mock Cursor client so the UI still moves.
+Copy `.dev.vars.example` to `.dev.vars` for local development, and set `CURSOR_API_KEY` if you want a live agent. With `ALLOW_INSECURE_AUTH_BYPASS=true` and `ENVIRONMENT=development`, an unset key uses the mock Cursor client so the UI still moves. `.dev.vars` is gitignored.
 
 ## Cloudflare resources to create
 
@@ -115,7 +115,7 @@ Replace placeholder IDs in `wrangler.jsonc` after you create them in the dashboa
 5. `wrangler secret put CURSOR_API_KEY`
 6. Apply migrations remotely: `wrangler d1 migrations apply DB --remote`
 
-Production env in `wrangler.jsonc` sets `ENVIRONMENT=production` and `ALLOW_INSECURE_AUTH_BYPASS=false`.
+Set `ENVIRONMENT=production`, `ALLOW_INSECURE_AUTH_BYPASS=false`, `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, and `ACCESS_ALLOWED_EMAILS` in the production Worker's Cloudflare dashboard. `wrangler.jsonc` uses `keep_vars` so deploys retain dashboard variables; keep `CURSOR_API_KEY` as a Cloudflare secret.
 
 ## Cloudflare Access
 
