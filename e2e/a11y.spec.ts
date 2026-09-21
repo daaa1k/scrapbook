@@ -18,7 +18,7 @@ test.describe('axe critical/serious = 0', () => {
 
   test('home dark', async ({ page }) => {
     await page.goto('/')
-    const theme = page.getByRole('button', { name: /テーマ:/ })
+    const theme = page.getByRole('button', { name: /Theme:/ })
     await theme.click()
     await theme.click()
     await expect(page.getByRole('heading', { level: 1, name: 'ノート' })).toBeVisible()

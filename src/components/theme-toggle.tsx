@@ -39,8 +39,8 @@ export function ThemeToggle() {
       variant="ghost"
       size="sm"
       onClick={onCycle}
-      aria-label={`テーマ: ${label}。クリックで切り替え`}
-      title={`テーマ: ${label}`}
+      aria-label={`Theme: ${label}. Click to switch`}
+      title={`Theme: ${label}`}
     >
       {label}
     </Button>

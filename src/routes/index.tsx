@@ -18,11 +18,7 @@ import {
   HOME_EMPTY_TITLE,
   HOME_SEARCH_EMPTY_TITLE,
   homeCreateCtaPlacement,
-  homeDensityLabel,
   presentHomeNotebooks,
-  readStoredHomeDensity,
-  writeStoredHomeDensity,
-  type HomeDensity,
   type HomeNotebookSort,
 } from '~/domain/home'
 import {
@@ -31,7 +27,7 @@ import {
   type OrganizationCatalog,
 } from '~/domain/organization'
 import { organizationKeys } from '~/lib/query-keys'
-import { cn, userFacingError } from '~/lib/utils'
+import { userFacingError } from '~/lib/utils'
 import { deleteNotebook, getOrganizationCatalog } from '~/server/functions/organization'
 
 export const Route = createFileRoute('/')({
@@ -58,7 +54,6 @@ function HomePage() {
   )
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<HomeNotebookSort>('updated')
-  const [density, setDensity] = useState<HomeDensity>(() => readStoredHomeDensity())
 
   const catalog = useQuery({
     queryKey: organizationKeys.catalog,
@@ -87,16 +82,10 @@ function HomePage() {
   })
   const deletingNotebookId = removeNotebook.isPending ? removeNotebook.variables : undefined
 
-  function cycleDensity() {
-    const next: HomeDensity = density === 'comfortable' ? 'compact' : 'comfortable'
-    setDensity(next)
-    writeStoredHomeDensity(next)
-  }
-
   return (
     <div className="space-y-section">
-      <div className="flex flex-wrap items-center justify-between gap-gap">
-        <h1 className="text-heading font-semibold tracking-tight">ノート</h1>
+      <div>
+        <h1 className="sr-only">ノート</h1>
         {createCta === 'header' ? (
           <Button type="button" onClick={() => setCreateOpen(true)}>
             新しいノート
@@ -124,7 +113,7 @@ function HomePage() {
             }
           />
         ) : (
-          <div className="space-y-stack" data-density={density}>
+          <div className="space-y-stack">
             <div className="flex flex-wrap items-end gap-gap">
               <div className="min-w-[12rem] flex-1">
                 <label htmlFor="home-notebook-search" className="mb-1 block text-meta font-medium text-muted">
@@ -153,19 +142,15 @@ function HomePage() {
                   <option value="name">名前順</option>
                 </select>
               </div>
-              <Button type="button" variant="secondary" onClick={cycleDensity} aria-pressed={density === 'compact'}>
-                表示: {homeDensityLabel(density)}
-              </Button>
             </div>
             {visibleNotebooks.length === 0 ? (
               <EmptyState title={HOME_SEARCH_EMPTY_TITLE} description="検索条件を変えてみてください。" />
             ) : (
-              <ul className={cn(density === 'compact' ? 'space-y-2' : 'space-y-stack')}>
+              <ul className="space-y-stack">
                 {visibleNotebooks.map((notebook) => (
                   <li key={notebook.id}>
                     <NotebookCard
                       notebook={notebook}
-                      density={density}
                       deleting={deletingNotebookId === notebook.id}
                       onDelete={() => setPendingNotebook(notebook)}
                     />
@@ -208,12 +193,10 @@ function HomePage() {
 
 function NotebookCard({
   notebook,
-  density,
   deleting,
   onDelete,
 }: {
   notebook: OrganizationCatalog['notebooks'][number]
-  density: HomeDensity
   deleting: boolean
   onDelete: () => void
 }) {
@@ -223,22 +206,14 @@ function NotebookCard({
         <Link
           to="/notebooks/$notebookId"
           params={{ notebookId: notebook.id }}
-          className={cn(
-            'min-w-0 flex-1 hover:bg-surface-muted active:bg-surface-muted',
-            density === 'compact' ? 'px-2.5 py-2' : 'px-inset py-stack',
-          )}
+          className="min-w-0 flex-1 px-inset py-stack hover:bg-surface-muted active:bg-surface-muted"
         >
           <span className="font-medium text-ink">{notebook.title}</span>
           <p className="mt-1 text-meta text-muted">
             {notebook.sourceCount}件のソース · {notebookUpdatedAtLabel(notebook.updatedAt)}
           </p>
         </Link>
-        <div
-          className={cn(
-            'flex shrink-0 items-start pl-0',
-            density === 'compact' ? 'px-2.5 py-2' : 'px-inset py-stack',
-          )}
-        >
+        <div className="flex shrink-0 items-start px-inset py-stack">
           <Button
             type="button"
             variant="danger"

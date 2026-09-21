@@ -20,10 +20,10 @@ describe('theme preference', () => {
     expect(cycleThemePreference('dark')).toBe('system')
   })
 
-  it('labels preferences in Japanese', () => {
-    expect(themePreferenceLabel('system')).toBe('システム')
-    expect(themePreferenceLabel('light')).toBe('ライト')
-    expect(themePreferenceLabel('dark')).toBe('ダーク')
+  it('labels preferences in English', () => {
+    expect(themePreferenceLabel('system')).toBe('System')
+    expect(themePreferenceLabel('light')).toBe('Light')
+    expect(themePreferenceLabel('dark')).toBe('Dark')
   })
 
   it('accepts only known preference strings', () => {

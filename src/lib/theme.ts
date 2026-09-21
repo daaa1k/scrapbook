@@ -47,9 +47,9 @@ export function cycleThemePreference(current: ThemePreference): ThemePreference 
 }
 
 export function themePreferenceLabel(preference: ThemePreference): string {
-  if (preference === 'light') return 'ライト'
-  if (preference === 'dark') return 'ダーク'
-  return 'システム'
+  if (preference === 'light') return 'Light'
+  if (preference === 'dark') return 'Dark'
+  return 'System'
 }
 
 /** Inline boot script: resolve theme before first paint to avoid flash. */

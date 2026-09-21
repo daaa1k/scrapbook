@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   filterHomeNotebooks,
   homeCreateCtaPlacement,
-  homeDensityLabel,
-  isHomeDensity,
   presentHomeNotebooks,
   sortHomeNotebooks,
 } from '../src/domain/home'
@@ -66,9 +64,4 @@ describe('home list controls', () => {
     ])
   })
 
-  it('validates density preference', () => {
-    expect(isHomeDensity('compact')).toBe(true)
-    expect(isHomeDensity('wide')).toBe(false)
-    expect(homeDensityLabel('compact')).toBe('コンパクト')
-  })
 })
