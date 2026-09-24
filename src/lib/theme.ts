@@ -40,6 +40,10 @@ export function applyThemePreference(preference: ThemePreference) {
   }
 }
 
+export function applySystemThemeChange(preference: ThemePreference) {
+  if (preference === 'system') applyThemePreference('system')
+}
+
 export function cycleThemePreference(current: ThemePreference): ThemePreference {
   if (current === 'system') return 'light'
   if (current === 'light') return 'dark'
