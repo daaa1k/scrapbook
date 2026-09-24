@@ -194,6 +194,44 @@ describe('ask source from stored body', () => {
     expect(await db.select().from(qaAnswers)).toHaveLength(0)
   })
 
+  it('rolls back the job when the answer insert fails, then accepts another question', async () => {
+    const { db, sqlite } = createTestDb()
+    const pasted = await pasteSourceBody(db, {
+      title: 't',
+      body: 'body text',
+      notebook: await seedNotebook(db),
+    })
+    sqlite.exec(`
+      CREATE TRIGGER reject_qa_answer BEFORE INSERT ON qa_answers
+      WHEN NEW.question = '失敗する質問'
+      BEGIN SELECT RAISE(ABORT, 'answer_insert_failed'); END;
+    `)
+
+    const created: unknown[] = []
+    const workflow = {
+      create: async (options: { params: unknown }) => {
+        expect(await db.select().from(jobs)).toHaveLength(1)
+        expect(await db.select().from(qaAnswers)).toHaveLength(1)
+        created.push(options.params)
+        return { id: 'wf-ask' }
+      },
+    }
+    await expect(
+      askSourceQuestion(db, pasted.sourceId, '失敗する質問', workflow),
+    ).rejects.toThrow('answer_insert_failed')
+    expect(await db.select().from(jobs)).toHaveLength(0)
+    expect(await db.select().from(qaAnswers)).toHaveLength(0)
+    expect(created).toHaveLength(0)
+
+    const next = await askSourceQuestion(db, pasted.sourceId, '次の質問', workflow)
+    expect(next.started).toBe(true)
+    expect(created).toEqual([
+      { mode: 'ask_source', sourceId: pasted.sourceId, jobId: next.jobId, qaAnswerId: expect.any(String) },
+    ])
+    expect(await db.select().from(jobs)).toHaveLength(1)
+    expect(await db.select().from(qaAnswers)).toHaveLength(1)
+  })
+
   it('leaves answer null when Cursor fails and does not clear source citations', async () => {
     const { db } = createTestDb()
     const pasted = await pasteSourceBody(db, {

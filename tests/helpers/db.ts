@@ -8,13 +8,17 @@ import type { AppDb } from '../../src/db/types'
 
 const drizzleDir = join(dirname(fileURLToPath(import.meta.url)), '../../drizzle')
 
-function migrationSql(): string {
+export function migrationStatements(): string[] {
   return readdirSync(drizzleDir)
     .filter((name) => name.endsWith('.sql'))
     .sort()
-    .map((name) => readFileSync(join(drizzleDir, name), 'utf8'))
-    .join('\n')
-    .replace(/--> statement-breakpoint/g, '')
+    .flatMap((name) => readFileSync(join(drizzleDir, name), 'utf8').split('--> statement-breakpoint'))
+    .map((statement) => statement.trim())
+    .filter(Boolean)
+}
+
+function migrationSql(): string {
+  return migrationStatements().join('\n')
 }
 
 export function createTestDb(): { db: AppDb; sqlite: Database.Database } {
