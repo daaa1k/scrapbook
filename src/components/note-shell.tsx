@@ -44,6 +44,7 @@ import {
   notebookTitleCommit,
   notebookTitleDraftChanged,
   resolveNoteShellFrame,
+  resolveNoteShellResults,
   sourceListKind,
   sourceListKindLabel,
   sourceRowJobChip,
@@ -165,8 +166,9 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     blocker.proceed()
   }
 
-  const filter = {
-    ...sourceListFilterFromSourcesPageSearch({ notebookId }),
+  const notebookFilter = sourceListFilterFromSourcesPageSearch({ notebookId })
+  const searchFilter = {
+    ...notebookFilter,
     q: deferredSourceSearch,
   }
 
@@ -175,9 +177,15 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     queryFn: () => getOrganizationCatalog(),
   })
 
-  const sourcesQuery = useQuery({
-    queryKey: sourceKeys.list(filter),
-    queryFn: () => listSources({ data: filter }),
+  const notebookSourcesQuery = useQuery({
+    queryKey: sourceKeys.list(notebookFilter),
+    queryFn: () => listSources({ data: notebookFilter }),
+  })
+
+  const searchQuery = useQuery({
+    queryKey: sourceKeys.list(searchFilter),
+    queryFn: () => listSources({ data: searchFilter }),
+    enabled: deferredSourceSearch !== '',
   })
 
   const frame = resolveNoteShellFrame(
@@ -188,15 +196,23 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
       isFetching: catalog.isFetching,
     }),
     asyncResourceView({
-      data: sourcesQuery.data,
-      isError: sourcesQuery.isError,
-      isFetching: sourcesQuery.isFetching,
+      data: notebookSourcesQuery.data,
+      isError: notebookSourcesQuery.isError,
+      isFetching: notebookSourcesQuery.isFetching,
+    }),
+  )
+
+  const searchResults = resolveNoteShellResults(
+    asyncResourceView({
+      data: deferredSourceSearch === '' ? notebookSourcesQuery.data : searchQuery.data,
+      isError: deferredSourceSearch === '' ? notebookSourcesQuery.isError : searchQuery.isError,
+      isFetching: deferredSourceSearch === '' ? notebookSourcesQuery.isFetching : searchQuery.isFetching,
     }),
   )
 
   const sortedSources = useMemo(
-    () => (frame.status === 'ready' ? sortSourceListItems(frame.sources, sourceSort) : []),
-    [frame, sourceSort],
+    () => (searchResults.status === 'ready' ? sortSourceListItems(searchResults.sources, sourceSort) : []),
+    [searchResults, sourceSort],
   )
 
   useEffect(() => {
@@ -370,77 +386,75 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           {INVALID_SOURCE_ID_RECOVERY}
         </Alert>
       ) : null}
-      {view.status === 'sources-loading' ? (
-        <LoadingSkeleton label={SOURCES_LOADING_LABEL} lines={4} />
-      ) : view.status === 'sources-error' ? (
-        <ErrorRetry onRetry={() => void sourcesQuery.refetch()}>
-          {userFacingError(sourcesQuery.error)}
-        </ErrorRetry>
-      ) : view.status === 'empty' && deferredSourceSearch === '' ? (
-        <EmptyState
-          title={SOURCE_LIST_EMPTY_COPY}
-          action={
-            <Button type="button" onClick={() => setModalOpen(true)}>
-              ソースを追加
-            </Button>
-          }
-        />
-      ) : (
-        <div className="space-y-stack">
-          <div className="space-y-2">
-            <div>
-              <label htmlFor="notebook-source-search" className="mb-1 block text-meta font-medium text-muted">
-                検索
-              </label>
-              <Input
-                id="notebook-source-search"
-                type="search"
-                value={sourceSearch}
-                onChange={(event) => setSourceSearch(event.target.value)}
-                placeholder="タイトルや本文で検索"
-                autoComplete="off"
-              />
-            </div>
-            <div>
-              <label htmlFor="notebook-source-sort" className="mb-1 block text-meta font-medium text-muted">
-                並び替え
-              </label>
-              <select
-                id="notebook-source-sort"
-                className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-body text-ink"
-                value={sourceSort}
-                onChange={(event) => setSourceSort(event.target.value as SourceListSort)}
-              >
-                {(Object.keys(SOURCE_LIST_SORT_LABELS) as SourceListSort[]).map((key) => (
-                  <option key={key} value={key}>
-                    {SOURCE_LIST_SORT_LABELS[key]}
-                  </option>
-                ))}
-              </select>
-            </div>
+      <div className="space-y-stack">
+        <div className="space-y-2">
+          <div>
+            <label htmlFor="notebook-source-search" className="mb-1 block text-meta font-medium text-muted">
+              検索
+            </label>
+            <Input
+              id="notebook-source-search"
+              type="search"
+              value={sourceSearch}
+              onChange={(event) => setSourceSearch(event.target.value)}
+              placeholder="タイトルや本文で検索"
+              autoComplete="off"
+            />
           </div>
-          {view.status === 'empty' || sortedSources.length === 0 ? (
-            <p className="text-sm text-muted">{sourceListSearchEmptyCopy(deferredSourceSearch)}</p>
-          ) : (
-            <ul className="space-y-2">
-              {sortedSources.map((source) => (
-                <SourceRow
-                  key={source.id}
-                  source={source}
-                  focused={view.status === 'ready' && source.id === view.focusSourceId}
-                  compact={tabsLayout}
-                  deleting={deletingSourceId === source.id}
-                  onFocus={() => focusListedSource(source)}
-                  onDelete={() => {
-                    const label = source.title ?? source.url ?? source.id
-                    setPendingSource({ id: source.id, label })
-                  }}
-                />
+          <div>
+            <label htmlFor="notebook-source-sort" className="mb-1 block text-meta font-medium text-muted">
+              並び替え
+            </label>
+            <select
+              id="notebook-source-sort"
+              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 py-2 text-body text-ink"
+              value={sourceSort}
+              onChange={(event) => setSourceSort(event.target.value as SourceListSort)}
+            >
+              {(Object.keys(SOURCE_LIST_SORT_LABELS) as SourceListSort[]).map((key) => (
+                <option key={key} value={key}>
+                  {SOURCE_LIST_SORT_LABELS[key]}
+                </option>
               ))}
-            </ul>
-          )}
+            </select>
+          </div>
         </div>
-      )}
+        {searchResults.status === 'loading' ? (
+          <LoadingSkeleton label={SOURCES_LOADING_LABEL} lines={4} />
+        ) : searchResults.status === 'error' ? (
+          <ErrorRetry onRetry={() => void (deferredSourceSearch === '' ? notebookSourcesQuery : searchQuery).refetch()}>
+            {userFacingError(deferredSourceSearch === '' ? notebookSourcesQuery.error : searchQuery.error)}
+          </ErrorRetry>
+        ) : view.status === 'empty' && deferredSourceSearch === '' ? (
+          <EmptyState
+            title={SOURCE_LIST_EMPTY_COPY}
+            action={
+              <Button type="button" onClick={() => setModalOpen(true)}>
+                ソースを追加
+              </Button>
+            }
+          />
+        ) : sortedSources.length === 0 ? (
+          <p className="text-sm text-muted">{sourceListSearchEmptyCopy(deferredSourceSearch)}</p>
+        ) : (
+          <ul className="space-y-2">
+            {sortedSources.map((source) => (
+              <SourceRow
+                key={source.id}
+                source={source}
+                focused={view.status === 'ready' && source.id === view.focusSourceId}
+                compact={tabsLayout}
+                deleting={deletingSourceId === source.id}
+                onFocus={() => focusListedSource(source)}
+                onDelete={() => {
+                  const label = source.title ?? source.url ?? source.id
+                  setPendingSource({ id: source.id, label })
+                }}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
     </>
   )
 
@@ -622,7 +636,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             ) : view.status === 'sources-loading' ? (
               <LoadingSkeleton label={STUDY_LOADING_LABEL} lines={4} />
             ) : view.status === 'sources-error' ? (
-              <ErrorRetry onRetry={() => void sourcesQuery.refetch()}>
+              <ErrorRetry onRetry={() => void notebookSourcesQuery.refetch()}>
                 {SOURCE_LIST_LOAD_ERROR}
               </ErrorRetry>
             ) : (
@@ -657,7 +671,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                 {view.status === 'sources-loading' ? (
                   <LoadingSkeleton label={MEMO_LOADING_LABEL} lines={3} />
                 ) : view.status === 'sources-error' ? (
-                  <ErrorRetry onRetry={() => void sourcesQuery.refetch()}>
+                  <ErrorRetry onRetry={() => void notebookSourcesQuery.refetch()}>
                     {SOURCE_LIST_LOAD_ERROR}
                   </ErrorRetry>
                 ) : (
@@ -696,7 +710,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           onCancel={() => setPendingSource(null)}
           onConfirm={() => {
             const deletedId = pendingSource.id
-            const ids = view.status === 'ready' ? sortedSources.map((row) => row.id) : []
+            const ids = view.status === 'ready' ? view.sources.map((row) => row.id) : []
             const focusedId = view.status === 'ready' ? view.focusSourceId : undefined
             const nextId = nextSourceIdAfterDelete(ids, deletedId, focusedId)
             setPendingSource(null)

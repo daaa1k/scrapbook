@@ -11,6 +11,7 @@ import {
   notebookTitleDraftChanged,
   paneAfterTabKey,
   resolveNoteShellFrame,
+  resolveNoteShellResults,
   resolveNoteShellView,
   sourceListKind,
   sourceListKindLabel,
@@ -145,6 +146,42 @@ describe('resolveNoteShellFrame', () => {
         { status: 'ready', data: [] },
       ),
     ).toEqual({ status: 'empty', notebook: catalog.notebooks[0] })
+  })
+})
+
+describe('search results and selected source', () => {
+  it('keeps a selected source outside the search results and does not treat zero results as an empty notebook', () => {
+    const catalog = catalogWithNotebook()
+    const first = source('src-1', '一つ目')
+    const second = source('src-2', '二つ目')
+    const frame = resolveNoteShellFrame(
+      { notebookId, sourceId: second.id },
+      { status: 'ready', data: catalog },
+      { status: 'ready', data: [first, second] },
+    )
+    expect(frame.status).toBe('ready')
+    if (frame.status !== 'ready') return
+    expect(frame.focusSourceId).toBe(second.id)
+    expect(frame.invalidSourceId).toBeUndefined()
+    expect(resolveNoteShellResults({ status: 'ready', data: [first] })).toEqual({
+      status: 'ready', sources: [first],
+    })
+    expect(resolveNoteShellResults({ status: 'ready', data: [] })).toEqual({
+      status: 'ready', sources: [],
+    })
+    expect(frame.focusSourceId).toBe(second.id)
+  })
+
+  it('keeps search loading and errors separate from the selected source', () => {
+    const selected = source('src-2', '二つ目')
+    const frame = resolveNoteShellFrame(
+      { notebookId, sourceId: selected.id },
+      { status: 'ready', data: catalogWithNotebook() },
+      { status: 'ready', data: [selected] },
+    )
+    expect(frame.status).toBe('ready')
+    expect(resolveNoteShellResults({ status: 'loading' })).toEqual({ status: 'loading' })
+    expect(resolveNoteShellResults({ status: 'error' })).toEqual({ status: 'error' })
   })
 })
 
