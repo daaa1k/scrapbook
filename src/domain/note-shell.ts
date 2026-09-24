@@ -31,6 +31,11 @@ export type NoteShellFrame =
   | { status: 'sources-error'; notebook: NotebookRef }
   | NoteShellView
 
+export type NoteShellResults =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | { status: 'ready'; sources: SourceListItem[] }
+
 export type SourceListKind = 'web' | 'pdf' | 'paste'
 
 export type SourceRowJobChip = {
@@ -147,6 +152,14 @@ export function resolveNoteShellFrame(
   if (sources.status === 'loading') return { status: 'sources-loading', notebook }
   if (sources.status === 'error') return { status: 'sources-error', notebook }
   return resolveNoteShellView(search, catalog.data, sources.data)
+}
+
+/** Search results affect the list only; the selected source is resolved from the full notebook list. */
+export function resolveNoteShellResults(
+  sources: AsyncResourceView<readonly SourceListItem[]>,
+): NoteShellResults {
+  if (sources.status !== 'ready') return sources
+  return { status: 'ready', sources: [...sources.data] }
 }
 
 export function nextSourceIdAfterDelete(
