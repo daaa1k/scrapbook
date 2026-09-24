@@ -75,33 +75,42 @@ export const jobs = sqliteTable(
     finishedAt: integer('finished_at'),
   },
   (table) => [
+    index('jobs_source_created_idx').on(table.sourceId, table.createdAt),
     uniqueIndex('jobs_one_active_per_source')
       .on(table.sourceId)
       .where(sql`${table.status} not in ('succeeded', 'failed')`),
   ],
 )
 
-export const cursorRuns = sqliteTable('cursor_runs', {
-  id: text('id').primaryKey(),
-  jobId: text('job_id')
-    .notNull()
-    .references(() => jobs.id),
-  agentId: text('agent_id').notNull(),
-  runId: text('run_id').notNull(),
-  status: text('status').notNull(),
-  createdAt: integer('created_at').notNull(),
-  updatedAt: integer('updated_at').notNull(),
-})
+export const cursorRuns = sqliteTable(
+  'cursor_runs',
+  {
+    id: text('id').primaryKey(),
+    jobId: text('job_id')
+      .notNull()
+      .references(() => jobs.id),
+    agentId: text('agent_id').notNull(),
+    runId: text('run_id').notNull(),
+    status: text('status').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [index('cursor_runs_run_idx').on(table.runId)],
+)
 
-export const citations = sqliteTable('citations', {
-  id: text('id').primaryKey(),
-  sourceId: text('source_id')
-    .notNull()
-    .references(() => sources.id),
-  locator: text('locator').notNull(),
-  excerpt: text('excerpt').notNull(),
-  createdAt: integer('created_at').notNull(),
-})
+export const citations = sqliteTable(
+  'citations',
+  {
+    id: text('id').primaryKey(),
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => sources.id),
+    locator: text('locator').notNull(),
+    excerpt: text('excerpt').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [index('citations_source_created_idx').on(table.sourceId, table.createdAt)],
+)
 
 export const qaAnswers = sqliteTable(
   'qa_answers',
