@@ -23,6 +23,11 @@ export function shouldWriteMemoDraft(saveState: MemoSaveState): boolean {
   return saveState === 'dirty' || saveState === 'saving' || saveState === 'error'
 }
 
+/** A save acknowledges only the submitted text, not edits made while it was in flight. */
+export function memoStateAfterSave(draft: string, savedMemo: string): MemoSaveState {
+  return draft === savedMemo ? 'saved' : 'dirty'
+}
+
 export function memoNeedsLeaveGuard(session: Pick<MemoSession, 'draft' | 'lastSaved' | 'saveState'>): boolean {
   if (session.saveState === 'error' || session.saveState === 'saving') return true
   return shouldSaveMemo(session.draft, session.lastSaved)

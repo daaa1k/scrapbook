@@ -15,6 +15,7 @@ import {
   applyServerMemo,
   discardedMemoSession,
   memoNeedsLeaveGuard,
+  memoStateAfterSave,
   shouldWriteMemoDraft,
   shouldSaveMemo,
   type MemoSaveState,
@@ -103,11 +104,13 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
     },
     onSuccess: async (_ack, memo) => {
       lastSaved.current = memo
-      setSaveState('saved')
-      if (draftRef.current === memo) {
+      const currentDraft = draftRef.current
+      const nextState = memoStateAfterSave(currentDraft, memo)
+      setSaveState(nextState)
+      if (nextState === 'saved') {
         clearLocalMemoDraft(sourceId)
       } else {
-        writeLocalMemoDraft(sourceId, draftRef.current)
+        writeLocalMemoDraft(sourceId, currentDraft)
       }
       setRestoreOffer(null)
       await Promise.all([
