@@ -87,6 +87,7 @@ function ProgressLine({ view }: { view: JobStatusView }) {
 export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const queryClient = useQueryClient()
   const [questionDraft, setQuestionDraft] = useState('')
+  const [questionNotSent, setQuestionNotSent] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [pasteTitle, setPasteTitle] = useState('')
   const [pasteBody, setPasteBody] = useState('')
@@ -174,9 +175,14 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
 
   const ask = useMutation({
     mutationFn: (question: string) => askSource({ data: { sourceId, question } }),
-    onSuccess: async (_result, question) => {
+    onMutate: () => setQuestionNotSent(false),
+    onSuccess: async (result, question) => {
       setActionError(null)
-      setQuestionDraft((current) => (current === question ? '' : current))
+      if (result.started) {
+        setQuestionDraft((current) => (current === question ? '' : current))
+      } else {
+        setQuestionNotSent(true)
+      }
       await invalidateSource()
     },
     onError: (error) => setActionError(userFacingError(error)),
@@ -557,10 +563,17 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
               }}
               placeholder="このソースについて質問"
               maxLength={4000}
-              disabled={ask.isPending}
               className="break-anywhere"
-              aria-describedby="investigate-ask-shortcut"
+              aria-describedby={describedBy(
+                'investigate-ask-shortcut',
+                questionNotSent && 'investigate-question-not-sent',
+              )}
             />
+            {questionNotSent ? (
+              <Alert id="investigate-question-not-sent">
+                別の処理が実行中だったため、質問は送信されませんでした。処理が完了したら、もう一度「質問する」を押してください。
+              </Alert>
+            ) : null}
             <p id="investigate-ask-shortcut" className="text-meta text-muted">
               ⌘/Ctrl + Enter で送信
             </p>
