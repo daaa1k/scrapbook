@@ -15,6 +15,7 @@ import {
   applyServerMemo,
   discardedMemoSession,
   memoNeedsLeaveGuard,
+  shouldWriteMemoDraft,
   shouldSaveMemo,
   type MemoSaveState,
   type MemoSession,
@@ -39,6 +40,7 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
   const [saveState, setSaveState] = useState<MemoSaveState>('idle')
   const [error, setError] = useState<string | null>(null)
   const [restoreOffer, setRestoreOffer] = useState<string | null>(null)
+  const [loadedSourceId, setLoadedSourceId] = useState<string | null>(null)
   const lastSaved = useRef('')
   const sessionSourceId = useRef(sourceId)
   const draftRef = useRef(draft)
@@ -57,9 +59,9 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
     queryFn: () => getSource({ data: { sourceId } }),
   })
 
-  const serverMemo = query.data?.organization.memo ?? ''
-
   useEffect(() => {
+    if (!query.data) return
+    const serverMemo = query.data.organization.memo ?? ''
     const current: MemoSession = {
       sourceId: sessionSourceId.current,
       draft: draftRef.current,
@@ -67,30 +69,28 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
       saveState: saveStateRef.current,
     }
     const next = applyServerMemo(current, { sourceId, serverMemo })
-    if (next === current) return
-    sessionSourceId.current = next.sourceId
-    lastSaved.current = next.lastSaved
-    setDraft(next.draft)
-    setSaveState(next.saveState)
-    setError(null)
+    if (next !== current) {
+      sessionSourceId.current = next.sourceId
+      lastSaved.current = next.lastSaved
+      setDraft(next.draft)
+      setSaveState(next.saveState)
+      setError(null)
+    }
     const local = readLocalMemoDraft(sourceId)
     if (shouldOfferMemoDraftRestore(next.lastSaved, local, next.saveState === 'idle')) {
       setRestoreOffer(local)
     } else {
       setRestoreOffer(null)
     }
-  }, [sourceId, serverMemo])
+    setLoadedSourceId(sourceId)
+  }, [sourceId, query.data])
 
   useEffect(() => {
-    if (restoreOffer != null) return
-    if (saveState === 'idle' && draft === lastSaved.current) {
-      clearLocalMemoDraft(sourceId)
-      return
-    }
-    if (saveState === 'dirty' || saveState === 'error' || saveState === 'saving') {
+    if (loadedSourceId !== sourceId || restoreOffer != null || sessionSourceId.current !== sourceId) return
+    if (shouldWriteMemoDraft(saveState)) {
       writeLocalMemoDraft(sourceId, draft)
     }
-  }, [draft, saveState, sourceId, restoreOffer])
+  }, [draft, saveState, sourceId, restoreOffer, loadedSourceId])
 
   const save = useMutation({
     mutationFn: (memo: string) =>
@@ -104,7 +104,11 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
     onSuccess: async (_ack, memo) => {
       lastSaved.current = memo
       setSaveState('saved')
-      clearLocalMemoDraft(sourceId)
+      if (draftRef.current === memo) {
+        clearLocalMemoDraft(sourceId)
+      } else {
+        writeLocalMemoDraft(sourceId, draftRef.current)
+      }
       setRestoreOffer(null)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
@@ -150,6 +154,8 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
     setDraft(next.draft)
     setSaveState(next.saveState)
     setError(null)
+    clearLocalMemoDraft(sourceId)
+    setRestoreOffer(null)
   }
 
   sessionHandle.current.needsGuard = memoNeedsLeaveGuard({
@@ -165,13 +171,14 @@ export function SourceMemoPane({ sourceId, registerMemoSession }: SourceMemoPane
   }, [registerMemoSession])
 
   useEffect(() => {
+    if (loadedSourceId !== sourceId) return
     if (!shouldSaveMemo(draft, lastSaved.current)) return
     setSaveState('dirty')
     const timer = window.setTimeout(() => {
       void saveIfDirty()
     }, MEMO_DEBOUNCE_MS)
     return () => window.clearTimeout(timer)
-  }, [draft, sourceId])
+  }, [draft, sourceId, loadedSourceId])
 
   const statusLabel =
     saveState === 'saving'

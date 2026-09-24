@@ -5,6 +5,7 @@ import {
   isLeavingNotebook,
   memoNeedsLeaveGuard,
   shouldSaveMemo,
+  shouldWriteMemoDraft,
   type MemoSession,
 } from '../src/domain/memo-save'
 
@@ -26,6 +27,16 @@ describe('shouldSaveMemo', () => {
     expect(shouldSaveMemo('hello', '')).toBe(true)
     expect(shouldSaveMemo('hello', null)).toBe(true)
     expect(shouldSaveMemo('next', 'prev')).toBe(true)
+  })
+})
+
+describe('shouldWriteMemoDraft', () => {
+  it('persists pending edits but leaves clean local drafts for restore decisions', () => {
+    expect(shouldWriteMemoDraft('idle')).toBe(false)
+    expect(shouldWriteMemoDraft('saved')).toBe(false)
+    expect(shouldWriteMemoDraft('dirty')).toBe(true)
+    expect(shouldWriteMemoDraft('saving')).toBe(true)
+    expect(shouldWriteMemoDraft('error')).toBe(true)
   })
 })
 
