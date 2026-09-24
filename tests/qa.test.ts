@@ -298,6 +298,7 @@ describe('ask source from stored body', () => {
     expect(duringFetch.started).toBe(false)
     expect(duringFetch.jobId).toBe(registered.jobId)
     expect(await db.select().from(qaAnswers)).toHaveLength(0)
+    expect(await db.select().from(jobs).where(eq(jobs.sourceId, registered.sourceId))).toHaveLength(1)
 
     await db
       .update(jobs)
@@ -315,7 +316,10 @@ describe('ask source from stored body', () => {
     const second = await askSourceQuestion(db, registered.sourceId, '二回目', workflow)
     expect(second.started).toBe(false)
     expect(second.jobId).toBe(first.jobId)
-    expect(await db.select().from(qaAnswers)).toHaveLength(1)
+    expect(await db.select().from(qaAnswers)).toEqual([
+      expect.objectContaining({ question: '一回目', jobId: first.jobId }),
+    ])
+    expect(await db.select().from(jobs).where(eq(jobs.sourceId, registered.sourceId))).toHaveLength(2)
   })
 
   it('rejects ask without a body and does not confuse ask with summarize', async () => {
