@@ -75,6 +75,16 @@ export async function registerPdfSource(
     const key = pdfOriginalKey(sourceId)
     await assets.put(key, upload.bytes)
 
+    let extracted: PdfExtractResult
+    try {
+      extracted = await extract(upload.bytes)
+    } catch {
+      extracted = { kind: 'error' }
+    }
+
+    const extractedBody = extracted.kind === 'text' ? persistablePdfBody(extracted.text) : null
+    const persistable = extractedBody?.body ? extractedBody : null
+    const hash = persistable ? await sha256Hex(persistable.body) : null
     const ts = Date.now()
     try {
       await db.insert(sources).values({
@@ -86,11 +96,11 @@ export async function registerPdfSource(
         title: upload.title,
         author: null,
         publishedAt: null,
-        fetchedAt: null,
-        body: null,
+        fetchedAt: persistable ? ts : null,
+        body: persistable?.body ?? null,
         summary: null,
-        contentHash: null,
-        fetchStatus: 'failed',
+        contentHash: hash,
+        fetchStatus: persistable?.fetchStatus ?? 'failed',
         acquiredVia: 'upload',
         r2Key: key,
         createdAt: ts,
@@ -106,31 +116,6 @@ export async function registerPdfSource(
     if (notebook !== 'new') {
       await applyFirstSourceNotebookTitle(db, notebookId, upload.title)
     }
-
-    let extracted: PdfExtractResult
-    try {
-      extracted = await extract(upload.bytes)
-    } catch {
-      extracted = { kind: 'error' }
-    }
-
-    if (extracted.kind !== 'text') {
-      return { sourceId, notebookId }
-    }
-
-    const persistable = persistablePdfBody(extracted.text)
-    const hash = await sha256Hex(persistable.body)
-    const now = Date.now()
-    await db
-      .update(sources)
-      .set({
-        body: persistable.body,
-        contentHash: hash,
-        fetchStatus: persistable.fetchStatus,
-        fetchedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(sources.id, sourceId))
 
     return { sourceId, notebookId }
   })
