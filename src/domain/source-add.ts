@@ -186,6 +186,10 @@ export function sourceAddPdfIssue(pick: SourceAddPdfPick | null): string | null 
   return null
 }
 
+export function sourceAddPdfSubmitDisabled(pick: SourceAddPdfPick | null, busy: boolean): boolean {
+  return busy || (pick !== null && sourceAddPdfIssue(pick) !== null)
+}
+
 export function formatFileBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
