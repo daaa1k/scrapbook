@@ -14,6 +14,7 @@ import {
   sourceAddPasteTitleIssue,
   sourceAddPasteUrlIssue,
   sourceAddPdfIssue,
+  sourceAddPdfSubmitDisabled,
   sourceAddSubmitLabel,
   sourceAddTabId,
   sourceAddUrlIssue,
@@ -141,6 +142,16 @@ describe('sourceAdd field issues', () => {
       sourceAddPdfIssue({ name: 'notes.pdf', size: 8 * 1024 * 1024 + 1, type: 'application/pdf' }),
     ).toBe('PDFは8MB以下にしてください')
     expect(sourceAddPdfIssue({ name: 'notes.PDF', size: 2048, type: '' })).toBe(null)
+  })
+
+  it('blocks invalid files and busy uploads, but permits another attempt with a valid file', () => {
+    const valid = { name: 'notes.pdf', size: 2048, type: 'application/pdf' }
+    expect(sourceAddPdfSubmitDisabled(valid, false)).toBe(false)
+    expect(sourceAddPdfSubmitDisabled(valid, true)).toBe(true)
+    expect(sourceAddPdfSubmitDisabled(null, false)).toBe(false)
+    expect(sourceAddPdfSubmitDisabled({ ...valid, size: 0 }, false)).toBe(true)
+    expect(sourceAddPdfSubmitDisabled({ ...valid, size: 8 * 1024 * 1024 + 1 }, false)).toBe(true)
+    expect(sourceAddPdfSubmitDisabled({ ...valid, name: 'notes.png', type: 'image/png' }, false)).toBe(true)
   })
 })
 

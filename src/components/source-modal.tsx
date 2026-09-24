@@ -27,6 +27,7 @@ import {
   sourceAddPasteTitleIssue,
   sourceAddPasteUrlIssue,
   sourceAddPdfIssue,
+  sourceAddPdfSubmitDisabled,
   sourceAddSubmitLabel,
   sourceAddTabId,
   sourceAddUrlIssue,
@@ -168,6 +169,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
   const [pasteBody, setPasteBody] = useState('')
   const [pasteUrl, setPasteUrl] = useState('')
   const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [errors, setErrors] = useState<FieldErrors>(emptyFieldErrors)
   const [discardOpen, setDiscardOpen] = useState(false)
 
@@ -183,6 +185,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
     setPasteBody('')
     setPasteUrl('')
     setPdfFile(null)
+    setPdfUploadError(null)
     setErrors(emptyFieldErrors())
     setDiscardOpen(false)
     if (pdfInputRef.current) pdfInputRef.current.value = ''
@@ -286,7 +289,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
       resetSession()
       onSourceAdded(result)
     },
-    onError: (error) => setErrors((current) => ({ ...current, pdf: userFacingError(error) })),
+    onError: (error) => setPdfUploadError(userFacingError(error)),
   })
 
   const submitting: SourceAddMethod | null = register.isPending
@@ -312,6 +315,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
   function pickPdf(file: File | null) {
     if (!file && pdfInputRef.current) pdfInputRef.current.value = ''
     setPdfFile(file)
+    setPdfUploadError(null)
     setErrors((current) => ({
       ...current,
       pdf: file ? sourceAddPdfIssue({ name: file.name, size: file.size, type: file.type }) : null,
@@ -460,6 +464,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
                   return
                 }
                 setErrors((current) => ({ ...current, pdf: null }))
+                setPdfUploadError(null)
                 uploadPdf.mutate(pdfFile)
               }}
             >
@@ -479,7 +484,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
                   aria-describedby={describedBy(
                     'source-add-pdf-hint',
                     pdfFile && 'source-add-pdf-pick',
-                    errors.pdf && 'source-add-pdf-error',
+                    (errors.pdf || pdfUploadError) && 'source-add-pdf-error',
                   )}
                   disabled={busy}
                 />
@@ -503,16 +508,19 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
               <Button
                 type="submit"
                 className="gap-2"
-                disabled={busy || Boolean(pdfFile && errors.pdf)}
+                disabled={sourceAddPdfSubmitDisabled(
+                  pdfFile ? { name: pdfFile.name, size: pdfFile.size, type: pdfFile.type } : null,
+                  busy,
+                )}
                 aria-busy={submitting === 'pdf' || undefined}
               >
                 {submitting === 'pdf' ? <PendingMark /> : null}
                 {sourceAddSubmitLabel('pdf', submitting === 'pdf')}
               </Button>
             </form>
-            {errors.pdf ? (
+            {errors.pdf || pdfUploadError ? (
               <Alert id="source-add-pdf-error" className="mt-2">
-                {errors.pdf}
+                {errors.pdf || pdfUploadError}
               </Alert>
             ) : null}
           </div>
