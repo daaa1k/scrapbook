@@ -16,12 +16,7 @@ export function readLocalMemoDraft(sourceId: string): string | null {
 export function writeLocalMemoDraft(sourceId: string, draft: string): void {
   if (typeof window === 'undefined') return
   try {
-    const key = memoDraftStorageKey(sourceId)
-    if (draft === '') {
-      window.localStorage.removeItem(key)
-      return
-    }
-    window.localStorage.setItem(key, draft)
+    window.localStorage.setItem(memoDraftStorageKey(sourceId), draft)
   } catch {
     // private mode / quota
   }

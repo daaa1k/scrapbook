@@ -18,6 +18,11 @@ export function shouldSaveMemo(draft: string, lastSaved: string | null): boolean
   return draft !== (lastSaved ?? '')
 }
 
+/** Only edits awaiting a successful save belong in local draft storage. */
+export function shouldWriteMemoDraft(saveState: MemoSaveState): boolean {
+  return saveState === 'dirty' || saveState === 'saving' || saveState === 'error'
+}
+
 export function memoNeedsLeaveGuard(session: Pick<MemoSession, 'draft' | 'lastSaved' | 'saveState'>): boolean {
   if (session.saveState === 'error' || session.saveState === 'saving') return true
   return shouldSaveMemo(session.draft, session.lastSaved)
