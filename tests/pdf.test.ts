@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
+import { EMPTY_SOURCE_LIST_FILTER } from '../src/domain/organization'
 import { jobs, notebooks, sources } from '../src/db/schema'
 import type { AppDb } from '../src/db/types'
 import {
@@ -13,8 +14,9 @@ import {
   type PdfExtractor,
 } from '../src/domain/pdf'
 import type { AssetsPort } from '../src/server/ingest/pdf'
-import { pasteSourceBody } from '../src/server/ingest/register'
+import { deleteSource, pasteSourceBody, summarizeSourceBody } from '../src/server/ingest/register'
 import { findSourcesByQuery } from '../src/server/ingest/search'
+import { listSourceViews } from '../src/server/source-views'
 import {
   extractPdfTextWithUnpdf,
   pdfOriginalKey,
@@ -132,6 +134,57 @@ describe('pdf parse', () => {
 })
 
 describe('pdf register', () => {
+  it('does not publish or allow mutations while extraction is pending', async () => {
+    const { db } = createTestDb()
+    const memoryAssets = createMemoryAssets()
+    let sourceId = ''
+    const assets: AssetsPort = {
+      ...memoryAssets,
+      async put(key, bytes) {
+        sourceId = key.split('/')[1]!
+        await memoryAssets.put(key, bytes)
+      },
+    }
+    const upload = parsePdfUpload({ bytes: helloPdfBytes(), filename: 'pending.pdf' })
+    let finishExtract!: (result: { kind: 'text'; text: string }) => void
+    const extraction = new Promise<{ kind: 'text'; text: string }>((resolve) => {
+      finishExtract = resolve
+    })
+    let extractionStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      extractionStarted = resolve
+    })
+    const registration = registerPdfSource(db, assets, upload, async () => {
+      extractionStarted()
+      return extraction
+    })
+    await started
+
+    expect(sourceId).toBeTruthy()
+    expect(await assets.get(pdfOriginalKey(sourceId))).toEqual(upload.bytes)
+    expect(await db.select().from(sources).where(eq(sources.id, sourceId))).toHaveLength(0)
+    expect(await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)).toHaveLength(0)
+    const originalResponse = await respondWithPdfOriginal({
+      sourceId,
+      request: new Request(`https://scrapbook.example/assets/sources/${sourceId}`),
+      env: bypassEnv(),
+      db,
+      assets,
+      download: false,
+    })
+    expect(originalResponse.status).toBe(404)
+    await expect(pasteSourceBody(db, { sourceId, title: '手入力', body: '手入力本文' })).rejects.toThrow('source_not_found')
+    await expect(deleteSource(db, sourceId, assets)).rejects.toThrow('source_not_found')
+    await expect(summarizeSourceBody(db, sourceId, undefined)).rejects.toThrow('source_not_found')
+
+    finishExtract({ kind: 'text', text: '抽出本文' })
+    const result = await registration
+    expect(result.sourceId).toBe(sourceId)
+    const row = (await db.select().from(sources).where(eq(sources.id, sourceId)))[0]
+    expect(row?.body).toBe('抽出本文')
+    expect(row?.fetchStatus).toBe('full')
+  })
+
   it('stores the original, extracts injected text, and creates no job', async () => {
     const { db } = createTestDb()
     const assets = createMemoryAssets()
@@ -186,6 +239,38 @@ describe('pdf register', () => {
     expect(pdfTextHelp({ kind: row!.kind, body: row!.body })).toBe(
       'テキストを抽出できませんでした。スキャンされたPDFの場合は、下のフォームから本文を貼り付けてください。',
     )
+  })
+
+  it('treats whitespace-only extracted text as failed', async () => {
+    const { db } = createTestDb()
+    const assets = createMemoryAssets()
+    const upload = parsePdfUpload({ bytes: helloPdfBytes(), filename: 'blank.pdf' })
+    const result = await registerPdfSource(db, assets, upload, async () => ({ kind: 'text', text: ' \n ' }))
+    const row = (await db.select().from(sources).where(eq(sources.id, result.sourceId)))[0]
+
+    expect(row?.fetchStatus).toBe('failed')
+    expect(row?.body).toBeNull()
+    expect(row?.contentHash).toBeNull()
+    expect(await assets.get(pdfOriginalKey(result.sourceId))).toEqual(upload.bytes)
+  })
+
+  it('publishes a failed source with its original after extraction throws', async () => {
+    const { db } = createTestDb()
+    const assets = createMemoryAssets()
+    const upload = parsePdfUpload({ bytes: helloPdfBytes(), filename: 'broken.pdf' })
+    const result = await registerPdfSource(db, assets, upload, async () => {
+      throw new Error('extract failed')
+    })
+    const row = (await db.select().from(sources).where(eq(sources.id, result.sourceId)))[0]
+
+    expect(row?.fetchStatus).toBe('failed')
+    expect(row?.body).toBeNull()
+    expect(row?.contentHash).toBeNull()
+    expect(await assets.get(pdfOriginalKey(result.sourceId))).toEqual(upload.bytes)
+    await pasteSourceBody(db, { sourceId: result.sourceId, title: '回復後', body: '手入力本文' })
+    const recovered = (await db.select().from(sources).where(eq(sources.id, result.sourceId)))[0]
+    expect(recovered?.body).toBe('手入力本文')
+    expect(recovered?.fetchStatus).toBe('full')
   })
 
   it('pastes over an uploaded PDF without dropping the original', async () => {
