@@ -77,7 +77,7 @@ function PendingMark() {
 
 function ProgressLine({ view }: { view: JobStatusView }) {
   return (
-    <p className="flex items-center gap-2 text-sm text-zinc-500">
+    <p className="flex items-center gap-2 text-sm text-muted">
       {view.pending ? <PendingMark /> : null}
       <span>{view.label}</span>
     </p>
@@ -359,7 +359,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
             title
           )}
         </p>
-        <p className="text-sm text-zinc-500">{studyScopeLabel(title)}</p>
+        <p className="text-sm text-muted">{studyScopeLabel(title)}</p>
         {progress.tone === 'pending' ? <ProgressLine view={progress} /> : null}
         <p id="investigate-job-complete" className="sr-only" role="status" aria-live="polite" aria-atomic="true">
           {completionAnnouncement}
@@ -400,7 +400,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
             submitPaste()
           }}
         >
-          <h3 className="text-sm font-medium text-zinc-500">本文を貼り付ける</h3>
+          <h3 className="text-sm font-medium text-muted">本文を貼り付ける</h3>
           <div>
             <label htmlFor="investigate-paste-title" className="mb-1 block text-sm font-medium">
               タイトル
@@ -449,7 +449,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
             />
             <p
               id="investigate-paste-count"
-              className={`mt-1 text-sm ${pasteCount.over ? 'text-red-600' : 'text-zinc-500'}`}
+              className={`mt-1 text-sm ${pasteCount.over ? 'text-danger' : 'text-muted'}`}
             >
               {pasteCount.current.toLocaleString('ja-JP')} / {pasteCount.max.toLocaleString('ja-JP')}
             </p>
@@ -471,7 +471,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
         aria-label="要約"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-medium text-zinc-500">要約</h3>
+          <h3 className="text-sm font-medium text-muted">要約</h3>
           {source.summary ? (
             <Button
               type="button"
@@ -507,25 +507,25 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
               {source.summary == null ? '要約する' : '再要約する'}
             </Button>
             {jobPending && jobKind !== 'summarize_body' ? (
-              <p className="text-sm text-zinc-500">処理中のため要約できません。</p>
+              <p className="text-sm text-muted">処理中のため要約できません。</p>
             ) : (
-              <p className="text-sm text-zinc-500" title={SUMMARIZE_SCOPE_DETAIL}>
+              <p className="text-sm text-muted" title={SUMMARIZE_SCOPE_DETAIL}>
                 {STUDY_SCOPE_SHORT}
               </p>
             )}
             {budget ? (
-              <p className="text-sm text-zinc-500" title={budget.detail}>
+              <p className="text-sm text-muted" title={budget.detail}>
                 {budget.label}
               </p>
             ) : null}
           </div>
         ) : (
-          <p className="text-sm text-zinc-500">本文を貼り付けると要約できます。</p>
+          <p className="text-sm text-muted">本文を貼り付けると要約できます。</p>
         )}
       </section>
 
       <section className="space-y-3" aria-label="質問">
-        <h3 className="text-sm font-medium text-zinc-500">質問</h3>
+        <h3 className="text-sm font-medium text-muted">質問</h3>
         {bodyForCursor ? (
           <form
             className="flex flex-col space-y-3"
@@ -577,25 +577,25 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                 質問する
               </Button>
               {jobPending && jobKind !== 'ask_source' ? (
-                <p className="text-sm text-zinc-500">処理中のため質問できません。</p>
+                <p className="text-sm text-muted">処理中のため質問できません。</p>
               ) : (
-                <p className="text-sm text-zinc-500" title={ASK_SCOPE_DETAIL}>
+                <p className="text-sm text-muted" title={ASK_SCOPE_DETAIL}>
                   {STUDY_SCOPE_SHORT}
                 </p>
               )}
               {budget ? (
-                <p className="text-sm text-zinc-500" title={budget.detail}>
+                <p className="text-sm text-muted" title={budget.detail}>
                   {budget.label}
                 </p>
               ) : null}
             </div>
           </form>
         ) : (
-          <p className="text-sm text-zinc-500">本文を貼り付けると質問できます。</p>
+          <p className="text-sm text-muted">本文を貼り付けると質問できます。</p>
         )}
         {source.qaAnswers.length === 0 && !qaUndo ? (
           <div className="mt-2 space-y-3">
-            <p className="text-sm text-zinc-500">まだ質問はありません</p>
+            <p className="text-sm text-muted">まだ質問はありません</p>
             {bodyForCursor ? (
               <div className="space-y-2">
                 <p className="text-meta font-medium text-muted">質問例</p>
@@ -676,7 +676,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1 space-y-1 border-l-2 border-zinc-400 pl-3 dark:border-zinc-500">
-                          <p className="text-xs font-semibold tracking-wide text-zinc-500">質問</p>
+                          <p className="text-xs font-semibold tracking-wide text-muted">質問</p>
                           <p className="break-anywhere whitespace-pre-wrap">{turn.question}</p>
                         </div>
                         <Button
@@ -694,7 +694,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                       </div>
                       <div className="mt-3 space-y-2 border-l-2 border-zinc-900 pl-3 dark:border-zinc-100">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-xs font-semibold tracking-wide text-zinc-500">回答</p>
+                          <p className="text-xs font-semibold tracking-wide text-muted">回答</p>
                           {turnView.phase === 'ready' && turn.answer ? (
                             <Button
                               type="button"
@@ -734,7 +734,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                         )}
                       </div>
                       {!turn.canDelete ? (
-                        <p id={deleteBusyId} className="mt-2 text-sm text-zinc-500">
+                        <p id={deleteBusyId} className="mt-2 text-sm text-muted">
                           処理中のため削除できません。
                         </p>
                       ) : null}
