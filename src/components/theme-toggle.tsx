@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '~/components/ui/button'
 import {
   applyThemePreference,
+  applySystemThemeChange,
   cycleThemePreference,
   readStoredThemePreference,
   themePreferenceLabel,
@@ -10,23 +11,25 @@ import {
 
 export function ThemeToggle() {
   const [preference, setPreference] = useState<ThemePreference>('system')
+  const preferenceRef = useRef<ThemePreference>('system')
 
   useEffect(() => {
     const initial = readStoredThemePreference()
+    preferenceRef.current = initial
     setPreference(initial)
     applyThemePreference(initial)
 
     const media = window.matchMedia('(prefers-color-scheme: dark)')
     function onSystemChange() {
-      const pref = readStoredThemePreference()
-      if (pref === 'system') applyThemePreference('system')
+      applySystemThemeChange(preferenceRef.current)
     }
     media.addEventListener('change', onSystemChange)
     return () => media.removeEventListener('change', onSystemChange)
   }, [])
 
   function onCycle() {
-    const next = cycleThemePreference(preference)
+    const next = cycleThemePreference(preferenceRef.current)
+    preferenceRef.current = next
     setPreference(next)
     applyThemePreference(next)
   }
