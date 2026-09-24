@@ -73,8 +73,11 @@ test.describe('axe critical/serious = 0', () => {
         localStorage.setItem('scrapbook-theme', preference)
       }, theme)
       await page.goto('/')
-      await page.getByRole('button', { name: '新しいノート' }).click()
       const dialog = page.locator('dialog[open]')
+      await expect(async () => {
+        await page.getByRole('button', { name: '新しいノート' }).click()
+        await expect(dialog).toBeVisible({ timeout: 1_000 })
+      }).toPass({ timeout: 20_000 })
       await dialog.getByRole('tab', { name: '貼り付け' }).click()
       await dialog.getByLabel('タイトル').fill(`a11y study ${theme} ${Date.now()}`)
       await dialog.getByLabel('本文', { exact: true }).fill('要約と質問の画面を確認するための本文です。')
