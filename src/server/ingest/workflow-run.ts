@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { citations as citationsTable, cursorRuns, jobs, qaAnswers, qaCitations, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { encodeLocator, type Citation } from '~/domain/citations'
@@ -66,21 +66,26 @@ async function loadJob(db: AppDb, jobId: string) {
 async function transitionJob(
   db: AppDb,
   jobId: string,
+  from: JobStatus,
   to: JobStatus,
   patch: Partial<typeof jobs.$inferInsert> = {},
   now: number,
 ): Promise<void> {
-  const job = await loadJob(db, jobId)
-  const from = jobStatusSchema.parse(job.status)
   await runPromiseFail(assertTransitionEffect(from, to))
-  await db
+  const updated = await db
     .update(jobs)
     .set({
       status: to,
       updatedAt: now,
       ...patch,
     })
-    .where(eq(jobs.id, jobId))
+    .where(and(eq(jobs.id, jobId), eq(jobs.status, from)))
+    .returning({ id: jobs.id })
+  if (updated.length > 0) return
+
+  // This exact step may have committed before Workflows replayed its callback.
+  const current = jobStatusSchema.parse((await loadJob(db, jobId)).status)
+  if (current !== to) throw new IllegalJobTransitionError({ from: current, to })
 }
 
 async function failJob(
@@ -92,19 +97,68 @@ async function failJob(
 ): Promise<void> {
   const job = await loadJob(db, jobId)
   const from = jobStatusSchema.parse(job.status)
-  if (from !== 'failed') {
-    await runPromiseFail(assertTransitionEffect(from, 'failed'))
+  const sanitizedMessage = sanitizeErrorMessage(errorMessage)
+  if (from === 'failed') {
+    if (job.errorCode === errorCode && job.errorMessage === sanitizedMessage) return
+    throw new IllegalJobTransitionError({ from, to: 'failed' })
   }
-  await db
+  await runPromiseFail(assertTransitionEffect(from, 'failed'))
+  const updated = await db
     .update(jobs)
     .set({
       status: 'failed',
       errorCode,
-      errorMessage: sanitizeErrorMessage(errorMessage),
+      errorMessage: sanitizedMessage,
       finishedAt: now,
       updatedAt: now,
     })
-    .where(eq(jobs.id, jobId))
+    .where(and(eq(jobs.id, jobId), eq(jobs.status, from)))
+    .returning({ id: jobs.id })
+  if (updated.length > 0) return
+  const latest = await loadJob(db, jobId)
+  const current = jobStatusSchema.parse(latest.status)
+  if (current !== 'failed' || latest.errorCode !== errorCode || latest.errorMessage !== sanitizedMessage) {
+    throw new IllegalJobTransitionError({ from: current, to: 'failed' })
+  }
+}
+
+async function saveCursorIds(db: AppDb, jobId: string, agentId: string, runId: string, status: string, ts: number): Promise<void> {
+  const job = await loadJob(db, jobId)
+  const current = jobStatusSchema.parse(job.status)
+  if (current !== 'starting_agent' || (job.cursorAgentId !== null && job.cursorAgentId !== agentId)) {
+    throw new IllegalJobTransitionError({ from: current, to: 'starting_agent' })
+  }
+
+  const existing = await db.select().from(cursorRuns).where(eq(cursorRuns.jobId, jobId))
+  if (existing.some((run) => run.runId !== runId || run.agentId !== agentId)) {
+    throw new Error('cursor_run_conflict')
+  }
+
+  if (job.cursorAgentId === null) {
+    const updated = await db.update(jobs)
+      .set({ cursorAgentId: agentId, updatedAt: ts })
+      .where(and(eq(jobs.id, jobId), eq(jobs.status, 'starting_agent'), isNull(jobs.cursorAgentId)))
+      .returning({ id: jobs.id })
+    if (updated.length === 0) {
+      const latest = await loadJob(db, jobId)
+      if (latest.status !== 'starting_agent' || latest.cursorAgentId !== agentId) {
+        throw new IllegalJobTransitionError({ from: jobStatusSchema.parse(latest.status), to: 'starting_agent' })
+      }
+    }
+  }
+
+  if (existing.length > 0) return
+  await db.insert(cursorRuns).values({
+    id: crypto.randomUUID(),
+    jobId,
+    agentId,
+    runId,
+    status,
+    createdAt: ts,
+    updatedAt: ts,
+  }).onConflictDoNothing()
+  const saved = await db.select().from(cursorRuns).where(and(eq(cursorRuns.jobId, jobId), eq(cursorRuns.runId, runId)))
+  if (saved.length !== 1 || saved[0]?.agentId !== agentId) throw new Error('cursor_run_conflict')
 }
 
 function resolveCursor(options: IngestRunOptions): Effect.Effect<CursorClient, CursorNotConfigured> {
@@ -274,7 +328,7 @@ export async function runIngestWorkflow(options: IngestRunOptions): Promise<void
 
   try {
     await step.do('queued-to-starting', async () => {
-      await transitionJob(db, params.jobId, 'starting_agent', { startedAt: now() }, now())
+      await transitionJob(db, params.jobId, 'queued', 'starting_agent', { startedAt: now() }, now())
     })
 
     const created = await step.do('create-cursor-agent', async () => {
@@ -289,26 +343,11 @@ export async function runIngestWorkflow(options: IngestRunOptions): Promise<void
 
     await step.do('save-cursor-ids', async () => {
       const ts = now()
-      await db
-        .update(jobs)
-        .set({
-          cursorAgentId: created.agent.id,
-          updatedAt: ts,
-        })
-        .where(eq(jobs.id, params.jobId))
-      await db.insert(cursorRuns).values({
-        id: crypto.randomUUID(),
-        jobId: params.jobId,
-        agentId: created.agent.id,
-        runId: created.run.id,
-        status: created.run.status,
-        createdAt: ts,
-        updatedAt: ts,
-      })
+      await saveCursorIds(db, params.jobId, created.agent.id, created.run.id, created.run.status, ts)
     })
 
     await step.do('starting-to-waiting', async () => {
-      await transitionJob(db, params.jobId, 'waiting_agent', {}, now())
+      await transitionJob(db, params.jobId, 'starting_agent', 'waiting_agent', {}, now())
     })
 
     let terminal = created.run
@@ -327,7 +366,7 @@ export async function runIngestWorkflow(options: IngestRunOptions): Promise<void
           .set({ status: run.status, updatedAt: ts })
           .where(eq(cursorRuns.runId, run.id))
         if (run.status !== 'FINISHED' && !FAILED_CURSOR_RUN_STATUSES.has(run.status)) {
-          await transitionJob(db, params.jobId, 'waiting_agent', {}, ts)
+          await transitionJob(db, params.jobId, 'waiting_agent', 'waiting_agent', {}, ts)
         }
         return run
       })
@@ -345,7 +384,7 @@ export async function runIngestWorkflow(options: IngestRunOptions): Promise<void
     }
 
     await step.do('waiting-to-persisting', async () => {
-      await transitionJob(db, params.jobId, 'persisting', {}, now())
+      await transitionJob(db, params.jobId, 'waiting_agent', 'persisting', {}, now())
     })
 
     await step.do('persist-source', async () => {
@@ -353,9 +392,10 @@ export async function runIngestWorkflow(options: IngestRunOptions): Promise<void
     })
 
     await step.do('persisting-to-succeeded', async () => {
-      await transitionJob(db, params.jobId, 'succeeded', { finishedAt: now() }, now())
+      await transitionJob(db, params.jobId, 'persisting', 'succeeded', { finishedAt: now() }, now())
     })
   } catch (error) {
+    if (error instanceof IllegalJobTransitionError) throw error
     if (error instanceof CursorNotConfigured) {
       await failJob(db, params.jobId, 'cursor_not_configured', error.message, now())
       return

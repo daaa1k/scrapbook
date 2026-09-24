@@ -95,7 +95,10 @@ export const cursorRuns = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (table) => [index('cursor_runs_run_idx').on(table.runId)],
+  (table) => [
+    index('cursor_runs_run_idx').on(table.runId),
+    uniqueIndex('cursor_runs_job_run_unique').on(table.jobId, table.runId),
+  ],
 )
 
 export const citations = sqliteTable(
