@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
-import { sources } from '../src/db/schema'
+import { describe, expect, it, vi } from 'vitest'
+import { jobs, sources } from '../src/db/schema'
 import { likeContainsPattern } from '../src/domain/search'
 import { EMPTY_SOURCE_LIST_FILTER, organizationCommandSchema, tagNameSchema } from '../src/domain/organization'
 import { pasteSourceBody } from '../src/server/ingest/register'
@@ -107,5 +107,64 @@ describe('source views', () => {
       tagName: tagNameSchema.parse('後で'),
     })
     expect(hits.map((row) => row.title)).toEqual(['タグ付き'])
+  })
+
+  it('selects the latest job for each source, breaking timestamp ties by insertion order', async () => {
+    const { db } = createTestDb()
+    const notebookId = await seedNotebook(db)
+    const first = await pasteSourceBody(db, { title: 'first', body: 'body', notebook: notebookId })
+    const second = await pasteSourceBody(db, { title: 'second', body: 'body', notebook: notebookId })
+    const withoutJob = await pasteSourceBody(db, { title: 'without job', body: 'body', notebook: notebookId })
+    for (const [id, sourceId, kind, status, createdAt] of [
+      ['first-fetch', first.sourceId, 'fetch', 'failed', 100],
+      ['first-summary', first.sourceId, 'summarize_body', 'succeeded', 200],
+      ['second-ask', second.sourceId, 'ask_source', 'succeeded', 300],
+      ['first-ask', first.sourceId, 'ask_source', 'queued', 200],
+      ['second-fetch', second.sourceId, 'fetch', 'failed', 100],
+    ] as const) {
+      await db.insert(jobs).values({ id, sourceId, kind, status, createdAt, updatedAt: createdAt })
+    }
+
+    const rows = await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)
+    const byId = new Map(rows.map((row) => [row.id, row]))
+    expect([byId.get(first.sourceId)?.jobStatus, byId.get(first.sourceId)?.jobKind]).toEqual([
+      'queued',
+      'ask_source',
+    ])
+    expect([byId.get(second.sourceId)?.jobStatus, byId.get(second.sourceId)?.jobKind]).toEqual([
+      'succeeded',
+      'ask_source',
+    ])
+    expect([byId.get(withoutJob.sourceId)?.jobStatus, byId.get(withoutJob.sourceId)?.jobKind]).toEqual([
+      null,
+      null,
+    ])
+    expect(Object.keys(rows[0]!)).toEqual([
+      'id', 'title', 'url', 'kind', 'fetchStatus', 'acquiredVia', 'jobStatus', 'jobKind',
+      'createdAt', 'updatedAt', 'notebook', 'tags',
+    ])
+  })
+
+  it('uses a fixed number of SQL statements for one or many sources', async () => {
+    const { db, sqlite } = createTestDb()
+    const notebookId = await seedNotebook(db)
+    await pasteSourceBody(db, { title: 'first', body: 'body', notebook: notebookId })
+    const prepare = vi.spyOn(sqlite, 'prepare')
+
+    await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)
+    const oneSourceQueries = prepare.mock.calls.map(([statement]) => statement)
+    prepare.mockClear()
+
+    await pasteSourceBody(db, { title: 'second', body: 'body', notebook: notebookId })
+    await pasteSourceBody(db, { title: 'third', body: 'body', notebook: notebookId })
+    prepare.mockClear()
+    await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)
+    const threeSourceQueries = prepare.mock.calls.map(([statement]) => statement)
+    prepare.mockRestore()
+
+    expect(oneSourceQueries).toHaveLength(3)
+    expect(threeSourceQueries).toHaveLength(3)
+    expect(oneSourceQueries.filter((statement) => statement.includes('"jobs"'))).toHaveLength(1)
+    expect(threeSourceQueries.filter((statement) => statement.includes('"jobs"'))).toHaveLength(1)
   })
 })

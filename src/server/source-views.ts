@@ -51,6 +51,25 @@ async function listTagsBySourceIds(db: AppDb, sourceIds: string[]): Promise<Map<
   return tagsBySource
 }
 
+async function latestJobsBySourceIds(db: AppDb, sourceIds: string[]) {
+  if (sourceIds.length === 0) return new Map<string, { status: string; kind: string }>()
+  const rankedJobs = db
+    .select({
+      sourceId: jobs.sourceId,
+      status: jobs.status,
+      kind: jobs.kind,
+      rank: sql<number>`row_number() over (partition by ${jobs.sourceId} order by ${jobs.createdAt} desc, ${jobs}."rowid" desc)`.as('rank'),
+    })
+    .from(jobs)
+    .where(inArray(jobs.sourceId, sourceIds))
+    .as('ranked_jobs')
+  const rows = await db
+    .select({ sourceId: rankedJobs.sourceId, status: rankedJobs.status, kind: rankedJobs.kind })
+    .from(rankedJobs)
+    .where(eq(rankedJobs.rank, 1))
+  return new Map(rows.map((row) => [row.sourceId, { status: row.status, kind: row.kind }]))
+}
+
 function sourceFilterWhere(db: AppDb, filter: SourceListFilter) {
   const conditions = []
   const pattern = likeContainsPattern(filter.q)
@@ -95,13 +114,14 @@ export async function listSourceViews(db: AppDb, filter: SourceListFilter): Prom
     .where(sourceFilterWhere(db, filter))
     .orderBy(desc(sources.createdAt), desc(sql`${sources}."rowid"`))
 
-  const tagsBySource = await listTagsBySourceIds(
-    db,
-    rows.map((row) => row.id),
-  )
+  const sourceIds = rows.map((row) => row.id)
+  const [tagsBySource, jobsBySource] = await Promise.all([
+    listTagsBySourceIds(db, sourceIds),
+    latestJobsBySourceIds(db, sourceIds),
+  ])
   const items: SourceListItem[] = []
   for (const row of rows) {
-    const job = await latestJobForSource(db, row.id)
+    const job = jobsBySource.get(row.id)
     items.push(
       sourceListItemSchema.parse({
         id: row.id,
