@@ -1,6 +1,7 @@
 import { desc, eq, inArray, sql } from 'drizzle-orm'
 import { citations, cursorRuns, jobs, notebooks, qaAnswers, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
+import { insertAskJobAndAnswer } from '~/db/atomic-ask'
 import { sha256Hex, storedBodyText } from '~/domain/ingest-result'
 import { assertTransition, canStartCursorJob, isTerminalJobStatus, jobKindSchema, jobStatusSchema, sanitizeErrorMessage } from '~/domain/jobs'
 import { parseAndNormalizeUrl, type PasteSourceInput } from '~/domain/url'
@@ -393,7 +394,7 @@ async function enqueueJob(
   const jobId = crypto.randomUUID()
   const ts = nowMs()
   const kind = jobKindSchema.parse(params.mode)
-  await db.insert(jobs).values({
+  const job = {
     id: jobId,
     sourceId: params.sourceId,
     kind,
@@ -406,7 +407,7 @@ async function enqueueJob(
     updatedAt: ts,
     startedAt: null,
     finishedAt: null,
-  })
+  }
 
   let workflowParams:
     | { mode: 'fetch'; jobId: string; sourceId: string; url: string }
@@ -414,12 +415,14 @@ async function enqueueJob(
     | { mode: 'ask_source'; jobId: string; sourceId: string; qaAnswerId: string }
 
   if (params.mode === 'fetch') {
+    await db.insert(jobs).values(job)
     workflowParams = { mode: 'fetch', jobId, sourceId: params.sourceId, url: params.url }
   } else if (params.mode === 'summarize_body') {
+    await db.insert(jobs).values(job)
     workflowParams = { mode: 'summarize_body', jobId, sourceId: params.sourceId }
   } else {
     const qaAnswerId = crypto.randomUUID()
-    await db.insert(qaAnswers).values({
+    await insertAskJobAndAnswer(db, job, {
       id: qaAnswerId,
       sourceId: params.sourceId,
       jobId,
