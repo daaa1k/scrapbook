@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { notebooks, sources } from '../src/db/schema'
-import { notebookIdSchema, UNTITLED_NOTEBOOK_TITLE } from '../src/domain/organization'
+import { notebookIdSchema, UNTITLED_NOTEBOOK_TITLE, type NotebookTarget } from '../src/domain/organization'
 import { parsePdfUpload } from '../src/domain/pdf'
 import { registerPdfSource } from '../src/server/ingest/pdf'
 import { pasteSourceBody, registerUrlSource } from '../src/server/ingest/register'
@@ -237,6 +237,47 @@ describe('notebook target', () => {
     ).rejects.toThrow('source_already_registered')
     expect(await db.select().from(notebooks)).toHaveLength(before.length)
   })
+
+  it.each(['another notebook', 'new notebook'])(
+    'rejects a concurrent URL registration into %s without leaving an extra notebook',
+    async (destination) => {
+      const { db } = createTestDb()
+      const origin = await seedNotebook(db, '元')
+      const target: NotebookTarget = destination === 'new notebook' ? 'new' : await seedNotebook(db, '別')
+      let release!: () => void
+      const barrier = new Promise<void>((resolve) => { release = resolve })
+      let bothFetching!: () => void
+      const entered = new Promise<void>((resolve) => { bothFetching = resolve })
+      let fetches = 0
+      const fetchImpl: typeof fetch = async () => {
+        if (++fetches === 2) bothFetching()
+        await barrier
+        return new Response(htmlWithOgTitle('同時登録'), { headers: { 'content-type': 'text/html' } })
+      }
+      const url = 'https://example.com/concurrent-target'
+      const requests = [origin, target].map((notebook) =>
+        registerUrlSource(db, { url, notebook }, workflow, { fetchImpl }),
+      )
+      await entered
+      release()
+      const results = await Promise.allSettled(requests)
+
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+      expect(results.filter((result) => result.status === 'rejected')).toMatchObject([
+        { reason: new Error('source_already_registered') },
+      ])
+      const sourceRows = await db.select().from(sources)
+      expect(sourceRows).toHaveLength(1)
+      const notebookRows = await db.select().from(notebooks)
+      if (destination === 'new notebook') {
+        expect(notebookRows.map((row) => row.id).sort()).toEqual(
+          [...new Set([origin, sourceRows[0]!.notebookId])].sort(),
+        )
+      } else {
+        expect(notebookRows).toHaveLength(2)
+      }
+    },
+  )
 
   it('rejects an unknown notebook id without inserting a source', async () => {
     const { db } = createTestDb()
