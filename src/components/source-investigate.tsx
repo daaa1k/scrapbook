@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { CitedProse } from '~/components/citation-footnotes'
 import { Alert } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
@@ -26,11 +26,10 @@ import {
   type JobStatusView,
 } from '~/domain/job-status-copy'
 import type { JobStatus } from '~/domain/jobs'
+import { qaDeleteQueue } from '~/domain/qa-delete-queue'
 import {
   filterQaTurnsByQuery,
   qaTurnsCollapsed,
-  QA_UNDO_WINDOW_MS,
-  type PendingQaUndo,
 } from '~/domain/qa-history'
 import {
   COPY_FAILURE_ANNOUNCEMENT,
@@ -104,7 +103,8 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   const [copyAnnouncement, setCopyAnnouncement] = useState('')
   const [pendingQa, setPendingQa] = useState<{ id: string; question: string } | null>(null)
   const [pendingReuse, setPendingReuse] = useState<string | null>(null)
-  const [qaUndo, setQaUndo] = useState<PendingQaUndo | null>(null)
+  const qaEntries = useSyncExternalStore(qaDeleteQueue.subscribe, qaDeleteQueue.getSnapshot, qaDeleteQueue.getServerSnapshot)
+    .filter((entry) => entry.sourceId === sourceId)
   const [qaSearch, setQaSearch] = useState('')
   const [qaCollapsed, setQaCollapsed] = useState(true)
   const previousJobStatus = useRef<JobStatus | null | undefined>(undefined)
@@ -112,7 +112,6 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   const pasteBodyRef = useRef(pasteBody)
   pasteTitleRef.current = pasteTitle
   pasteBodyRef.current = pasteBody
-  const qaUndoTimer = useRef<number | null>(null)
   const qaListRef = useRef<HTMLUListElement | null>(null)
 
   const query = useQuery({
@@ -225,64 +224,19 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
     onError: (error) => setActionError(userFacingError(error)),
   })
 
-  const deleteQa = useMutation({
-    mutationFn: (qaAnswerId: string) => deleteSourceQaAnswer({ data: { sourceId, qaAnswerId } }),
-    onSuccess: async () => {
-      setActionError(null)
+  function scheduleQaDelete(turn: { id: string; question: string }) {
+    qaDeleteQueue.schedule({ sourceId, id: turn.id, question: turn.question }, async () => {
+      await deleteSourceQaAnswer({ data: { sourceId, qaAnswerId: turn.id } })
       await queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) })
-    },
-    onError: (error) => setActionError(userFacingError(error)),
-  })
-
-  useEffect(() => {
-    return () => {
-      if (qaUndoTimer.current != null) window.clearTimeout(qaUndoTimer.current)
-    }
-  }, [])
-
-  function clearQaUndoTimer() {
-    if (qaUndoTimer.current != null) {
-      window.clearTimeout(qaUndoTimer.current)
-      qaUndoTimer.current = null
-    }
-  }
-
-  function scheduleQaDelete(turn: {
-    id: string
-    question: string
-    answer: string | null
-    canDelete: boolean
-    citations: readonly unknown[]
-  }) {
-    clearQaUndoTimer()
-    const expiresAt = Date.now() + QA_UNDO_WINDOW_MS
-    setQaUndo({
-      id: turn.id,
-      question: turn.question,
-      answer: turn.answer,
-      canDelete: turn.canDelete,
-      citations: turn.citations,
-      expiresAt,
     })
-    qaUndoTimer.current = window.setTimeout(() => {
-      setQaUndo(null)
-      qaUndoTimer.current = null
-      deleteQa.mutate(turn.id)
-    }, QA_UNDO_WINDOW_MS)
-  }
-
-  function undoQaDelete() {
-    clearQaUndoTimer()
-    setQaUndo(null)
   }
 
   const visibleQaAnswers = useMemo(() => {
     if (!source) return []
-    const withoutPending = qaUndo
-      ? source.qaAnswers.filter((turn) => turn.id !== qaUndo.id)
-      : source.qaAnswers
+    const withoutPending = source.qaAnswers.filter((turn) =>
+      !qaEntries.some((entry) => entry.id === turn.id && entry.status !== 'failed'))
     return filterQaTurnsByQuery(withoutPending, qaSearch)
-  }, [source, qaUndo, qaSearch])
+  }, [source, qaEntries, qaSearch])
 
   const { visible: listedQaAnswers, hiddenCount: collapsedHiddenCount } = useMemo(
     () => qaTurnsCollapsed(visibleQaAnswers, qaCollapsed),
@@ -315,7 +269,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   const pasteCount = sourceAddPasteBodyCount(pasteBody)
   const studyBusy =
     summarize.isPending || ask.isPending || retry.isPending || paste.isPending || jobPending
-  const deletingQaId = deleteQa.isPending ? deleteQa.variables : undefined
+  const deletingQaIds = qaEntries.filter((entry) => entry.status === 'committing').map((entry) => entry.id)
   const recoveryActions = (progress.recovery ?? []).filter(
     (action) => action.id !== 'paste-body' || !showPasteForm,
   )
@@ -677,7 +631,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
         ) : (
           <p className="text-sm text-muted">本文を貼り付けると質問できます。</p>
         )}
-        {source.qaAnswers.length === 0 && !qaUndo ? (
+        {source.qaAnswers.length === 0 && qaEntries.length === 0 ? (
           <div className="mt-2 space-y-3">
             <p className="text-sm text-muted">まだ質問はありません</p>
             {bodyForCursor ? (
@@ -703,18 +657,25 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
           </div>
         ) : (
           <div className="mt-2 space-y-3">
-            {qaUndo ? (
-              <div
+            {qaEntries.map((entry) => (
+              <div key={entry.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface-muted p-inset"
-                role="status"
-                aria-live="polite"
-              >
-                <p className="text-sm text-ink">質問を削除しました。取り消せます。</p>
-                <Button type="button" variant="secondary" size="sm" onClick={undoQaDelete}>
-                  元に戻す
-                </Button>
+                role="status">
+                <p className="text-sm text-ink">
+                  {entry.status === 'pending' ? `「${entry.question}」を削除予約中です。再読み込みすると予約は取り消されます。`
+                    : entry.status === 'committing' ? `「${entry.question}」を削除しています。`
+                      : entry.status === 'done' ? `「${entry.question}」を削除しました。`
+                        : `「${entry.question}」: ${entry.error}`}
+                </p>
+                {entry.status === 'pending' ? (
+                  <Button type="button" variant="secondary" size="sm"
+                    onClick={() => qaDeleteQueue.undo(sourceId, entry.id)}>元に戻す</Button>
+                ) : entry.status === 'failed' || entry.status === 'done' ? (
+                  <Button type="button" variant="secondary" size="sm"
+                    onClick={() => qaDeleteQueue.dismiss(sourceId, entry.id)}>閉じる</Button>
+                ) : null}
               </div>
-            ) : null}
+            ))}
             <div className="flex flex-wrap items-end gap-gap">
               <div className="min-w-[10rem] flex-1">
                 <label htmlFor="investigate-qa-search" className="mb-1 block text-meta font-medium text-muted">
@@ -749,7 +710,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
               <ul ref={qaListRef} className="space-y-3">
                 {listedQaAnswers.map((turn) => {
                   const turnView = qaTurnView(turn)
-                  const deletingThis = deletingQaId === turn.id
+                  const deletingThis = deletingQaIds.includes(turn.id)
                   const deleteBusyId = `${turn.id}-delete-busy`
                   return (
                     <li
