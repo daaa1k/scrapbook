@@ -510,6 +510,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
           <CitedProse
             text={source.summary}
             citations={source.citations}
+            body={source.body}
             emptyLabel="まだありません"
             onCopyAnnouncement={setCopyAnnouncement}
           />
@@ -759,6 +760,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
                           <CitedProse
                             text={turn.answer ?? ''}
                             citations={turn.citations}
+                            body={source.body}
                             emptyLabel="回答待ち…"
                             onCopyAnnouncement={setCopyAnnouncement}
                           />
