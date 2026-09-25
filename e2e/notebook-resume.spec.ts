@@ -1,6 +1,9 @@
 import { expect, test, FIRST_SOURCE, SECOND_SOURCE, sourceButton } from './fixtures/notebook'
 
 test('home resumes an explicitly selected source and ignores stale storage or explicit URLs', async ({ page, notebook }) => {
+  await expect.poll(() => sourceButton(page, FIRST_SOURCE).evaluate((element) =>
+    Object.keys(element).some((key) => key.startsWith('__reactFiber$')),
+  )).toBe(true)
   await sourceButton(page, FIRST_SOURCE).click()
   await expect(page).toHaveURL(new RegExp(`sourceId=${notebook.firstSourceId}`))
   await page.goto('/')
