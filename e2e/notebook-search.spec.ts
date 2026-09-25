@@ -80,8 +80,8 @@ test('search shows a safe excerpt for body matches and keeps source selection us
   await addPasteSource(page, bodyTitle, true, `${'前置き '.repeat(30)}<script>needle</script> 100%_SAFE`)
   await addPasteSource(page, titleMatch, false, '別の本文')
 
-  const search = page.getByRole('searchbox', { name: '検索' })
   const panel = page.locator('#notebook-panel-sources')
+  const search = panel.getByRole('searchbox', { name: '検索', exact: true })
   await search.fill('needle')
   await expect(sourceButton(page, bodyTitle)).toBeVisible()
   await expect(panel.locator('p').filter({ hasText: '本文:' })).toBeVisible()
