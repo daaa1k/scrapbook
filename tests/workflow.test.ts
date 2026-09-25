@@ -1,10 +1,10 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { cursorRuns, jobs, sources } from '../src/db/schema'
+import { citations, cursorRuns, jobs, sources } from '../src/db/schema'
 import { MAX_SOURCE_BODY_CHARS } from '../src/domain/pdf'
 import { organizationCommandSchema } from '../src/domain/organization'
 import { MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
-import { registerUrlSource } from '../src/server/ingest/register'
+import { registerUrlSource, summarizeSourceBody } from '../src/server/ingest/register'
 import { applyOrganizationCommand } from '../src/server/organization'
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import type { IngestStep } from '../src/server/ingest/workflow-run'
@@ -12,6 +12,45 @@ import { createTestDb } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 
 describe('ingest workflow', () => {
+  it.each(['fetch', 'summarize_body'] as const)('rolls back %s output and old citations when insertion fails', async (mode) => {
+    const { db, sqlite } = createTestDb()
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: `https://example.com/${mode}`, notebook }, {
+      create: async () => ({ id: 'wf' }),
+    })
+    await db.update(sources).set({ body: 'old body', summary: 'old summary', memo: 'keep memo' })
+      .where(eq(sources.id, registered.sourceId))
+    await db.insert(citations).values({ id: 'old', sourceId: registered.sourceId, locator: '-', excerpt: 'old', createdAt: 1 })
+    if (mode === 'summarize_body') {
+      await db.update(jobs).set({ status: 'succeeded' }).where(eq(jobs.id, registered.jobId))
+    }
+    const jobId = mode === 'fetch' ? registered.jobId :
+      (await summarizeSourceBody(db, registered.sourceId, { create: async () => ({ id: 'wf-summary' }) })).jobId
+    sqlite.exec(`CREATE TRIGGER reject_citation BEFORE INSERT ON citations
+      WHEN NEW.excerpt = 'new' BEGIN SELECT RAISE(ABORT, 'citation_insert_failed'); END;`)
+
+    await runIngestWorkflow({
+      params: mode === 'fetch'
+        ? { mode, jobId, sourceId: registered.sourceId, url: `https://example.com/${mode}` }
+        : { mode, jobId, sourceId: registered.sourceId },
+      db,
+      step: createImmediateStep(),
+      cursor: createMockCursorClient({ result: JSON.stringify({
+        ...MOCK_INGEST_JSON, title: 'new title', body: 'new body', summary: 'new summary',
+        citations: [{ excerpt: 'new' }, { excerpt: 'second' }],
+      }) }),
+      maxPolls: 1,
+      pollSleep: 0,
+    })
+
+    const source = (await db.select().from(sources).where(eq(sources.id, registered.sourceId)))[0]
+    expect(source?.body).toBe('old body')
+    expect(source?.summary).toBe('old summary')
+    expect(source?.memo).toBe('keep memo')
+    expect(await db.select().from(citations).where(eq(citations.sourceId, registered.sourceId)))
+      .toEqual([expect.objectContaining({ id: 'old', excerpt: 'old' })])
+    expect((await db.select().from(jobs).where(eq(jobs.id, jobId)))[0]?.status).toBe('failed')
+  })
   function replayDbSteps(names: readonly string[]): IngestStep {
     return {
       do: async (name, callback) => {
