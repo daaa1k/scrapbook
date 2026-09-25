@@ -49,6 +49,10 @@ test('mobile tabs preserve memo input and support arrow key focus', async ({ pag
   await expect(page.getByRole('tabpanel', { name: '要約・質問' })).toBeVisible()
   await expect(page.getByRole('tabpanel', { name: 'メモ', includeHidden: true })).toBeHidden()
 
+  await expect.poll(() => studyTab.evaluate((element) =>
+    Object.keys(element).some((key) => key.startsWith('__reactFiber$')),
+  )).toBe(true)
+
   await studyTab.focus()
   await studyTab.press('ArrowRight')
   await expect(memoTab).toBeFocused()
