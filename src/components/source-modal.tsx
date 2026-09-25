@@ -45,7 +45,7 @@ type SourceModalProps = {
   notebook: NotebookTarget
   open: boolean
   onClose: () => void
-  onSourceAdded: (result: SourceAddedResult) => void
+  onSourceAdded: (result: SourceAddedResult) => Promise<boolean>
 }
 
 type FieldErrors = {
@@ -171,6 +171,9 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
   const [errors, setErrors] = useState<FieldErrors>(emptyFieldErrors)
   const [discardOpen, setDiscardOpen] = useState(false)
+  const [addedResult, setAddedResult] = useState<SourceAddedResult | null>(null)
+  const [handoffPending, setHandoffPending] = useState(false)
+  const [handoffError, setHandoffError] = useState(false)
 
   const creatingNotebook = notebook === 'new'
   const discard = sourceAddDiscardCopy()
@@ -187,6 +190,8 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
     setPdfUploadError(null)
     setErrors(emptyFieldErrors())
     setDiscardOpen(false)
+    setAddedResult(null)
+    setHandoffError(false)
     if (pdfInputRef.current) pdfInputRef.current.value = ''
   }
 
@@ -244,14 +249,27 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
     return result
   }
 
+  async function finishAddition(result: SourceAddedResult) {
+    setAddedResult(result)
+    setHandoffPending(true)
+    setHandoffError(false)
+    try {
+      if (await onSourceAdded(result)) resetSession()
+      else setHandoffError(true)
+    } catch {
+      setHandoffError(true)
+    } finally {
+      setHandoffPending(false)
+    }
+  }
+
   const register = useMutation({
     mutationFn: async (value: string) => {
       const result = await registerSource({ data: { url: value, notebook } })
       return invalidateAfterIngest({ sourceId: result.sourceId, notebookId: result.notebookId })
     },
     onSuccess: (result) => {
-      resetSession()
-      onSourceAdded(result)
+      void finishAddition(result)
     },
     onError: (error) => setErrors((current) => ({ ...current, url: userFacingError(error) })),
   })
@@ -270,8 +288,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
       return invalidateAfterIngest({ sourceId: result.sourceId, notebookId: result.notebookId })
     },
     onSuccess: (result) => {
-      resetSession()
-      onSourceAdded(result)
+      void finishAddition(result)
     },
     onError: (error) => setErrors((current) => ({ ...current, pasteBody: userFacingError(error) })),
   })
@@ -285,8 +302,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
       return invalidateAfterIngest({ sourceId: result.sourceId, notebookId: result.notebookId })
     },
     onSuccess: (result) => {
-      resetSession()
-      onSourceAdded(result)
+      void finishAddition(result)
     },
     onError: (error) => setPdfUploadError(userFacingError(error)),
   })
@@ -298,9 +314,14 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
       : paste.isPending
         ? 'paste'
         : null
-  const busy = submitting !== null
+  const busy = submitting !== null || handoffPending
 
   function requestClose() {
+    if (addedResult && !busy) {
+      resetSession()
+      dialogRef.current?.close()
+      return
+    }
     const intent = sourceAddCloseIntent({ busy, dirty: dirtyDraft() })
     if (intent === 'block-busy') return
     if (intent === 'confirm-discard') {
@@ -329,6 +350,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
         ref={dialogRef}
         className="m-auto w-[min(100%,32rem)] max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-surface p-0 text-ink shadow-lg backdrop:bg-overlay"
         onCancel={(event) => {
+          if (addedResult && !busy) return
           const intent = sourceAddCloseIntent({ busy, dirty: dirtyDraft() })
           if (intent === 'close') return
           event.preventDefault()
@@ -381,6 +403,15 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
             </p>
           ) : null}
 
+          {addedResult ? (
+            <div className="space-y-3 rounded-md border border-border bg-surface-muted p-inset" role="status">
+              <p>ソースは追加済みです。</p>
+              {handoffError ? <p>メモを保存できなかったため、まだ新しいソースへ移動していません。</p> : null}
+              <Button type="button" disabled={handoffPending} onClick={() => void finishAddition(addedResult)}>
+                {handoffPending ? '移動しています…' : 'メモ保存を再試行して移動'}
+              </Button>
+            </div>
+          ) : <>
           <SourceAddTabs selected={method} disabled={busy} onSelect={setMethod} />
 
           <div
@@ -654,6 +685,7 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
               </Button>
             </form>
           </div>
+          </>}
         </div>
       </dialog>
       <ConfirmDialog

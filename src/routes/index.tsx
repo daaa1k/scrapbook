@@ -185,6 +185,7 @@ function HomePage() {
             params: { notebookId },
             search: { sourceId },
           })
+          return true
         }}
       />
     </div>
