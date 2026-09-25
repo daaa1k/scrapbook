@@ -16,6 +16,33 @@ import { createTestDb } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 
 describe('ask source from stored body', () => {
+  it('returns each question job after a later source job succeeds', async () => {
+    const { db } = createTestDb()
+    const pasted = await pasteSourceBody(db, {
+      title: 'source', body: 'body', notebook: await seedNotebook(db),
+    })
+    await db.insert(jobs).values([
+      { id: 'ask-timeout', sourceId: pasted.sourceId, kind: 'ask_source', status: 'failed',
+        errorCode: 'timeout', errorMessage: 'slow', createdAt: 1, updatedAt: 1 },
+      { id: 'ask-run-error', sourceId: pasted.sourceId, kind: 'ask_source', status: 'failed',
+        errorCode: 'cursor_run_failed', errorMessage: 'run failed', createdAt: 2, updatedAt: 2 },
+      { id: 'later-summary', sourceId: pasted.sourceId, kind: 'summarize_body', status: 'succeeded',
+        createdAt: 3, updatedAt: 3 },
+    ])
+    await db.insert(qaAnswers).values([
+      { id: 'q-timeout', sourceId: pasted.sourceId, jobId: 'ask-timeout', question: 'first',
+        answer: null, createdAt: 1, updatedAt: 1 },
+      { id: 'q-run-error', sourceId: pasted.sourceId, jobId: 'ask-run-error', question: 'second',
+        answer: null, createdAt: 2, updatedAt: 2 },
+    ])
+    const detail = await readSourceDetail(db, pasted.sourceId)
+    expect(detail.job?.id).toBe('later-summary')
+    expect(Object.fromEntries(detail.qaAnswers.map((answer) => [answer.question, answer.job])))
+      .toMatchObject({
+        first: { id: 'ask-timeout', status: 'failed', errorCode: 'timeout' },
+        second: { id: 'ask-run-error', status: 'failed', errorCode: 'cursor_run_failed' },
+      })
+  })
   it('rolls back a new answer and preserves old QA citations when insertion fails', async () => {
     const { db, sqlite } = createTestDb()
     const pasted = await pasteSourceBody(db, {

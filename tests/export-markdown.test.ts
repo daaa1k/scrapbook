@@ -41,6 +41,7 @@ describe('source markdown export', () => {
           id: 'q1',
           question: '要点は？',
           answer: 'これです。',
+          job: { id: 'job-q1', kind: 'ask_source', status: 'succeeded', errorCode: null, errorMessage: null },
           canDelete: true,
           citations: [{ id: 'qc1', excerpt: '根拠', bodySpan: { start: 0, end: 2 } }],
         },
