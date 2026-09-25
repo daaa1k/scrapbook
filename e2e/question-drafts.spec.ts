@@ -86,6 +86,7 @@ test('mobile tabs keep source drafts and deletion removes the deleted source', a
   await page.getByRole('menuitem', { name: '削除' }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: '削除' }).click()
   await expect(sourceButton(page, a)).toHaveCount(0)
+  await page.getByRole('tab', { name: '要約・質問' }).click()
   await expect(question).toHaveValue('')
 })
 
