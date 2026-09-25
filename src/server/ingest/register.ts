@@ -1,7 +1,8 @@
-import { desc, eq, inArray, sql } from 'drizzle-orm'
-import { citations, cursorRuns, jobs, notebooks, qaAnswers, sources } from '~/db/schema'
+import { desc, eq, sql } from 'drizzle-orm'
+import { jobs, notebooks, qaAnswers, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { insertAskJobAndAnswer } from '~/db/atomic-ask'
+import { deleteNotebookRows, deleteSourceRows } from '~/db/atomic-delete'
 import { sha256Hex, storedBodyText } from '~/domain/ingest-result'
 import { assertTransition, canStartCursorJob, isTerminalJobStatus, jobKindSchema, jobStatusSchema, sanitizeErrorMessage } from '~/domain/jobs'
 import { parseAndNormalizeUrl, type PasteSourceInput } from '~/domain/url'
@@ -258,17 +259,9 @@ export async function deleteSource(
     throw new Error('source_in_progress')
   }
 
-  const jobRows = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.sourceId, sourceId))
-  const jobIds = jobRows.map((row) => row.id)
-
-  await db.update(notebooks).set({ updatedAt: nowMs() }).where(eq(notebooks.id, source.notebookId))
-  await db.delete(qaAnswers).where(eq(qaAnswers.sourceId, sourceId))
-  await db.delete(citations).where(eq(citations.sourceId, sourceId))
-  if (jobIds.length > 0) {
-    await db.delete(cursorRuns).where(inArray(cursorRuns.jobId, jobIds))
-    await db.delete(jobs).where(eq(jobs.sourceId, sourceId))
+  if (!await deleteSourceRows(db, sourceId, source.notebookId, nowMs())) {
+    throw new Error('source_in_progress')
   }
-  await db.delete(sources).where(eq(sources.id, sourceId))
 
   if (source.r2Key && assets) {
     try {
@@ -288,21 +281,19 @@ export async function deleteNotebookWithSources(
 ): Promise<{ deleted: true }> {
   const rows = await db.select({ id: notebooks.id }).from(notebooks).where(eq(notebooks.id, notebookId)).limit(1)
   if (!rows[0]) return { deleted: true }
-  const sourceRows = await db
-    .select({ id: sources.id })
-    .from(sources)
-    .where(eq(sources.notebookId, notebookId))
-  for (const source of sourceRows) {
-    const latest = await latestJobForSource(db, source.id)
-    const latestStatus = latest ? jobStatusSchema.parse(latest.status) : null
-    if (!canStartCursorJob(latestStatus)) {
-      throw new Error('notebook_in_progress')
+  const result = await deleteNotebookRows(db, notebookId)
+  if (!result.deleted) {
+    throw new Error('notebook_in_progress')
+  }
+  if (assets) {
+    for (const key of result.r2Keys) {
+      try {
+        await assets.delete(key as R2ObjectKey)
+      } catch {
+        // Best-effort: D1 rows are already gone.
+      }
     }
   }
-  for (const source of sourceRows) {
-    await deleteSource(db, source.id, assets)
-  }
-  await db.delete(notebooks).where(eq(notebooks.id, notebookId))
   return { deleted: true }
 }
 
