@@ -81,6 +81,28 @@ export const citationViewSchema = z.object({
     .nullable(),
 })
 
+export function rebaseCitationsForStoredBody(
+  citations: readonly Citation[],
+  originalBody: string,
+  storedBody: string,
+  leadingTrimChars: number,
+): Citation[] {
+  return citations.map((citation) => {
+    const locator = citation.locator
+    if (locator.kind === 'unanchored') return citation
+    const start = locator.start - leadingTrimChars
+    const end = locator.end - leadingTrimChars
+    if (
+      originalBody.slice(locator.start, locator.end) !== citation.excerpt ||
+      start < 0 || end > storedBody.length ||
+      storedBody.slice(start, end) !== citation.excerpt
+    ) {
+      return { excerpt: citation.excerpt, locator: { kind: 'unanchored' } }
+    }
+    return { excerpt: citation.excerpt, locator: { kind: 'offsets', start, end } }
+  })
+}
+
 export function citationViewFromRow(row: CitationRow, body: string | null): CitationView {
   const locator = decodeLocator(row.locator)
   const bodySpan =

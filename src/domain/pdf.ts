@@ -58,12 +58,14 @@ export function parseRegisterPdfForm(data: unknown): { file: File; notebook: Not
   return { file, notebook: notebookTargetSchema.parse(notebookRaw) }
 }
 
-export function persistablePdfBody(text: string): { body: string; fetchStatus: 'full' | 'partial' } {
-  const trimmed = text.trim()
+export function persistablePdfBody(text: string): { body: string; fetchStatus: 'full' | 'partial'; leadingTrimChars: number } {
+  const withoutLeadingWhitespace = text.trimStart()
+  const leadingTrimChars = text.length - withoutLeadingWhitespace.length
+  const trimmed = withoutLeadingWhitespace.trimEnd()
   if (trimmed.length <= MAX_SOURCE_BODY_CHARS) {
-    return { body: trimmed, fetchStatus: 'full' }
+    return { body: trimmed, fetchStatus: 'full', leadingTrimChars }
   }
-  return { body: trimmed.slice(0, MAX_SOURCE_BODY_CHARS), fetchStatus: 'partial' }
+  return { body: trimmed.slice(0, MAX_SOURCE_BODY_CHARS), fetchStatus: 'partial', leadingTrimChars }
 }
 
 export function sourceOriginalPath(sourceId: string): string {
