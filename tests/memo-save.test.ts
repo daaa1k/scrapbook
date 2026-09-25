@@ -4,6 +4,7 @@ import {
   discardedMemoSession,
   isLeavingNotebook,
   memoNeedsLeaveGuard,
+  memoStateAfterSave,
   shouldSaveMemo,
   shouldWriteMemoDraft,
   type MemoSession,
@@ -37,6 +38,17 @@ describe('shouldWriteMemoDraft', () => {
     expect(shouldWriteMemoDraft('dirty')).toBe(true)
     expect(shouldWriteMemoDraft('saving')).toBe(true)
     expect(shouldWriteMemoDraft('error')).toBe(true)
+  })
+})
+
+describe('memoStateAfterSave', () => {
+  it('keeps later edits dirty when an older save succeeds', () => {
+    expect(memoStateAfterSave('AB', 'A')).toBe('dirty')
+    expect(shouldWriteMemoDraft(memoStateAfterSave('AB', 'A'))).toBe(true)
+  })
+
+  it('marks only the acknowledged draft saved', () => {
+    expect(memoStateAfterSave('AB', 'AB')).toBe('saved')
   })
 })
 
