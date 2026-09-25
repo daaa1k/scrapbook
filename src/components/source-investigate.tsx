@@ -94,6 +94,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const [pasteTitleError, setPasteTitleError] = useState<string | null>(null)
   const [pasteBodyError, setPasteBodyError] = useState<string | null>(null)
   const [pasteRequested, setPasteRequested] = useState(false)
+  const [pasteHasNewEdits, setPasteHasNewEdits] = useState(false)
   const [completionAnnouncement, setCompletionAnnouncement] = useState('')
   const [copyAnnouncement, setCopyAnnouncement] = useState('')
   const [pendingQa, setPendingQa] = useState<{ id: string; question: string } | null>(null)
@@ -102,6 +103,10 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const [qaCollapsed, setQaCollapsed] = useState(true)
   const previousJobStatus = useRef<JobStatus | null | undefined>(undefined)
   const pasteTitleSeeded = useRef(false)
+  const pasteTitleRef = useRef(pasteTitle)
+  const pasteBodyRef = useRef(pasteBody)
+  pasteTitleRef.current = pasteTitle
+  pasteBodyRef.current = pasteBody
   const qaUndoTimer = useRef<number | null>(null)
   const qaListRef = useRef<HTMLUListElement | null>(null)
 
@@ -200,10 +205,16 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const paste = useMutation({
     mutationFn: (input: { title: string; body: string }) =>
       pasteSource({ data: { sourceId, title: input.title, body: input.body } }),
-    onSuccess: async () => {
+    onMutate: () => setPasteHasNewEdits(false),
+    onSuccess: async (_result, input) => {
       setActionError(null)
-      setPasteBody('')
-      setPasteRequested(false)
+      if (pasteTitleRef.current === input.title && pasteBodyRef.current === input.body) {
+        setPasteBody('')
+        setPasteRequested(false)
+      } else {
+        setPasteRequested(true)
+        setPasteHasNewEdits(true)
+      }
       setPasteTitleError(null)
       setPasteBodyError(null)
       await invalidateSource()
@@ -407,6 +418,9 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
           }}
         >
           <h3 className="text-sm font-medium text-muted">本文を貼り付ける</h3>
+          {pasteHasNewEdits ? (
+            <Alert role="status">保存中に変更した内容はまだ保存されていません。確認して再度保存してください。</Alert>
+          ) : null}
           <div>
             <label htmlFor="investigate-paste-title" className="mb-1 block text-sm font-medium">
               タイトル
@@ -416,6 +430,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
               name="investigate-paste-title"
               value={pasteTitle}
               onChange={(event) => {
+                pasteTitleRef.current = event.target.value
                 setPasteTitle(event.target.value)
                 if (pasteTitleError) setPasteTitleError(null)
               }}
@@ -438,6 +453,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
               value={pasteBody}
               onChange={(event) => {
                 const next = event.target.value
+                pasteBodyRef.current = next
                 setPasteBody(next)
                 setPasteBodyError(
                   sourceAddPasteBodyCount(next).over
