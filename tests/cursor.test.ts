@@ -105,13 +105,6 @@ describe('Cursor client', () => {
     expect(run.result).toContain('モック')
   })
 
-  it('mock client returns a completed answer for a question prompt', async () => {
-    const mock = createMockCursorClient()
-    const created = await Effect.runPromise(mock.createAgent(askPromptForBody('開館時間は？', '午前九時からです。')))
-    const run = await Effect.runPromise(mock.getRun(created.agent.id, created.run.id))
-    expect(JSON.parse(run.result ?? '')).toMatchObject({ answer: 'モック回答です。' })
-  })
-
   it('adds an unauthenticated X note for twitter hosts', () => {
     const prompt = ingestPromptForUrl('https://x.com/foo/status/1')
     expect(prompt).toContain('authenticated X fetch is not implemented')

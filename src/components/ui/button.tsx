@@ -38,7 +38,7 @@ export function Button({
       ref={ref}
       type={type}
       className={cn(
-        'inline-flex items-center justify-center rounded-md font-medium transition-opacity disabled:cursor-not-allowed disabled:text-disabled disabled:opacity-60 motion-reduce:transition-none',
+        'inline-flex items-center justify-center rounded-md font-medium transition-opacity disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink motion-reduce:transition-none',
         sizeClass[size],
         variantClass[variant],
         className,
