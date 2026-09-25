@@ -748,7 +748,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
             ) : (
               <ul ref={qaListRef} className="space-y-3">
                 {listedQaAnswers.map((turn) => {
-                  const turnView = qaTurnView(turn, jobInput)
+                  const turnView = qaTurnView(turn)
                   const deletingThis = deletingQaId === turn.id
                   const deleteBusyId = `${turn.id}-delete-busy`
                   return (
@@ -812,7 +812,10 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
                                 className="gap-2"
                                 variant={action.id === 'retry' ? 'primary' : 'secondary'}
                                 disabled={studyBusy}
-                                onClick={() => runRecovery(action, turn.question)}
+                                onClick={() => {
+                                  if (action.id === 'retry') ask.mutate(turn.question)
+                                  else runRecovery(action, turn.question)
+                                }}
                               >
                                 {ask.isPending && action.id === 'retry' ? <PendingMark /> : null}
                                 {action.label}

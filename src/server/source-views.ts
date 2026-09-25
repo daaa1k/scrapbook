@@ -185,7 +185,10 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
         id: qaAnswers.id,
         question: qaAnswers.question,
         answer: qaAnswers.answer,
+        jobId: jobs.id,
         jobStatus: jobs.status,
+        jobErrorCode: jobs.errorCode,
+        jobErrorMessage: jobs.errorMessage,
       })
       .from(qaAnswers)
       .innerJoin(jobs, eq(qaAnswers.jobId, jobs.id))
@@ -247,6 +250,13 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
       id: answer.id,
       question: answer.question,
       answer: answer.answer,
+      job: {
+        id: answer.jobId,
+        kind: 'ask_source',
+        status: jobStatusSchema.parse(answer.jobStatus),
+        errorCode: answer.jobErrorCode,
+        errorMessage: answer.jobErrorMessage,
+      },
       canDelete: isTerminalJobStatus(jobStatusSchema.parse(answer.jobStatus)),
       citations: (citationsByAnswer.get(answer.id) ?? []).map((citationRow) =>
         citationViewFromRow(citationRow, row.body),

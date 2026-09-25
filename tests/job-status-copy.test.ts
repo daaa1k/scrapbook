@@ -198,19 +198,17 @@ describe('jobProgressView', () => {
 describe('qaTurnView', () => {
   it('keeps a finished answer as ready', () => {
     expect(
-      qaTurnView(
-        { answer: '要点はこれです', canDelete: true },
-        copy({ status: 'succeeded', kind: 'ask_source', hasBody: true }),
-      ),
+      qaTurnView({ answer: '要点はこれです', job: {
+        status: 'succeeded', errorCode: null, errorMessage: null,
+      } }),
     ).toEqual({ phase: 'ready' })
   })
 
   it('shows per-question progress while the ask job is in flight', () => {
     expect(
-      qaTurnView(
-        { answer: null, canDelete: false },
-        copy({ status: 'waiting_agent', kind: 'ask_source', hasBody: true }),
-      ),
+      qaTurnView({ answer: null, job: {
+        status: 'waiting_agent', errorCode: null, errorMessage: null,
+      } }),
     ).toEqual({
       phase: 'pending',
       progress: {
@@ -223,10 +221,9 @@ describe('qaTurnView', () => {
 
   it('labels a terminal empty answer as failed, not waiting', () => {
     expect(
-      qaTurnView(
-        { answer: null, canDelete: true },
-        copy({ status: 'failed', kind: 'ask_source', errorCode: 'timeout', hasBody: true }),
-      ),
+      qaTurnView({ answer: null, job: {
+        status: 'failed', errorCode: 'timeout', errorMessage: null,
+      } }),
     ).toEqual({
       phase: 'failed',
       progress: {
@@ -238,10 +235,9 @@ describe('qaTurnView', () => {
       },
     })
     expect(
-      qaTurnView(
-        { answer: null, canDelete: true },
-        copy({ status: 'succeeded', kind: 'summarize_body', hasBody: true }),
-      ),
+      qaTurnView({ answer: null, job: {
+        status: 'succeeded', errorCode: null, errorMessage: null,
+      } }),
     ).toEqual({
       phase: 'failed',
       progress: {
@@ -251,6 +247,22 @@ describe('qaTurnView', () => {
         tone: 'failure',
       },
     })
+  })
+
+  it('keeps each failed question reason after a later job succeeds', () => {
+    const first = qaTurnView({ answer: null, job: {
+      status: 'failed', errorCode: 'timeout', errorMessage: null,
+    } })
+    const second = qaTurnView({ answer: null, job: {
+      status: 'failed', errorCode: 'cursor_run_failed', errorMessage: null,
+    } })
+    expect(first.phase).toBe('failed')
+    expect(second.phase).toBe('failed')
+    if (first.phase !== 'failed' || second.phase !== 'failed') return
+    expect(first.progress.detail).toContain('時間切れ')
+    expect(second.progress.detail).toContain('Cursor')
+    expect(first.progress.recovery).toContainEqual({ id: 'retry', label: '再試行' })
+    expect(second.progress.recovery).toContainEqual({ id: 'retry', label: '再試行' })
   })
 })
 

@@ -109,29 +109,27 @@ export function jobProgressView(input: JobCopyInput): JobStatusView {
 }
 
 export function qaTurnView(
-  turn: { answer: string | null; canDelete: boolean },
-  latest: JobCopyInput,
+  turn: { answer: string | null; job: { status: JobStatus; errorCode: string | null; errorMessage: string | null } },
 ): QaTurnView {
   if (turn.answer) return { phase: 'ready' }
-  if (!turn.canDelete) {
-    const askInFlight =
-      latest.kind === 'ask_source' && latest.status !== null && !isTerminalJobStatus(latest.status)
+  const ownJob: JobCopyInput = {
+    status: turn.job.status,
+    kind: 'ask_source',
+    errorCode: turn.job.errorCode,
+    errorMessage: turn.job.errorMessage,
+    hasBody: true,
+    hasUrl: false,
+  }
+  if (!isTerminalJobStatus(turn.job.status)) {
     return {
       phase: 'pending',
-      progress: askInFlight
-        ? jobProgressView(latest)
-        : {
-            label: '回答を準備しています',
-            pending: true,
-            tone: 'pending',
-          },
+      progress: jobProgressView(ownJob),
     }
   }
-  const askFailed = latest.kind === 'ask_source' && latest.status === 'failed'
   return {
     phase: 'failed',
-    progress: askFailed
-      ? jobProgressView(latest)
+    progress: turn.job.status === 'failed'
+      ? jobProgressView(ownJob)
       : {
           label: '回答できませんでした',
           detail: 'この質問への回答は残っていません。同じ内容をもう一度送れます。',
