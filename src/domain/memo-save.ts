@@ -72,3 +72,11 @@ export function isLeavingNotebook(
 ): boolean {
   return currentNotebookId !== nextNotebookId
 }
+
+/** A memo belongs to one source, even when navigation stays inside its notebook. */
+export function isLeavingMemoSource(
+  current: { notebookId: string | undefined; sourceId: string | undefined },
+  next: { notebookId: string | undefined; sourceId: string | undefined },
+): boolean {
+  return isLeavingNotebook(current.notebookId, next.notebookId) || current.sourceId !== next.sourceId
+}
