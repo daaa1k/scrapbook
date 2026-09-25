@@ -376,6 +376,14 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
 
   return (
     <div className="flex min-h-full flex-col gap-6" aria-busy={studyBusy || undefined}>
+      {query.isError ? (
+        <div className="space-y-2 rounded-md border border-border bg-surface-muted p-inset" role="status">
+          <p>最新の状態を取得できませんでした。表示中の内容は古い可能性があります。</p>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void query.refetch()}>
+            表示を更新
+          </Button>
+        </div>
+      ) : null}
       <header className="space-y-2">
         <p className="break-anywhere text-lg font-semibold">
           {source.url ? (
