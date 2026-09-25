@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useBlocker, useNavigate } from '@tanstack/react-router'
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
@@ -20,7 +20,7 @@ import { LoadingSkeleton, PendingMark } from '~/components/ui/loading-skeleton'
 import { ShortcutHelpDialog } from '~/components/ui/shortcut-help-dialog'
 import { asyncResourceView } from '~/domain/async-view'
 import { sourceDeleteConfirm } from '~/domain/destructive-confirm'
-import { clearLastSourceSelection, readLastSourceSelection, resumableSourceId, writeLastSourceSelection } from '~/domain/last-source-selection'
+import { clearLastSourceSelection, readLastSourceSelection, writeLastSourceSelection } from '~/domain/last-source-selection'
 import { isLeavingMemoSource, type MemoSessionHandle } from '~/domain/memo-save'
 import {
   CATALOG_LOADING_LABEL,
@@ -59,7 +59,6 @@ import { EMPTY_SOURCE_INPUT_DRAFT, type SourceInputDraft } from '~/domain/source
 import {
   SOURCE_LIST_SORT_DEFAULT,
   SOURCE_LIST_SORT_LABELS,
-  sortSourceListItems,
   sourceListSearchEmptyCopy,
   type SourceListSort,
 } from '~/domain/source-list-controls'
@@ -73,7 +72,7 @@ import type { SourceListItem } from '~/domain/source-views'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { cn, isTerminalJobStatus, userFacingError } from '~/lib/utils'
 import { getOrganizationCatalog, runOrganizationCommand } from '~/server/functions/organization'
-import { deleteRegisteredSource, listSources } from '~/server/functions/sources'
+import { deleteRegisteredSource, getSource, listSources } from '~/server/functions/sources'
 
 const PANE_HEADING_CLASS =
   'sticky top-0 z-[1] mb-stack bg-inherit py-1 text-status font-medium text-muted'
@@ -206,23 +205,40 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const searchFilter = {
     ...notebookFilter,
     q: deferredSourceSearch,
+    sort: sourceSort,
   }
+  const baseFilter = { ...notebookFilter, sort: sourceSort }
 
   const catalog = useQuery({
     queryKey: organizationKeys.catalog,
     queryFn: () => getOrganizationCatalog(),
   })
 
-  const notebookSourcesQuery = useQuery({
-    queryKey: sourceKeys.list(notebookFilter),
-    queryFn: () => listSources({ data: notebookFilter }),
+  const notebookSourcesQuery = useInfiniteQuery({
+    queryKey: sourceKeys.list(baseFilter),
+    queryFn: ({ pageParam }) => listSources({ data: { ...baseFilter, cursor: pageParam } }),
+    initialPageParam: null as { key: number | string; id: string } | null,
+    getNextPageParam: (page) => page.nextCursor,
   })
 
-  const searchQuery = useQuery({
+  const searchQuery = useInfiniteQuery({
     queryKey: sourceKeys.list(searchFilter),
-    queryFn: () => listSources({ data: searchFilter }),
+    queryFn: ({ pageParam }) => listSources({ data: { ...searchFilter, cursor: pageParam } }),
+    initialPageParam: null as { key: number | string; id: string } | null,
+    getNextPageParam: (page) => page.nextCursor,
     enabled: deferredSourceSearch !== '',
   })
+  const baseSources = notebookSourcesQuery.data?.pages.flatMap((page) => page.items)
+  const unlistedSourceId = sourceId && !baseSources?.some((source) => source.id === sourceId) ? sourceId : null
+  const selectedSource = useQuery({
+    queryKey: sourceKeys.detail(unlistedSourceId ?? ''),
+    queryFn: () => getSource({ data: { sourceId: unlistedSourceId! } }),
+    enabled: Boolean(unlistedSourceId && baseSources),
+    retry: false,
+  })
+  const selectedSourceValid = Boolean(unlistedSourceId && selectedSource.data?.organization.notebook.id === notebookId)
+  const resultSources = (deferredSourceSearch === '' ? notebookSourcesQuery : searchQuery).data?.pages.flatMap((page) => page.items)
+  const activeSourceQuery = deferredSourceSearch === '' ? notebookSourcesQuery : searchQuery
 
   const frame = resolveNoteShellFrame(
     { notebookId, sourceId },
@@ -232,24 +248,22 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
       isFetching: catalog.isFetching,
     }),
     asyncResourceView({
-      data: notebookSourcesQuery.data,
+      data: baseSources,
       isError: notebookSourcesQuery.isError,
       isFetching: notebookSourcesQuery.isFetching,
     }),
+    Boolean(unlistedSourceId && selectedSource.isPending) || selectedSourceValid,
   )
 
   const searchResults = resolveNoteShellResults(
     asyncResourceView({
-      data: deferredSourceSearch === '' ? notebookSourcesQuery.data : searchQuery.data,
+      data: resultSources,
       isError: deferredSourceSearch === '' ? notebookSourcesQuery.isError : searchQuery.isError,
       isFetching: deferredSourceSearch === '' ? notebookSourcesQuery.isFetching : searchQuery.isFetching,
     }),
   )
 
-  const sortedSources = useMemo(
-    () => (searchResults.status === 'ready' ? sortSourceListItems(searchResults.sources, sourceSort) : []),
-    [searchResults, sourceSort],
-  )
+  const sortedSources = searchResults.status === 'ready' ? searchResults.sources : []
 
   useEffect(() => {
     if (sourceId) {
@@ -258,7 +272,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     }
     if (frame.status !== 'ready') return
     const stored = readLastSourceSelection(notebookId)
-    const resumable = resumableSourceId(stored, frame.sources.map((source) => source.id))
+    const resumable = stored
     if (!resumable) {
       if (stored) clearLastSourceSelection(notebookId)
       return
@@ -268,6 +282,11 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     void navigate({ to: '/notebooks/$notebookId', params: { notebookId },
       search: { sourceId: resumable }, replace: true })
   }, [sourceId, notebookId, frame, navigate])
+
+  useEffect(() => {
+    if (!unlistedSourceId || selectedSource.isPending || selectedSourceValid) return
+    if (readLastSourceSelection(notebookId) === unlistedSourceId) clearLastSourceSelection(notebookId)
+  }, [unlistedSourceId, selectedSource.isPending, selectedSourceValid, notebookId])
 
   useEffect(() => {
     if (titleEditor.status === 'editing') {
@@ -448,7 +467,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           {NOTEBOOK_SOURCE_STUDY_HINT}
         </p>
       ) : null}
-      {view.status === 'ready' && view.invalidSourceId ? (
+      {view.status === 'ready' && view.invalidSourceId && !selectedSource.isPending ? (
         <Alert id="notebook-invalid-source" className="mb-stack">
           {INVALID_SOURCE_ID_RECOVERY}
         </Alert>
@@ -504,6 +523,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         ) : sortedSources.length === 0 ? (
           <p className="text-sm text-muted">{sourceListSearchEmptyCopy(deferredSourceSearch)}</p>
         ) : (
+          <div className="space-y-3">
           <ul className="space-y-2">
             {sortedSources.map((source) => (
               <SourceRow
@@ -520,6 +540,16 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
               />
             ))}
           </ul>
+          {activeSourceQuery.hasNextPage ? (
+            <Button type="button" variant="secondary" disabled={activeSourceQuery.isFetchingNextPage}
+              onClick={() => void activeSourceQuery.fetchNextPage()}>
+              {activeSourceQuery.isFetchingNextPage ? '読み込み中…' : 'さらにソースを表示'}
+            </Button>
+          ) : null}
+          {activeSourceQuery.isFetchNextPageError ? (
+            <ErrorRetry onRetry={() => void activeSourceQuery.fetchNextPage()}>{userFacingError(activeSourceQuery.error)}</ErrorRetry>
+          ) : null}
+          </div>
         )}
       </div>
     </>
