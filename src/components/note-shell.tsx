@@ -97,6 +97,13 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const renameButtonRef = useRef<HTMLButtonElement>(null)
   const restoreRenameFocusRef = useRef(false)
   const memoSessionRef = useRef<MemoSessionHandle | null>(null)
+  const activeSessionRef = useRef(true)
+  useEffect(() => {
+    activeSessionRef.current = true
+    return () => {
+      activeSessionRef.current = false
+    }
+  }, [])
   const registerMemoSession = useCallback((session: MemoSessionHandle) => {
     memoSessionRef.current = session
   }, [])
@@ -249,34 +256,39 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   }
 
   const rename = useMutation({
-    mutationFn: (title: string) =>
-      runOrganizationCommand({ data: { type: 'rename-notebook', notebookId, title } }),
+    mutationFn: ({ targetNotebookId, title }: { targetNotebookId: NoteShellSearch['notebookId']; title: string }) =>
+      runOrganizationCommand({ data: { type: 'rename-notebook', notebookId: targetNotebookId, title } }),
     onSuccess: async () => {
-      closeTitleEditor()
+      if (activeSessionRef.current) closeTitleEditor()
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
         queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
       ])
     },
-    onError: (error) => setRenameError(userFacingError(error)),
+    onError: (error) => {
+      if (activeSessionRef.current) setRenameError(userFacingError(error))
+    },
   })
 
   const removeSource = useMutation({
-    mutationFn: ({ deletedId }: { deletedId: string; nextId?: string }) =>
+    mutationFn: ({ deletedId }: { targetNotebookId: NoteShellSearch['notebookId']; deletedId: string; nextId?: string }) =>
       deleteRegisteredSource({ data: { sourceId: deletedId } }),
-    onSuccess: async (_result, { nextId }) => {
-      setPaneError(null)
+    onSuccess: async (_result, { targetNotebookId, nextId }) => {
+      if (activeSessionRef.current) setPaneError(null)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
         queryClient.invalidateQueries({ queryKey: organizationKeys.catalog }),
       ])
+      if (!activeSessionRef.current) return
       await navigate({
         to: '/notebooks/$notebookId',
-        params: { notebookId },
+        params: { notebookId: targetNotebookId },
         search: nextId ? { sourceId: nextId } : {},
       })
     },
-    onError: (error) => setPaneError(userFacingError(error)),
+    onError: (error) => {
+      if (activeSessionRef.current) setPaneError(userFacingError(error))
+    },
   })
   const deletingSourceId = removeSource.isPending ? removeSource.variables.deletedId : undefined
 
@@ -529,7 +541,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
                   closeTitleEditor()
                   return
                 }
-                rename.mutate(intent.title)
+                rename.mutate({ targetNotebookId: notebookId, title: intent.title })
               }}
             >
               <h1 className="sr-only">{view.notebook.title}</h1>
@@ -730,7 +742,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             const focusedId = view.status === 'ready' ? view.focusSourceId : undefined
             const nextId = nextSourceIdAfterDelete(ids, deletedId, focusedId)
             setPendingSource(null)
-            removeSource.mutate({ deletedId, nextId })
+            removeSource.mutate({ targetNotebookId: notebookId, deletedId, nextId })
           }}
         />
       ) : null}
@@ -744,6 +756,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           } catch {
             return
           }
+          if (!activeSessionRef.current) return
           setModalOpen(false)
           await navigate({
             to: '/notebooks/$notebookId',
