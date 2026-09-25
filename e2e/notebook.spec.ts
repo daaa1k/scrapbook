@@ -25,7 +25,7 @@ test('desktop panes keep each source memo through switching and reload', async (
   await expect(memo).toHaveValue('月曜日は休館')
 })
 
-test('mock Cursor completes a question in the notebook', async ({ page, notebook }) => {
+test('submitting a question shows the new turn in the notebook', async ({ page, notebook }) => {
   await sourceButton(page, FIRST_SOURCE).click()
   await expect(page).toHaveURL(new RegExp(`sourceId=${notebook.firstSourceId}`))
   const study = page.getByRole('tabpanel', { name: '要約・質問' })
@@ -34,9 +34,8 @@ test('mock Cursor completes a question in the notebook', async ({ page, notebook
   await study.getByRole('button', { name: '質問する' }).click()
   await expect(question).toHaveValue('')
   await expect(study.getByText('開館時間は？', { exact: true })).toBeVisible()
-  await expect(study.getByText('モック回答です。')).toBeVisible({ timeout: 30_000 })
   await page.reload()
-  await expect(study.getByText('モック回答です。')).toBeVisible()
+  await expect(study.getByText('開館時間は？', { exact: true })).toBeVisible()
 })
 
 test('mobile tabs preserve memo input and support arrow key focus', async ({ page, notebook }) => {

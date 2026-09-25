@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { test as notebookTest, FIRST_SOURCE, SECOND_SOURCE } from './fixtures/notebook'
+import { test as notebookTest, FIRST_SOURCE, SECOND_SOURCE, sourceButton } from './fixtures/notebook'
 
 test.describe('visual regression', () => {
   test('home chrome desktop light', async ({ page }) => {
@@ -37,11 +37,10 @@ test.describe('visual regression', () => {
 
 notebookTest('fixed notebook workspace desktop light', async ({ page, notebook }) => {
   await page.goto(`${notebook.path}?sourceId=${notebook.firstSourceId}`)
-  const sources = page.getByRole('tabpanel', { name: 'ソース' })
   const study = page.getByRole('tabpanel', { name: '要約・質問' })
   const memo = page.getByRole('tabpanel', { name: 'メモ' })
-  await expect(sources.getByRole('button', { name: new RegExp(FIRST_SOURCE) })).toBeVisible()
-  await expect(sources.getByRole('button', { name: new RegExp(SECOND_SOURCE) })).toBeVisible()
+  await expect(sourceButton(page, FIRST_SOURCE)).toBeVisible()
+  await expect(sourceButton(page, SECOND_SOURCE)).toBeVisible()
   await expect(study.getByText('まだ質問はありません')).toBeVisible()
   await expect(memo.getByRole('textbox', { name: 'ソースのメモ' })).toBeVisible()
   await expect(study.locator('..')).toHaveScreenshot('notebook-workspace-desktop.png', {

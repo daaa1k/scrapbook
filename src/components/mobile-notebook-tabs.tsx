@@ -65,7 +65,8 @@ export function MobileNotebookTabs({ selected, onSelect }: MobileNotebookTabsPro
     if (!next) return
     event.preventDefault()
     onSelect(next)
-    focusNotebookTab(next)
+    // Focus after React makes the next tab the active tab stop.
+    window.requestAnimationFrame(() => focusNotebookTab(next))
   }
 
   return (
