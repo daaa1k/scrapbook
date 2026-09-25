@@ -33,8 +33,11 @@ test('mobile citation context highlights only a verified body span and restores 
   await page.goto(`${notebook.path}?sourceId=${notebook.firstSourceId}`)
   const summary = page.getByRole('region', { name: '要約' })
   const first = summary.getByRole('button', { name: '引用1' })
-  await first.click()
   const footnote = summary.getByRole('region', { name: '引用1' })
+  await expect(async () => {
+    await first.click()
+    await expect(footnote.getByRole('button', { name: '本文で確認' })).toBeVisible({ timeout: 1_000 })
+  }).toPass({ timeout: 10_000 })
   await footnote.getByRole('button', { name: '本文で確認' }).click()
   const context = footnote.getByRole('region', { name: '本文の該当箇所' })
   await expect(context.locator('mark')).toHaveText('午前九時')
