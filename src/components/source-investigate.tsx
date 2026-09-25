@@ -103,6 +103,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   const [completionAnnouncement, setCompletionAnnouncement] = useState('')
   const [copyAnnouncement, setCopyAnnouncement] = useState('')
   const [pendingQa, setPendingQa] = useState<{ id: string; question: string } | null>(null)
+  const [pendingReuse, setPendingReuse] = useState<string | null>(null)
   const [qaUndo, setQaUndo] = useState<PendingQaUndo | null>(null)
   const [qaSearch, setQaSearch] = useState('')
   const [qaCollapsed, setQaCollapsed] = useState(true)
@@ -362,6 +363,15 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
     if (!first) return
     const node = document.getElementById(`qa-turn-${first.id}`)
     node?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  function reuseQuestion(question: string) {
+    if (questionDraft.trim() && questionDraft !== question) {
+      setPendingReuse(question)
+      return
+    }
+    changeDraft((current) => ({ ...current, question }))
+    document.getElementById('investigate-question')?.focus()
   }
 
   return (
@@ -758,6 +768,10 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
                           {deletingThis ? '削除しています' : '削除'}
                         </Button>
                       </div>
+                      <Button type="button" variant="secondary" size="sm" className="mt-2"
+                        onClick={() => reuseQuestion(turn.question)}>
+                        編集して質問
+                      </Button>
                       <div className="mt-3 space-y-2 border-l-2 border-zinc-900 pl-3 dark:border-zinc-100">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-xs font-semibold tracking-wide text-muted">回答</p>
@@ -814,6 +828,18 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
       </section>
 
       {actionError ? <Alert id="investigate-action-error">{actionError}</Alert> : null}
+      {pendingReuse !== null ? (
+        <ConfirmDialog open title="質問下書きを置き換えますか？"
+          description="入力中の質問が消えます。" confirmLabel="置き換える" tone="default"
+          onCancel={() => setPendingReuse(null)}
+          onConfirm={() => {
+            const question = pendingReuse
+            setPendingReuse(null)
+            changeDraft((current) => ({ ...current, question }))
+            window.requestAnimationFrame(() => document.getElementById('investigate-question')?.focus())
+          }}
+        />
+      ) : null}
       {pendingQa ? (
         <ConfirmDialog
           open
