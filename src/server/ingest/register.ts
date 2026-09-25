@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { jobs, notebooks, qaAnswers, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
 import { insertAskJobAndAnswer } from '~/db/atomic-ask'
@@ -347,7 +347,7 @@ async function writePastedBody(
   hash: string,
 ): Promise<PasteResult> {
   await assertSourceIdle(db, sourceId)
-  await db
+  const updated = await db
     .update(sources)
     .set({
       title: input.title,
@@ -359,7 +359,19 @@ async function writePastedBody(
       fetchedAt: ts,
       updatedAt: ts,
     })
-    .where(eq(sources.id, sourceId))
+    .where(and(
+      eq(sources.id, sourceId),
+      sql`not exists (
+        select 1 from jobs as active_jobs
+        where active_jobs.source_id = ${sourceId}
+          and active_jobs.status not in ('succeeded', 'failed')
+      )`,
+    ))
+    .returning({ id: sources.id })
+  if (updated.length === 0) {
+    const stillExists = await db.select({ id: sources.id }).from(sources).where(eq(sources.id, sourceId)).limit(1)
+    throw new Error(stillExists.length ? 'job_in_progress' : 'source_not_found')
+  }
   return { sourceId, notebookId }
 }
 
