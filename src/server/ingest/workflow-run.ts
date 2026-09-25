@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import { and, eq, isNull } from 'drizzle-orm'
 import { citations as citationsTable, cursorRuns, jobs, qaAnswers, qaCitations, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
-import { encodeLocator, type Citation } from '~/domain/citations'
+import { encodeLocator, rebaseCitationsForStoredBody, type Citation } from '~/domain/citations'
 import {
   parseAskResultJson,
   parseIngestResultJson,
@@ -276,7 +276,12 @@ async function persistIngestOutput(
           updatedAt: ts,
         })
         .where(eq(sources.id, params.sourceId))
-      await replaceSourceCitations(db, params.sourceId, parsed.citations, ts)
+      await replaceSourceCitations(
+        db,
+        params.sourceId,
+        rebaseCitationsForStoredBody(parsed.citations, parsed.body, stored.body, stored.leadingTrimChars),
+        ts,
+      )
       break
     }
     case 'summarize_body': {

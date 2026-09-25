@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { citations } from '../src/db/schema'
 import { parseIngestResultJson } from '../src/domain/ingest-result'
+import { MAX_SOURCE_BODY_CHARS } from '../src/domain/pdf'
 import { sourceDetailSchema, sourceListItemSchema } from '../src/domain/source-views'
 import { authenticateAccessRequest } from '../src/server/auth/access'
 import { MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
@@ -86,6 +87,73 @@ describe('source citations', () => {
         excerpt: 'モックの本文',
         bodySpan: { start: 3, end: 9 },
       },
+    ])
+  })
+
+  it('rebases fetch citations when leading whitespace is removed', async () => {
+    const { db } = createTestDb()
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/trimmed', notebook }, workflow)
+
+    await runIngestWorkflow({
+      params: { mode: 'fetch', jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/trimmed' },
+      db,
+      step: createImmediateStep(),
+      cursor: createMockCursorClient({
+        result: JSON.stringify({
+          ...MOCK_INGEST_JSON,
+          body: '  本文 \n',
+          citations: [{ excerpt: '本文', start: 2, end: 4 }],
+        }),
+      }),
+      maxPolls: 2,
+      pollSleep: 0,
+    })
+
+    const rows = await db.select().from(citations).where(eq(citations.sourceId, registered.sourceId))
+    expect(rows[0]?.locator).toBe('0:2')
+    const detail = await readSourceDetail(db, registered.sourceId)
+    expect(detail.body).toBe('本文')
+    expect(detail.citations[0]?.bodySpan).toEqual({ start: 0, end: 2 })
+  })
+
+  it('keeps UTF-16 offsets within the body cap and unanchors invalid or truncated citations', async () => {
+    const { db } = createTestDb()
+    const notebook = await seedNotebook(db)
+    const registered = await registerUrlSource(db, { url: 'https://example.com/capped', notebook }, workflow)
+    const body = ` \n　😀${'x'.repeat(MAX_SOURCE_BODY_CHARS - 3)}終外`
+
+    await runIngestWorkflow({
+      params: { mode: 'fetch', jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/capped' },
+      db,
+      step: createImmediateStep(),
+      cursor: createMockCursorClient({
+        result: JSON.stringify({
+          ...MOCK_INGEST_JSON,
+          body,
+          citations: [
+            { excerpt: '😀', start: 3, end: 5 },
+            { excerpt: '終', start: MAX_SOURCE_BODY_CHARS + 2, end: MAX_SOURCE_BODY_CHARS + 3 },
+            { excerpt: '外', start: MAX_SOURCE_BODY_CHARS + 3, end: MAX_SOURCE_BODY_CHARS + 4 },
+            { excerpt: '😀', start: 4, end: 6 },
+            { excerpt: '位置なし' },
+          ],
+        }),
+      }),
+      maxPolls: 2,
+      pollSleep: 0,
+    })
+
+    const rows = await db.select().from(citations).where(eq(citations.sourceId, registered.sourceId))
+    expect(rows.map((row) => row.locator)).toEqual(['0:2', `${MAX_SOURCE_BODY_CHARS - 1}:${MAX_SOURCE_BODY_CHARS}`, '-', '-', '-'])
+    const detail = await readSourceDetail(db, registered.sourceId)
+    expect(detail.body).toHaveLength(MAX_SOURCE_BODY_CHARS)
+    expect(detail.citations.map((citation) => citation.bodySpan)).toEqual([
+      { start: 0, end: 2 },
+      { start: MAX_SOURCE_BODY_CHARS - 1, end: MAX_SOURCE_BODY_CHARS },
+      null,
+      null,
+      null,
     ])
   })
 
