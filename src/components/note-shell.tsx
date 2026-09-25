@@ -20,6 +20,7 @@ import { LoadingSkeleton, PendingMark } from '~/components/ui/loading-skeleton'
 import { ShortcutHelpDialog } from '~/components/ui/shortcut-help-dialog'
 import { asyncResourceView } from '~/domain/async-view'
 import { sourceDeleteConfirm } from '~/domain/destructive-confirm'
+import { clearLastSourceSelection, readLastSourceSelection, resumableSourceId, writeLastSourceSelection } from '~/domain/last-source-selection'
 import { isLeavingMemoSource, type MemoSessionHandle } from '~/domain/memo-save'
 import {
   CATALOG_LOADING_LABEL,
@@ -107,6 +108,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const renameButtonRef = useRef<HTMLButtonElement>(null)
   const restoreRenameFocusRef = useRef(false)
   const memoSessionRef = useRef<MemoSessionHandle | null>(null)
+  const resumeAttemptRef = useRef<string | null>(null)
   const activeSessionRef = useRef(true)
   useEffect(() => {
     activeSessionRef.current = true
@@ -250,6 +252,24 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   )
 
   useEffect(() => {
+    if (sourceId) {
+      resumeAttemptRef.current = null
+      return
+    }
+    if (frame.status !== 'ready') return
+    const stored = readLastSourceSelection(notebookId)
+    const resumable = resumableSourceId(stored, frame.sources.map((source) => source.id))
+    if (!resumable) {
+      if (stored) clearLastSourceSelection(notebookId)
+      return
+    }
+    if (resumeAttemptRef.current === resumable) return
+    resumeAttemptRef.current = resumable
+    void navigate({ to: '/notebooks/$notebookId', params: { notebookId },
+      search: { sourceId: resumable }, replace: true })
+  }, [sourceId, notebookId, frame, navigate])
+
+  useEffect(() => {
     if (titleEditor.status === 'editing') {
       const input = titleInputRef.current
       if (!input) return
@@ -287,6 +307,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     mutationFn: ({ deletedId }: { targetNotebookId: NoteShellSearch['notebookId']; deletedId: string; nextId?: string }) =>
       deleteRegisteredSource({ data: { sourceId: deletedId } }),
     onSuccess: async (_result, { targetNotebookId, deletedId, nextId }) => {
+      if (readLastSourceSelection(targetNotebookId) === deletedId) clearLastSourceSelection(targetNotebookId)
       setSourceDrafts((drafts) => {
         const next = { ...drafts }
         delete next[deletedId]
@@ -322,6 +343,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
       params: { notebookId },
       search: { sourceId: nextSourceId },
     })
+    writeLastSourceSelection(notebookId, nextSourceId)
   }
 
   function focusListedSource(source: SourceListItem) {
