@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { citations } from '../src/db/schema'
+import { citationBodyContext } from '../src/domain/citations'
 import { parseIngestResultJson } from '../src/domain/ingest-result'
 import { MAX_SOURCE_BODY_CHARS } from '../src/domain/pdf'
 import { sourceDetailSchema, sourceListItemSchema } from '../src/domain/source-views'
@@ -14,6 +15,20 @@ import { createTestDb } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 
 const workflow = { create: async () => ({ id: 'wf' }) }
+
+describe('citation body context', () => {
+  it('shows bounded context only when the saved span still matches the excerpt', () => {
+    const body = `${'a'.repeat(100)}根拠${'b'.repeat(100)}`
+    const citation = { excerpt: '根拠', bodySpan: { start: 100, end: 102 } }
+    expect(citationBodyContext(body, citation, 10)).toEqual({
+      before: 'a'.repeat(10), match: '根拠', after: 'b'.repeat(10),
+      clippedBefore: true, clippedAfter: true,
+    })
+    expect(citationBodyContext(body, { ...citation, excerpt: '別文' })).toBeNull()
+    expect(citationBodyContext(body, { ...citation, bodySpan: { start: 100, end: 999 } })).toBeNull()
+    expect(citationBodyContext(body, { ...citation, bodySpan: null })).toBeNull()
+  })
+})
 
 const detailFixture = {
   id: 'source-1',
