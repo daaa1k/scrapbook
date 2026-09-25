@@ -78,6 +78,16 @@ describe('jobProgressView', () => {
     })
   })
 
+  it('keeps a saved body usable after a failed refetch', () => {
+    const view = jobProgressView(copy({ status: 'failed', errorCode: 'fetch_result_failed',
+      errorMessage: 'HTTP 503', hasBody: true }))
+    expect(view.label).toBe('本文を取得できませんでした')
+    expect(view.detail).toContain('保存済みの本文、要約、引用はそのまま利用できます')
+    expect(view.detail).toContain('HTTP 503')
+    expect(view.recovery).toContainEqual({ id: 'retry', label: '再取得' })
+    expect(view.tone).toBe('failure')
+  })
+
   it('points a missing API key at an admin, with no retry', () => {
     const view = jobProgressView(
       copy({

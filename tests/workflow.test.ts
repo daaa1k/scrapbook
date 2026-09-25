@@ -4,7 +4,7 @@ import { citations, cursorRuns, jobs, sources } from '../src/db/schema'
 import { MAX_SOURCE_BODY_CHARS } from '../src/domain/pdf'
 import { organizationCommandSchema } from '../src/domain/organization'
 import { MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
-import { registerUrlSource, summarizeSourceBody } from '../src/server/ingest/register'
+import { registerUrlSource, retrySourceIngest, summarizeSourceBody } from '../src/server/ingest/register'
 import { applyOrganizationCommand } from '../src/server/organization'
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import type { IngestStep } from '../src/server/ingest/workflow-run'
@@ -12,6 +12,52 @@ import { createTestDb } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 
 describe('ingest workflow', () => {
+  it('records a failed refetch without replacing the last good source result', async () => {
+    const { db } = createTestDb()
+    const registered = await registerUrlSource(db, {
+      url: 'https://example.com/refetch-failure', notebook: await seedNotebook(db),
+    }, { create: async () => ({ id: 'wf' }) })
+    const params = { mode: 'fetch' as const, sourceId: registered.sourceId,
+      url: 'https://example.com/refetch-failure' }
+    await runIngestWorkflow({ params: { ...params, jobId: registered.jobId }, db,
+      step: createImmediateStep(), cursor: createMockCursorClient(), maxPolls: 1, pollSleep: 0 })
+    const beforeSource = (await db.select().from(sources).where(eq(sources.id, registered.sourceId)))[0]
+    const beforeCitations = await db.select().from(citations).where(eq(citations.sourceId, registered.sourceId))
+
+    const retried = await retrySourceIngest(db, registered.sourceId, { create: async () => ({ id: 'wf-again' }) })
+    await runIngestWorkflow({ params: { ...params, jobId: retried.jobId }, db,
+      step: createImmediateStep(), cursor: createMockCursorClient({ result: JSON.stringify({
+        ...MOCK_INGEST_JSON, fetchStatus: 'failed', failureReason: 'HTTP 503',
+        title: '', body: '', summary: '', citations: [],
+      }) }), maxPolls: 1, pollSleep: 0 })
+
+    const afterSource = (await db.select().from(sources).where(eq(sources.id, registered.sourceId)))[0]
+    expect(afterSource).toEqual(beforeSource)
+    expect(await db.select().from(citations).where(eq(citations.sourceId, registered.sourceId)))
+      .toEqual(beforeCitations)
+    expect((await db.select().from(jobs).where(eq(jobs.id, retried.jobId)))[0])
+      .toMatchObject({ status: 'failed', errorCode: 'fetch_result_failed', errorMessage: 'HTTP 503' })
+  })
+
+  it('keeps an initial failed fetch empty and records its reason on the job', async () => {
+    const { db } = createTestDb()
+    const registered = await registerUrlSource(db, {
+      url: 'https://example.com/initial-failure', notebook: await seedNotebook(db),
+    }, { create: async () => ({ id: 'wf' }) })
+    await runIngestWorkflow({
+      params: { mode: 'fetch', sourceId: registered.sourceId, jobId: registered.jobId,
+        url: 'https://example.com/initial-failure' }, db, step: createImmediateStep(),
+      cursor: createMockCursorClient({ result: JSON.stringify({
+        ...MOCK_INGEST_JSON, fetchStatus: 'failed', failureReason: 'blocked',
+        body: '', summary: '', citations: [],
+      }) }), maxPolls: 1, pollSleep: 0,
+    })
+    expect((await db.select().from(sources).where(eq(sources.id, registered.sourceId)))[0])
+      .toMatchObject({ body: null, summary: null, fetchStatus: 'none' })
+    expect((await db.select().from(jobs).where(eq(jobs.id, registered.jobId)))[0])
+      .toMatchObject({ status: 'failed', errorCode: 'fetch_result_failed', errorMessage: 'blocked' })
+  })
+
   it.each(['fetch', 'summarize_body'] as const)('rolls back %s output and old citations when insertion fails', async (mode) => {
     const { db, sqlite } = createTestDb()
     const notebook = await seedNotebook(db)
