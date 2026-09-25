@@ -25,7 +25,6 @@ import {
   CATALOG_LOADING_LABEL,
   INVALID_SOURCE_ID_RECOVERY,
   MEMO_LOADING_LABEL,
-  NOTEBOOK_SOURCES_DRAWER_CLOSE_LABEL,
   NOTEBOOK_SOURCES_DRAWER_OPEN_LABEL,
   NOTEBOOK_SOURCE_STUDY_HINT,
   NOTEBOOK_SOURCE_STUDY_HINT_ID,
@@ -105,6 +104,9 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const [paneAnnounce, setPaneAnnounce] = useState('')
   const [pendingSource, setPendingSource] = useState<{ id: string; label: string } | null>(null)
   const [sourcesDrawerOpen, setSourcesDrawerOpen] = useState(false)
+  const drawerRef = useRef<HTMLDialogElement>(null)
+  const drawerTriggerRef = useRef<HTMLButtonElement>(null)
+  const focusStudyAfterDrawerRef = useRef(false)
   const [sourceSearch, setSourceSearch] = useState('')
   const [sourceSort, setSourceSort] = useState<SourceListSort>(SOURCE_LIST_SORT_DEFAULT)
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false)
@@ -119,14 +121,26 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   }, [drawerLayout])
 
   useEffect(() => {
-    if (!sourcesDrawerOpen) return
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return
-      setSourcesDrawerOpen(false)
+    const dialog = drawerRef.current
+    if (!dialog || !drawerLayout || !sourcesDrawerOpen) return
+    dialog.showModal()
+    dialog.querySelector<HTMLButtonElement>('[data-drawer-close]')?.focus()
+    return () => {
+      dialog.close()
+      const study = document.getElementById('notebook-study-heading')
+      const trigger = drawerTriggerRef.current
+      if (focusStudyAfterDrawerRef.current) {
+        study?.focus()
+      } else if (trigger?.isConnected && trigger.getClientRects().length > 0) {
+        trigger.focus()
+      } else if (study?.getClientRects().length) {
+        study.focus()
+      } else {
+        focusNotebookTab('study')
+      }
+      focusStudyAfterDrawerRef.current = false
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [sourcesDrawerOpen])
+  }, [drawerLayout, sourcesDrawerOpen])
 
   const shouldBlockLeave = useCallback(async (args: { current: { params: object }; next: { params: object } }) => {
     if (!isLeavingNotebook(notebookIdFromParams(args.current.params), notebookIdFromParams(args.next.params))) {
@@ -289,13 +303,14 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
       focusNotebookTab('study')
     }
     if (drawerLayout) {
+      focusStudyAfterDrawerRef.current = true
       setSourcesDrawerOpen(false)
     }
   }
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (!canHandleNoteShortcut(event, document.querySelector('dialog:modal') !== null)) return
+      if (sourcesDrawerOpen || !canHandleNoteShortcut(event, document.querySelector('dialog:modal') !== null)) return
       if (isShortcutHelpKey(event)) {
         event.preventDefault()
         setShortcutHelpOpen(true)
@@ -371,7 +386,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           ソース
         </h2>
         {drawerLayout ? (
-          <Button type="button" variant="ghost" size="sm" onClick={() => setSourcesDrawerOpen(false)}>
+          <Button type="button" variant="ghost" size="sm" data-drawer-close="" onClick={() => setSourcesDrawerOpen(false)}>
             閉じる
           </Button>
         ) : null}
@@ -578,7 +593,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         {tabsLayout ? <MobileNotebookTabs selected={mobilePane} onSelect={setMobilePane} /> : null}
         {drawerLayout ? (
           <div className="shrink-0">
-            <Button type="button" variant="secondary" size="sm" onClick={() => setSourcesDrawerOpen(true)}>
+            <Button ref={drawerTriggerRef} type="button" variant="secondary" size="sm" onClick={() => setSourcesDrawerOpen(true)}>
               {NOTEBOOK_SOURCES_DRAWER_OPEN_LABEL}
             </Button>
           </div>
@@ -586,15 +601,6 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         <p role="status" className="sr-only">
           {paneAnnounce}
         </p>
-
-        {drawerLayout && sourcesDrawerOpen ? (
-          <button
-            type="button"
-            className="fixed inset-0 z-30 bg-overlay"
-            aria-label={NOTEBOOK_SOURCES_DRAWER_CLOSE_LABEL}
-            onClick={() => setSourcesDrawerOpen(false)}
-          />
-        ) : null}
 
         <div className={paneGridClass}>
           {splitLayout || tabsLayout ? (
@@ -628,7 +634,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
               (drawerLayout || splitLayout) && 'block',
             )}
           >
-            <h2 id="notebook-study-heading" className={PANE_HEADING_CLASS}>
+            <h2 id="notebook-study-heading" tabIndex={-1} className={PANE_HEADING_CLASS}>
               要約・質問
             </h2>
             {view.status === 'ready' ? (
@@ -683,9 +689,9 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
         </div>
 
         {drawerLayout ? (
-          <aside
+          <dialog
+            ref={drawerRef}
             id={notebookPanelId('sources')}
-            role="dialog"
             aria-modal="true"
             aria-labelledby="notebook-sources-heading"
             {...notebookPanelConcealmentProps(
@@ -693,12 +699,22 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
             )}
             className={cn(
               PANE_SURFACE_SIDE,
-              'fixed inset-y-0 left-0 z-40 w-[min(20rem,92vw)] rounded-none shadow-xl',
+              'fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(20rem,92vw)] max-w-none rounded-none border-0 text-ink shadow-xl backdrop:bg-overlay',
               sourcesDrawerOpen ? 'flex flex-col' : 'hidden',
             )}
+            onCancel={(event) => {
+              event.preventDefault()
+              setSourcesDrawerOpen(false)
+            }}
+            onClick={(event) => {
+              if (event.target !== event.currentTarget) return
+              if (event.clientX > event.currentTarget.getBoundingClientRect().right) {
+                setSourcesDrawerOpen(false)
+              }
+            }}
           >
             {sourcesBody}
-          </aside>
+          </dialog>
         ) : null}
       </div>
 
