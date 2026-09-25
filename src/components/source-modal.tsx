@@ -8,7 +8,6 @@ import { Textarea } from '~/components/ui/textarea'
 import type { NotebookId, NotebookTarget } from '~/domain/organization'
 import {
   MAX_PASTE_TITLE_CHARS,
-  MAX_SOURCE_BODY_CHARS,
   SOURCE_ADD_BUSY_HINT,
   SOURCE_ADD_PDF_HINT,
   SOURCE_ADD_PDF_OK,
@@ -611,7 +610,6 @@ export function SourceModal({ notebook, open, onClose, onSourceAdded }: SourceMo
                   id="source-add-paste-body"
                   name="modal-paste-body"
                   required
-                  maxLength={MAX_SOURCE_BODY_CHARS}
                   placeholder="本文"
                   value={pasteBody}
                   onChange={(event) => {

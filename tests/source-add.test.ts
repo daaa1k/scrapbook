@@ -120,7 +120,7 @@ describe('sourceAdd field issues', () => {
     expect(sourceAddPasteBodyIssue('')).toBe('本文を入力してください。')
     expect(sourceAddPasteBodyIssue('本文')).toBe(null)
     expect(sourceAddPasteBodyIssue('あ'.repeat(200_001))).toBe(
-      '本文は200,000文字以内にしてください。',
+      '本文は200,000文字以内にしてください。超過分を削除してから送信してください。',
     )
     expect(sourceAddPasteBodyCount('あ'.repeat(200_001))).toEqual({
       current: 200_001,
