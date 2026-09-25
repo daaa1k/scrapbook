@@ -38,7 +38,10 @@ test('two pending question deletions survive a source switch and undo independen
   const turn = (question: string) => page.locator('[id^="qa-turn-"]').filter({ hasText: question })
   await expect(turn('取り消す質問')).toBeVisible()
   for (const question of ['取り消す質問', '確定する質問']) {
-    await turn(question).getByRole('button', { name: 'この質問と回答を削除' }).click()
+    await expect(async () => {
+      await turn(question).getByRole('button', { name: 'この質問と回答を削除' }).click()
+      await expect(page.getByRole('alertdialog')).toBeVisible({ timeout: 1_000 })
+    }).toPass({ timeout: 10_000 })
     await page.getByRole('alertdialog').getByRole('button', { name: '削除' }).click()
   }
   const pending = page.getByRole('status').filter({ hasText: '削除予約中' })
