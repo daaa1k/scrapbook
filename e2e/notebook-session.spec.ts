@@ -2,9 +2,12 @@ import { expect, test, type Page } from '@playwright/test'
 
 async function createNotebook(page: Page, title: string): Promise<string> {
   await page.goto('/')
+  await page.waitForLoadState('networkidle')
   const dialog = page.locator('dialog[open]')
-  await page.getByRole('button', { name: '新しいノート' }).click()
-  await expect(dialog).toBeVisible()
+  await expect(async () => {
+    await page.getByRole('button', { name: '新しいノート' }).click()
+    await expect(dialog).toBeVisible({ timeout: 1_000 })
+  }).toPass({ timeout: 20_000 })
   await dialog.getByRole('tab', { name: '貼り付け' }).click()
   await dialog.getByLabel('タイトル', { exact: true }).fill(title)
   await dialog.getByLabel('本文', { exact: true }).fill(`${title} の本文`)
