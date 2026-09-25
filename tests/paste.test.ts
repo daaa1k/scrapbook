@@ -94,6 +94,33 @@ describe('paste source body', () => {
     ).rejects.toThrow('job_in_progress')
   })
 
+  it('refuses an active job inserted after the idle read and before the body update', async () => {
+    const { db, sqlite } = createTestDb()
+    const original = await pasteSourceBody(db, {
+      title: '元のタイトル', body: '元の本文', notebook: await seedNotebook(db),
+    })
+    const racingDb = new Proxy(db, {
+      get(target, property) {
+        if (property === 'update') return (...args: unknown[]) => {
+          if (args[0] === sources) {
+            sqlite.prepare(`INSERT INTO jobs (id, source_id, kind, status, created_at, updated_at)
+              VALUES ('racing-job', ?, 'summarize_body', 'queued', 1, 1)`).run(original.sourceId)
+          }
+          return Reflect.apply(target.update, target, args)
+        }
+        const value = Reflect.get(target, property, target)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+
+    await expect(pasteSourceBody(racingDb, {
+      sourceId: original.sourceId, title: '新しいタイトル', body: '新しい本文',
+    })).rejects.toThrow('job_in_progress')
+    const row = (await db.select().from(sources).where(eq(sources.id, original.sourceId)))[0]
+    expect(row?.title).toBe('元のタイトル')
+    expect(row?.body).toBe('元の本文')
+  })
+
   it('overwrites title and body when the same URL is pasted into the same notebook', async () => {
     const { db } = createTestDb()
     const originId = await seedNotebook(db, '元')
