@@ -43,6 +43,7 @@ import {
   sourceAddPasteTitleIssue,
 } from '~/domain/source-add'
 import { STUDY_LOADING_LABEL } from '~/domain/note-shell'
+import { sourceBodyDateLabel, sourceDateTime } from '~/domain/source-dates'
 import { isModEnter } from '~/domain/shortcuts'
 import { copyText } from '~/lib/clipboard'
 import { sourceKeys } from '~/lib/query-keys'
@@ -305,6 +306,8 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
     Boolean(bodyForCursor && bodyForCursor.length > MAX_CURSOR_BODY_CHARS),
   )
   const title = source.title ?? source.url ?? source.id
+  const publishedDate = sourceDateTime(source.publishedAt)
+  const bodyDate = sourceDateTime(bodyForCursor ? source.fetchedAt : null)
   const showPasteForm = pasteRequested || (!jobInput.hasBody && !jobPending)
   const pasteCount = sourceAddPasteBodyCount(pasteBody)
   const studyBusy =
@@ -377,6 +380,12 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
           )}
         </p>
         <p className="text-sm text-muted">{studyScopeLabel(title)}</p>
+        <dl className="grid gap-x-3 gap-y-1 text-meta text-muted sm:grid-cols-[max-content_1fr]">
+          <dt>公開日</dt>
+          <dd>{publishedDate ? <time dateTime={publishedDate.dateTime}>{publishedDate.label}</time> : '不明'}</dd>
+          <dt>{sourceBodyDateLabel(source.acquiredVia)}</dt>
+          <dd>{bodyDate ? <time dateTime={bodyDate.dateTime}>{bodyDate.label}</time> : '不明'}</dd>
+        </dl>
         {progress.tone === 'pending' ? <ProgressLine view={progress} /> : null}
         <p id="investigate-job-complete" className="sr-only" role="status" aria-live="polite" aria-atomic="true">
           {completionAnnouncement}

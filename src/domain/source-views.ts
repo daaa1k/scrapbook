@@ -36,6 +36,8 @@ export const sourceDetailSchema = z.object({
   author: z.string().nullable(),
   fetchStatus: z.string(),
   acquiredVia: acquiredViaSchema,
+  publishedAt: z.number().nullable(),
+  fetchedAt: z.number().nullable(),
   summary: z.string().nullable(),
   body: z.string().nullable(),
   job: sourceJobSchema.nullable(),
