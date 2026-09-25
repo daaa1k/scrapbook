@@ -4,12 +4,42 @@ import { jobs, sources } from '../src/db/schema'
 import { likeContainsPattern } from '../src/domain/search'
 import { EMPTY_SOURCE_LIST_FILTER, organizationCommandSchema, tagNameSchema } from '../src/domain/organization'
 import { pasteSourceBody } from '../src/server/ingest/register'
+import { registerUrlSource, summarizeSourceBody } from '../src/server/ingest/register'
 import { applyOrganizationCommand, readOrganizationCatalog } from '../src/server/organization'
-import { listSourceViews } from '../src/server/source-views'
+import { listSourceViews, readSourceDetail } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 
 describe('source views', () => {
+  it('returns source dates without substituting creation or update times', async () => {
+    const { db } = createTestDb()
+    const notebook = await seedNotebook(db)
+    const url = await registerUrlSource(db, { url: 'https://example.com/dates', notebook }, {
+      create: async () => ({ id: 'wf' }),
+    })
+    const beforeFetch = await readSourceDetail(db, url.sourceId)
+    expect(beforeFetch.publishedAt).toBeNull()
+    expect(beforeFetch.fetchedAt).toBeNull()
+
+    const publishedAt = Date.parse('2024-12-20T00:00:00Z')
+    const fetchedAt = Date.parse('2025-01-01T00:30:00Z')
+    await db.update(sources).set({ publishedAt, fetchedAt, body: '取得本文' }).where(eq(sources.id, url.sourceId))
+    const fetched = await readSourceDetail(db, url.sourceId)
+    expect([fetched.publishedAt, fetched.fetchedAt, fetched.acquiredVia]).toEqual([publishedAt, fetchedAt, 'fetch'])
+
+    await applyOrganizationCommand(db, organizationCommandSchema.parse({
+      type: 'set-memo', sourceId: url.sourceId, memo: '追記',
+    }))
+    expect((await readSourceDetail(db, url.sourceId)).fetchedAt).toBe(fetchedAt)
+
+    const pasted = await pasteSourceBody(db, { title: '貼付本文', body: '本文', notebook })
+    const pastedDetail = await readSourceDetail(db, pasted.sourceId)
+    expect(pastedDetail.publishedAt).toBeNull()
+    expect(pastedDetail.fetchedAt).toEqual(expect.any(Number))
+    expect(pastedDetail.acquiredVia).toBe('paste')
+    await summarizeSourceBody(db, pasted.sourceId, { create: async () => ({ id: 'wf' }) })
+    expect((await readSourceDetail(db, pasted.sourceId)).fetchedAt).toBe(pastedDetail.fetchedAt)
+  })
   it('escapes LIKE wildcards in the user query', () => {
     expect(likeContainsPattern('  100% 保証  ')).toBe('%100\\% 保証%')
     expect(likeContainsPattern('a_b')).toBe('%a\\_b%')

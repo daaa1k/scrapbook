@@ -23,6 +23,8 @@ const detailFixture = {
   author: null,
   fetchStatus: 'full',
   acquiredVia: 'fetch' as const,
+  publishedAt: null,
+  fetchedAt: null,
   summary: null,
   body: null,
   job: null,
