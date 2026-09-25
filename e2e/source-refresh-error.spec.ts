@@ -1,11 +1,11 @@
 import { expect, test, FIRST_SOURCE, sourceButton } from './fixtures/notebook'
 
-function isSourceDetailRequest(url: string): boolean {
+function isSourceJobRequest(url: string): boolean {
   const encoded = new URL(url).pathname.split('/_serverFn/')[1]
-  return encoded ? Buffer.from(encoded, 'base64url').toString('utf8').includes('getSource_createServerFn_handler') : false
+  return encoded ? Buffer.from(encoded, 'base64url').toString('utf8').includes('getSourceJob_createServerFn_handler') : false
 }
 
-test('keeps loaded content and a question draft through a failed background refresh', async ({ page, notebook }) => {
+test('keeps loaded content and a question draft through a failed job status poll', async ({ page, notebook }) => {
   test.setTimeout(90_000)
   await sourceButton(page, FIRST_SOURCE).click()
   await expect(page).toHaveURL(new RegExp(`sourceId=${notebook.firstSourceId}`))
@@ -15,7 +15,7 @@ test('keeps loaded content and a question draft through a failed background refr
   await expect(question).toHaveValue('')
   await question.fill('まだ送らない質問')
   await page.route('**/_serverFn/**', async (route) => {
-    if (isSourceDetailRequest(route.request().url())) {
+    if (isSourceJobRequest(route.request().url())) {
       return route.fulfill({ status: 503, body: 'temporary failure' })
     }
     await route.continue()

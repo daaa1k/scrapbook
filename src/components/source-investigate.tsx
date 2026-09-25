@@ -53,6 +53,7 @@ import {
   deleteSourceQaAnswer,
   getSource,
   listQaHistory,
+  getSourceJob,
   pasteSource,
   retrySource,
   summarizeSource,
@@ -108,6 +109,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   const [qaSearch, setQaSearch] = useState('')
   const [qaCollapsed, setQaCollapsed] = useState(true)
   const previousJobStatus = useRef<JobStatus | null | undefined>(undefined)
+  const lastDetailRefresh = useRef<string | null>(null)
   const pasteTitleRef = useRef(pasteTitle)
   const pasteBodyRef = useRef(pasteBody)
   pasteTitleRef.current = pasteTitle
@@ -118,10 +120,15 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   const query = useQuery({
     queryKey: sourceKeys.detail(sourceId),
     queryFn: () => getSource({ data: { sourceId } }),
+  })
+
+  const jobQuery = useQuery({
+    queryKey: sourceKeys.job(sourceId),
+    queryFn: () => getSourceJob({ data: { sourceId } }),
+    enabled: Boolean(query.data),
     refetchInterval: (current) => {
       const status = current.state.data?.job?.status
-      if (!status || isTerminalJobStatus(status)) return false
-      return 2000
+      return status && !isTerminalJobStatus(status) ? 2000 : false
     },
   })
 
@@ -133,8 +140,23 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
     initialPageParam: null as { createdAt: number; id: string } | null,
     getNextPageParam: (page) => page.qaNextCursor,
   })
-  const jobInput: JobCopyInput | null = source ? jobCopyInputFromSource(source) : null
+  const liveJob = jobQuery.dataUpdatedAt > query.dataUpdatedAt ? jobQuery.data?.job : source?.job
+  const jobInput: JobCopyInput | null = source
+    ? jobCopyInputFromSource({ ...source, job: liveJob ?? null })
+    : null
   const progress = jobInput ? jobProgressView(jobInput) : null
+
+  useEffect(() => {
+    if (!source || !jobQuery.data || jobQuery.dataUpdatedAt <= query.dataUpdatedAt) return
+    const current = jobQuery.data.job
+    if (source.job?.id === current?.id && source.job?.status === current?.status) return
+    if (source.job?.id === current?.id && current && !isTerminalJobStatus(current.status)) return
+    const snapshot = `${sourceId}:${current?.id ?? 'none'}:${current?.status ?? 'none'}`
+    if (lastDetailRefresh.current === snapshot) return
+    lastDetailRefresh.current = snapshot
+    void queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) })
+    void queryClient.invalidateQueries({ queryKey: ['sources', 'qa', sourceId] })
+  }, [source, sourceId, jobQuery.data, jobQuery.dataUpdatedAt, query.dataUpdatedAt, queryClient])
 
   useEffect(() => {
     if (source?.title?.trim()) {
@@ -144,8 +166,8 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   }, [source?.title])
 
   useEffect(() => {
-    const nextStatus = source?.job?.status ?? null
-    const nextKind = source?.job?.kind ?? null
+    const nextStatus = liveJob?.status ?? null
+    const nextKind = liveJob?.kind ?? null
     if (previousJobStatus.current === undefined) {
       previousJobStatus.current = nextStatus
       return
@@ -156,7 +178,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
     })
     if (text) setCompletionAnnouncement(text)
     previousJobStatus.current = nextStatus
-  }, [source?.job?.status, source?.job?.kind])
+  }, [liveJob?.status, liveJob?.kind])
 
   useEffect(() => {
     function keepAskActionsVisible() {
@@ -174,10 +196,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   }, [])
 
   const invalidateSource = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
-      queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
-    ])
+    await queryClient.invalidateQueries({ queryKey: sourceKeys.all })
   }
 
   const summarize = useMutation({
@@ -269,7 +288,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
     return <LoadingSkeleton label={STUDY_LOADING_LABEL} lines={4} />
   }
 
-  const jobKind = source.job?.kind ?? null
+  const jobKind = liveJob?.kind ?? null
   const jobPending = progress.pending
   const bodyForCursor = storedBodyText(source.body)
   const budget = cursorBodyBudgetCopy(
@@ -350,10 +369,13 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
 
   return (
     <div className="flex min-h-full flex-col gap-6" aria-busy={studyBusy || undefined}>
-      {query.isError ? (
+      {query.isError || jobQuery.isError ? (
         <div className="space-y-2 rounded-md border border-border bg-surface-muted p-inset" role="status">
           <p>最新の状態を取得できませんでした。表示中の内容は古い可能性があります。</p>
-          <Button type="button" variant="secondary" size="sm" onClick={() => void query.refetch()}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => {
+            void query.refetch()
+            void jobQuery.refetch()
+          }}>
             表示を更新
           </Button>
         </div>

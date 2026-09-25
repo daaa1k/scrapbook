@@ -9,7 +9,7 @@ import { pasteSourceInputSchema, registerUrlInputSchema, retrySourceInputSchema 
 import { authMiddleware } from '~/server/auth/middleware'
 import { pasteSourceBody, registerUrlSource, retrySourceIngest, askSourceQuestion, deleteQaAnswer, deleteSource, summarizeSourceBody } from '~/server/ingest/register'
 import { extractPdfTextWithUnpdf, registerPdfSource, workerAssets } from '~/server/ingest/pdf'
-import { listSourcePage, listQaPage, readSourceDetail } from '~/server/source-views'
+import { listSourcePage, listQaPage, readSourceDetail, readSourceJob } from '~/server/source-views'
 
 const sourceIdInput = z.object({
   sourceId: z.string().min(1),
@@ -34,6 +34,14 @@ export const getSource = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     const db = createDb(env.DB)
     return readSourceDetail(db, data.sourceId)
+  })
+
+export const getSourceJob = createServerFn({ method: 'GET' })
+  .middleware([authMiddleware])
+  .validator(sourceIdInput)
+  .handler(async ({ data }) => {
+    const db = createDb(env.DB)
+    return readSourceJob(db, data.sourceId)
   })
 
 export const registerSource = createServerFn({ method: 'POST' })

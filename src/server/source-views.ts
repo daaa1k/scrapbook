@@ -24,12 +24,14 @@ import type { sourcePageInputSchema } from '~/domain/organization'
 import {
   PAGE_SIZE,
   sourceDetailSchema,
+  sourceJobStatusSchema,
   sourceListItemSchema,
   type QaPageInput,
   type QaPage,
   type SourceDetail,
   type SourceListItem,
   type SourceCursor,
+  type SourceJobStatus,
 } from '~/domain/source-views'
 import { latestJobForSource } from '~/server/ingest/register'
 
@@ -193,6 +195,36 @@ export async function listSourcePage(db: AppDb, input: SourcePageInput): Promise
 /** Compatibility helper for callers that need one bounded first page. */
 export async function listSourceViews(db: AppDb, filter: SourceListFilter): Promise<readonly SourceListItem[]> {
   return (await listSourcePage(db, { ...filter, sort: 'created', cursor: null })).items
+}
+
+export async function readSourceJob(db: AppDb, sourceId: string): Promise<SourceJobStatus> {
+  const source = await db.select({ id: sources.id }).from(sources).where(eq(sources.id, sourceId)).limit(1)
+  if (!source[0]) throw new Error('source_not_found')
+  const latest = await db
+    .select({
+      id: jobs.id,
+      status: jobs.status,
+      kind: jobs.kind,
+      errorCode: jobs.errorCode,
+      errorMessage: jobs.errorMessage,
+    })
+    .from(jobs)
+    .where(eq(jobs.sourceId, sourceId))
+    .orderBy(desc(jobs.createdAt), desc(sql`${jobs}."rowid"`))
+    .limit(1)
+  const job = latest[0]
+  return sourceJobStatusSchema.parse({
+    sourceId,
+    job: job
+      ? {
+          id: job.id,
+          status: jobStatusSchema.parse(job.status),
+          kind: jobKindSchema.parse(job.kind),
+          errorCode: job.errorCode,
+          errorMessage: job.errorMessage,
+        }
+      : null,
+  })
 }
 
 export async function readSourceDetail(db: AppDb, sourceId: string): Promise<SourceDetail> {

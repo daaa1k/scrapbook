@@ -6,11 +6,44 @@ import { EMPTY_SOURCE_LIST_FILTER, organizationCommandSchema, tagNameSchema } fr
 import { pasteSourceBody } from '../src/server/ingest/register'
 import { registerUrlSource, summarizeSourceBody } from '../src/server/ingest/register'
 import { applyOrganizationCommand, readOrganizationCatalog } from '../src/server/organization'
-import { listSourceViews, readSourceDetail } from '../src/server/source-views'
+import { listSourceViews, readSourceDetail, readSourceJob } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 
 describe('source views', () => {
+  it('reads only the latest small job status without source content or history', async () => {
+    const { db, sqlite } = createTestDb()
+    const notebook = await seedNotebook(db)
+    const registered = await pasteSourceBody(db, {
+      title: 'status', body: '長い本文'.repeat(20_000), notebook,
+    })
+    await db.insert(jobs).values([
+      { id: 'older', sourceId: registered.sourceId, kind: 'fetch', status: 'failed',
+        errorCode: 'old', createdAt: 1, updatedAt: 1 },
+      { id: 'latest', sourceId: registered.sourceId, kind: 'ask_source', status: 'queued',
+        createdAt: 2, updatedAt: 2 },
+    ])
+    const prepare = vi.spyOn(sqlite, 'prepare')
+    const status = await readSourceJob(db, registered.sourceId)
+    const statements = prepare.mock.calls.map(([statement]) => statement)
+    prepare.mockRestore()
+
+    expect(status).toEqual({
+      sourceId: registered.sourceId,
+      job: { id: 'latest', kind: 'ask_source', status: 'queued', errorCode: null, errorMessage: null },
+    })
+    expect(JSON.stringify(status)).not.toContain('長い本文')
+    expect(statements).toHaveLength(2)
+    expect(statements.every((statement) => !statement.includes('"body"') && !statement.includes('qa_answers'))).toBe(true)
+
+    await db.update(jobs).set({ status: 'failed', errorCode: 'timeout', errorMessage: '一時的な失敗' })
+      .where(eq(jobs.id, 'latest'))
+    expect((await readSourceJob(db, registered.sourceId)).job).toMatchObject({
+      id: 'latest', status: 'failed', errorCode: 'timeout', errorMessage: '一時的な失敗',
+    })
+    await expect(readSourceJob(db, 'missing')).rejects.toThrow('source_not_found')
+  })
+
   it('returns source dates without substituting creation or update times', async () => {
     const { db } = createTestDb()
     const notebook = await seedNotebook(db)

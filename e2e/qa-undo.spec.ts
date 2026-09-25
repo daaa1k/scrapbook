@@ -50,7 +50,10 @@ test('two pending question deletions survive a source switch and undo independen
   await expect(pending).toHaveCount(1)
   await sourceButton(page, SECOND_SOURCE).click()
   await expect(page).toHaveURL(new RegExp(`sourceId=${notebook.secondSourceId}`))
-  await sourceButton(page, FIRST_SOURCE).click()
+  await expect(async () => {
+    await sourceButton(page, FIRST_SOURCE).click()
+    await expect(page).toHaveURL(new RegExp(`sourceId=${notebook.firstSourceId}`), { timeout: 1_000 })
+  }).toPass({ timeout: 10_000 })
   await expect(pending).toHaveCount(1)
   await expect(turn('取り消す質問')).toBeVisible()
   await expect(pending).toHaveCount(0, { timeout: 15_000 })
