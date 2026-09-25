@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   citations,
   cursorRuns,
@@ -22,12 +22,58 @@ import { applyOrganizationCommand } from '../src/server/organization'
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
 import { listSourceViews } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'
+import { deleteGraphSnapshot, seedDeleteGraph } from './helpers/delete'
 import { seedNotebook } from './helpers/notebook'
 import { createMemoryAssets } from './helpers/r2'
 
 const TINY_PDF = new TextEncoder().encode('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n')
 
 describe('delete source', () => {
+  for (const table of ['qa_answers', 'citations', 'cursor_runs', 'jobs', 'sources']) {
+    it(`rolls back every row when DELETE ${table} fails`, async () => {
+      const { db, sqlite } = createTestDb()
+      const { sourceId } = await seedDeleteGraph(db)
+      const before = await deleteGraphSnapshot(db)
+      sqlite.exec(`CREATE TRIGGER reject_delete BEFORE DELETE ON ${table}
+        BEGIN SELECT RAISE(ABORT, 'delete_failed'); END;`)
+
+      await expect(deleteSource(db, sourceId, undefined)).rejects.toThrow('delete_failed')
+      expect(await deleteGraphSnapshot(db)).toEqual(before)
+      expect(sqlite.pragma('foreign_key_check')).toEqual([])
+    })
+  }
+
+  it('does not clean up R2 when the D1 delete fails', async () => {
+    const { db, sqlite } = createTestDb()
+    const { sourceId } = await seedDeleteGraph(db)
+    const assets = createMemoryAssets()
+    const key = pdfOriginalKey(sourceId)
+    await assets.put(key, new Uint8Array([1]) as never)
+    await db.update(sources).set({ r2Key: key }).where(eq(sources.id, sourceId))
+    sqlite.exec(`CREATE TRIGGER reject_source BEFORE DELETE ON sources
+      BEGIN SELECT RAISE(ABORT, 'delete_failed'); END;`)
+
+    await expect(deleteSource(db, sourceId, assets)).rejects.toThrow('delete_failed')
+    expect(await assets.get(key)).toEqual(new Uint8Array([1]))
+  })
+
+  it('keeps an enqueued job and all source rows when it appears after the idle check', async () => {
+    const { db, sqlite } = createTestDb()
+    const { sourceId } = await seedDeleteGraph(db)
+    const before = await deleteGraphSnapshot(db)
+    const transaction = db.transaction.bind(db)
+    vi.spyOn(db, 'transaction').mockImplementation(((callback) => {
+      sqlite.prepare(`INSERT INTO jobs (id, source_id, kind, status, created_at, updated_at)
+        VALUES (?, ?, 'fetch', 'queued', 2, 2)`).run('new-job', sourceId)
+      return transaction(callback)
+    }) as typeof db.transaction)
+
+    await expect(deleteSource(db, sourceId, undefined)).rejects.toThrow('source_in_progress')
+    const after = await deleteGraphSnapshot(db)
+    expect(after).toEqual({ ...before, jobs: [...before.jobs, expect.objectContaining({ id: 'new-job', status: 'queued' })] })
+    expect(sqlite.pragma('foreign_key_check')).toEqual([])
+  })
+
   it('removes a terminal source with Q&A, citations, tags, jobs, and R2 object', async () => {
     const { db } = createTestDb()
     const assets = createMemoryAssets()
