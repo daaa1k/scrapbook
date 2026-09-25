@@ -16,6 +16,39 @@ import { createTestDb } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 
 describe('ask source from stored body', () => {
+  it('rolls back a new answer and preserves old QA citations when insertion fails', async () => {
+    const { db, sqlite } = createTestDb()
+    const pasted = await pasteSourceBody(db, {
+      title: 'source', body: 'body', notebook: await seedNotebook(db),
+    })
+    await db.update(sources).set({ summary: 'keep summary' }).where(eq(sources.id, pasted.sourceId))
+    await db.insert(citations).values({ id: 'source-cite', sourceId: pasted.sourceId, locator: '-', excerpt: 'source', createdAt: 1 })
+    let qaAnswerId = ''
+    const started = await askSourceQuestion(db, pasted.sourceId, 'question', {
+      create: async ({ params }) => {
+        qaAnswerId = (params as { qaAnswerId: string }).qaAnswerId
+        return { id: 'wf' }
+      },
+    })
+    await db.update(qaAnswers).set({ answer: 'old answer' }).where(eq(qaAnswers.id, qaAnswerId))
+    await db.insert(qaCitations).values({ id: 'old-qa', qaAnswerId, locator: '-', excerpt: 'old', createdAt: 1 })
+    sqlite.exec(`CREATE TRIGGER reject_qa_citation BEFORE INSERT ON qa_citations
+      WHEN NEW.excerpt = 'new' BEGIN SELECT RAISE(ABORT, 'qa_citation_insert_failed'); END;`)
+
+    await runIngestWorkflow({
+      params: { mode: 'ask_source', sourceId: pasted.sourceId, jobId: started.jobId, qaAnswerId },
+      db, step: createImmediateStep(),
+      cursor: createMockCursorClient({ result: JSON.stringify({ answer: 'new answer', citations: [{ excerpt: 'new' }, { excerpt: 'second' }] }) }),
+      maxPolls: 1, pollSleep: 0,
+    })
+
+    expect((await db.select().from(qaAnswers).where(eq(qaAnswers.id, qaAnswerId)))[0]?.answer).toBe('old answer')
+    expect(await db.select().from(qaCitations).where(eq(qaCitations.qaAnswerId, qaAnswerId)))
+      .toEqual([expect.objectContaining({ id: 'old-qa', excerpt: 'old' })])
+    expect((await db.select().from(sources).where(eq(sources.id, pasted.sourceId)))[0]?.summary).toBe('keep summary')
+    expect((await db.select().from(citations).where(eq(citations.sourceId, pasted.sourceId)))[0]?.id).toBe('source-cite')
+    expect((await db.select().from(jobs).where(eq(jobs.id, started.jobId)))[0]?.status).toBe('failed')
+  })
   it('persists answer and qa citations without touching source citations', async () => {
     const { db } = createTestDb()
     const notebook = await seedNotebook(db)
