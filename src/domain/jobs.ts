@@ -54,6 +54,7 @@ export function canStartCursorJob(status: JobStatus | null): boolean {
 }
 
 const FETCH_ERROR_LABEL: Record<string, string> = {
+  fetch_result_failed: 'ページの再取得に失敗しました',
   workflow_start_failed: '取得ワークフローを開始できませんでした',
   cursor_run_failed: 'Cursor による取得が失敗しました',
   timeout: '取得が時間切れになりました',

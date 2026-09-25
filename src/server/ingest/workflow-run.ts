@@ -57,6 +57,12 @@ export type IngestRunOptions = {
   now?: () => number
 }
 
+class FetchResultFailed extends Error {
+  constructor(reason: string | null) {
+    super(sanitizeErrorMessage(reason?.trim() || '取得結果が失敗を示しました'))
+  }
+}
+
 async function loadJob(db: AppDb, jobId: string) {
   const rows = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
   const job = rows[0]
@@ -231,6 +237,7 @@ async function persistIngestOutput(
   switch (params.mode) {
     case 'fetch': {
       const parsed = parseIngestResultJson(raw)
+      if (parsed.fetchStatus === 'failed') throw new FetchResultFailed(parsed.failureReason)
       const stored = persistablePdfBody(parsed.body)
       const hash = stored.body ? await sha256Hex(stored.body) : null
       let publishedAt: number | null = null
@@ -238,12 +245,7 @@ async function persistIngestOutput(
         const ms = Date.parse(parsed.publishedAt)
         publishedAt = Number.isNaN(ms) ? null : ms
       }
-      const fetchStatus =
-        parsed.fetchStatus === 'failed'
-          ? 'failed'
-          : stored.fetchStatus === 'partial'
-            ? 'partial'
-            : parsed.fetchStatus
+      const fetchStatus = stored.fetchStatus === 'partial' ? 'partial' : parsed.fetchStatus
       const rows = sourceCitationRows(
         params.sourceId,
         rebaseCitationsForStoredBody(parsed.citations, parsed.body, stored.body, stored.leadingTrimChars),
@@ -285,6 +287,7 @@ async function persistIngestOutput(
 }
 
 function failCodeForError(error: unknown): string {
+  if (error instanceof FetchResultFailed) return 'fetch_result_failed'
   const message = error instanceof Error ? error.message : 'ingest_failed'
   if (
     message === 'source_has_no_body' ||

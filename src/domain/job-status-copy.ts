@@ -264,7 +264,9 @@ function failedView(input: JobCopyInput, kind: JobKind): JobStatusView {
     if (family === 'fetch' && input.hasUrl) recovery.push(RETRY_FETCH)
     return {
       label,
-      detail: joinCopy(cause, '要約と質問には本文が必要です。ページからコピーして貼り付けてください。'),
+      detail: joinCopy(cause, input.hasBody
+        ? '保存済みの本文、要約、引用はそのまま利用できます。再取得を試せます。'
+        : '要約と質問には本文が必要です。ページからコピーして貼り付けてください。'),
       recovery,
       pending: false,
       tone: 'failure',
