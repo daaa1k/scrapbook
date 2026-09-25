@@ -57,5 +57,5 @@ export const Route = createFileRoute('/notebooks/$notebookId')({
 function NotebookPage() {
   const { notebookId } = Route.useParams()
   const { sourceId } = Route.useSearch()
-  return <NoteShell notebookId={notebookId} sourceId={sourceId} />
+  return <NoteShell key={notebookId} notebookId={notebookId} sourceId={sourceId} />
 }
