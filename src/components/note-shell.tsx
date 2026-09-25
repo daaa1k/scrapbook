@@ -20,7 +20,7 @@ import { LoadingSkeleton, PendingMark } from '~/components/ui/loading-skeleton'
 import { ShortcutHelpDialog } from '~/components/ui/shortcut-help-dialog'
 import { asyncResourceView } from '~/domain/async-view'
 import { sourceDeleteConfirm } from '~/domain/destructive-confirm'
-import { isLeavingNotebook, type MemoSessionHandle } from '~/domain/memo-save'
+import { isLeavingMemoSource, type MemoSessionHandle } from '~/domain/memo-save'
 import {
   CATALOG_LOADING_LABEL,
   INVALID_SOURCE_ID_RECOVERY,
@@ -85,6 +85,11 @@ function notebookIdFromParams(params: object): string | undefined {
   if (!('notebookId' in params)) return undefined
   const id = params.notebookId
   return typeof id === 'string' ? id : undefined
+}
+
+function sourceIdFromSearch(search: object): string | undefined {
+  if (!('sourceId' in search)) return undefined
+  return typeof search.sourceId === 'string' ? search.sourceId : undefined
 }
 
 export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
@@ -154,8 +159,11 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
     }
   }, [drawerLayout, sourcesDrawerOpen])
 
-  const shouldBlockLeave = useCallback(async (args: { current: { params: object }; next: { params: object } }) => {
-    if (!isLeavingNotebook(notebookIdFromParams(args.current.params), notebookIdFromParams(args.next.params))) {
+  const shouldBlockLeave = useCallback(async (args: { current: { params: object; search: object }; next: { params: object; search: object } }) => {
+    if (!isLeavingMemoSource(
+      { notebookId: notebookIdFromParams(args.current.params), sourceId: sourceIdFromSearch(args.current.search) },
+      { notebookId: notebookIdFromParams(args.next.params), sourceId: sourceIdFromSearch(args.next.search) },
+    )) {
       return false
     }
     const session = memoSessionRef.current

@@ -3,6 +3,7 @@ import {
   applyServerMemo,
   discardedMemoSession,
   isLeavingNotebook,
+  isLeavingMemoSource,
   memoNeedsLeaveGuard,
   memoStateAfterSave,
   shouldSaveMemo,
@@ -159,5 +160,22 @@ describe('isLeavingNotebook', () => {
     expect(isLeavingNotebook('nb-1', undefined)).toBe(true)
     expect(isLeavingNotebook('nb-1', 'nb-2')).toBe(true)
     expect(isLeavingNotebook(undefined, 'nb-1')).toBe(true)
+  })
+})
+
+describe('isLeavingMemoSource', () => {
+  it('guards source history changes within a notebook', () => {
+    expect(isLeavingMemoSource(
+      { notebookId: 'notebook', sourceId: 'a' },
+      { notebookId: 'notebook', sourceId: 'b' },
+    )).toBe(true)
+    expect(isLeavingMemoSource(
+      { notebookId: 'notebook', sourceId: 'a' },
+      { notebookId: 'notebook', sourceId: 'a' },
+    )).toBe(false)
+    expect(isLeavingMemoSource(
+      { notebookId: 'notebook', sourceId: 'a' },
+      { notebookId: 'other', sourceId: 'a' },
+    )).toBe(true)
   })
 })
