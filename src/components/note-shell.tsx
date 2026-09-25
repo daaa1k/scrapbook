@@ -54,6 +54,7 @@ import {
   type SourceListKind,
 } from '~/domain/note-shell'
 import { sourceListFilterFromSourcesPageSearch } from '~/domain/organization'
+import { EMPTY_SOURCE_INPUT_DRAFT, type SourceInputDraft } from '~/domain/source-input-drafts'
 import {
   SOURCE_LIST_SORT_DEFAULT,
   SOURCE_LIST_SORT_LABELS,
@@ -90,6 +91,10 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [modalOpen, setModalOpen] = useState(false)
+  const [sourceDrafts, setSourceDrafts] = useState<Record<string, SourceInputDraft>>({})
+  const updateSourceDraft = useCallback((id: string, update: (draft: SourceInputDraft) => SourceInputDraft) => {
+    setSourceDrafts((drafts) => ({ ...drafts, [id]: update(drafts[id] ?? EMPTY_SOURCE_INPUT_DRAFT) }))
+  }, [])
   const [titleEditor, setTitleEditor] = useState<NotebookTitleEditor>({ status: 'viewing' })
   const [renameError, setRenameError] = useState<string | null>(null)
   const [paneError, setPaneError] = useState<string | null>(null)
@@ -273,7 +278,12 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
   const removeSource = useMutation({
     mutationFn: ({ deletedId }: { targetNotebookId: NoteShellSearch['notebookId']; deletedId: string; nextId?: string }) =>
       deleteRegisteredSource({ data: { sourceId: deletedId } }),
-    onSuccess: async (_result, { targetNotebookId, nextId }) => {
+    onSuccess: async (_result, { targetNotebookId, deletedId, nextId }) => {
+      setSourceDrafts((drafts) => {
+        const next = { ...drafts }
+        delete next[deletedId]
+        return next
+      })
       if (activeSessionRef.current) setPaneError(null)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
@@ -650,7 +660,12 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
               要約・質問
             </h2>
             {view.status === 'ready' ? (
-              <SourceInvestigate key={view.focusSourceId} sourceId={view.focusSourceId} />
+              <SourceInvestigate
+                key={view.focusSourceId}
+                sourceId={view.focusSourceId}
+                draft={sourceDrafts[view.focusSourceId] ?? EMPTY_SOURCE_INPUT_DRAFT}
+                updateDraft={updateSourceDraft}
+              />
             ) : view.status === 'sources-loading' ? (
               <LoadingSkeleton label={STUDY_LOADING_LABEL} lines={4} />
             ) : view.status === 'sources-error' ? (
