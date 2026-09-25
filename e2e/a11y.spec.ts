@@ -68,6 +68,25 @@ test.describe('axe critical/serious = 0', () => {
     await assertNoCriticalOrSerious(page, 'source-add-dialog')
   })
 
+  test('tablet source drawer', async ({ page }) => {
+    await page.goto('/')
+    const addDialog = page.locator('dialog[open]')
+    await expect(async () => {
+      await page.getByRole('button', { name: '新しいノート' }).click()
+      await expect(addDialog).toBeVisible({ timeout: 1_000 })
+    }).toPass({ timeout: 20_000 })
+    await addDialog.getByRole('tab', { name: '貼り付け' }).click()
+    await addDialog.getByLabel('タイトル', { exact: true }).fill(`a11y drawer ${Date.now()}`)
+    await addDialog.getByLabel('本文', { exact: true }).fill('drawer のアクセシビリティ試験用本文です。')
+    await addDialog.getByRole('button', { name: '本文を保存' }).click()
+    await expect(addDialog).not.toBeVisible()
+    await page.setViewportSize({ width: 800, height: 800 })
+    await page.getByRole('button', { name: 'ソース一覧' }).click()
+    const drawer = page.getByRole('dialog', { name: 'ソース' })
+    await expect(drawer).toBeVisible()
+    await assertNoCriticalOrSerious(page, 'tablet-source-drawer')
+  })
+
   for (const theme of ['light', 'dark'] as const) {
     test(`populated study workspace ${theme}`, async ({ page }) => {
       await page.addInitScript((preference) => {
