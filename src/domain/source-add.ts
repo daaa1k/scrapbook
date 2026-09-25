@@ -162,7 +162,7 @@ export function sourceAddPasteBodyIssue(body: string): string | null {
   const trimmed = body.trim()
   if (!trimmed) return '本文を入力してください。'
   if (body.length > MAX_SOURCE_BODY_CHARS) {
-    return `本文は${MAX_SOURCE_BODY_CHARS.toLocaleString('ja-JP')}文字以内にしてください。`
+    return `本文は${MAX_SOURCE_BODY_CHARS.toLocaleString('ja-JP')}文字以内にしてください。超過分を削除してから送信してください。`
   }
   return null
 }
