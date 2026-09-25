@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { CitedProse } from '~/components/citation-footnotes'
 import { Alert } from '~/components/ui/alert'
@@ -28,7 +28,6 @@ import {
 import type { JobStatus } from '~/domain/jobs'
 import { qaDeleteQueue } from '~/domain/qa-delete-queue'
 import {
-  filterQaTurnsByQuery,
   qaTurnsCollapsed,
 } from '~/domain/qa-history'
 import {
@@ -53,6 +52,7 @@ import {
   askSource,
   deleteSourceQaAnswer,
   getSource,
+  listQaHistory,
   pasteSource,
   retrySource,
   summarizeSource,
@@ -113,6 +113,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   pasteTitleRef.current = pasteTitle
   pasteBodyRef.current = pasteBody
   const qaListRef = useRef<HTMLUListElement | null>(null)
+  const scrollLatestAfterSearchRef = useRef(false)
 
   const query = useQuery({
     queryKey: sourceKeys.detail(sourceId),
@@ -125,6 +126,13 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   })
 
   const source = query.data
+  const deferredQaSearch = qaSearch.trim()
+  const history = useInfiniteQuery({
+    queryKey: sourceKeys.qa(sourceId, deferredQaSearch),
+    queryFn: ({ pageParam }) => listQaHistory({ data: { sourceId, q: deferredQaSearch, cursor: pageParam } }),
+    initialPageParam: null as { createdAt: number; id: string } | null,
+    getNextPageParam: (page) => page.qaNextCursor,
+  })
   const jobInput: JobCopyInput | null = source ? jobCopyInputFromSource(source) : null
   const progress = jobInput ? jobProgressView(jobInput) : null
 
@@ -227,21 +235,27 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   function scheduleQaDelete(turn: { id: string; question: string }) {
     qaDeleteQueue.schedule({ sourceId, id: turn.id, question: turn.question }, async () => {
       await deleteSourceQaAnswer({ data: { sourceId, qaAnswerId: turn.id } })
-      await queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) })
+      await queryClient.invalidateQueries({ queryKey: sourceKeys.all })
     })
   }
 
   const visibleQaAnswers = useMemo(() => {
-    if (!source) return []
-    const withoutPending = source.qaAnswers.filter((turn) =>
+    const turns = history.data?.pages.flatMap((page) => page.qaAnswers) ?? []
+    const withoutPending = turns.filter((turn) =>
       !qaEntries.some((entry) => entry.id === turn.id && entry.status !== 'failed'))
-    return filterQaTurnsByQuery(withoutPending, qaSearch)
-  }, [source, qaEntries, qaSearch])
+    return withoutPending
+  }, [history.data, qaEntries])
 
   const { visible: listedQaAnswers, hiddenCount: collapsedHiddenCount } = useMemo(
     () => qaTurnsCollapsed(visibleQaAnswers, qaCollapsed),
     [visibleQaAnswers, qaCollapsed],
   )
+  useEffect(() => {
+    if (!scrollLatestAfterSearchRef.current || deferredQaSearch || history.isFetching) return
+    scrollLatestAfterSearchRef.current = false
+    const first = listedQaAnswers[0]
+    if (first) document.getElementById(`qa-turn-${first.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [deferredQaSearch, history.isFetching, listedQaAnswers])
 
   if (query.isError && !source) {
     return (
@@ -313,6 +327,12 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   }
 
   function scrollToLatestAnswer() {
+    if (qaSearch) {
+      scrollLatestAfterSearchRef.current = true
+      setQaSearch('')
+      setQaCollapsed(true)
+      return
+    }
     const first = listedQaAnswers[0]
     if (!first) return
     const node = document.getElementById(`qa-turn-${first.id}`)
@@ -632,7 +652,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
         ) : (
           <p className="text-sm text-muted">本文を貼り付けると質問できます。</p>
         )}
-        {source.qaAnswers.length === 0 && qaEntries.length === 0 ? (
+        {visibleQaAnswers.length === 0 && qaEntries.length === 0 && !qaSearch && !history.isFetching ? (
           <div className="mt-2 space-y-3">
             <p className="text-sm text-muted">まだ質問はありません</p>
             {bodyForCursor ? (
@@ -706,6 +726,8 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
               ) : null}
             </div>
             {listedQaAnswers.length === 0 ? (
+              history.isFetching ? <LoadingSkeleton label="履歴を読み込み中…" lines={2} /> :
+              history.isError ? <ErrorRetry onRetry={() => void history.refetch()}>{userFacingError(history.error)}</ErrorRetry> :
               <p className="text-sm text-muted">一致する質問はありません</p>
             ) : (
               <ul ref={qaListRef} className="space-y-3">
@@ -797,6 +819,13 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
                 })}
               </ul>
             )}
+            {history.hasNextPage && !qaCollapsed ? (
+              <Button type="button" variant="secondary" disabled={history.isFetchingNextPage}
+                onClick={() => void history.fetchNextPage()}>
+                {history.isFetchingNextPage ? '読み込み中…' : 'さらに質問を表示'}
+              </Button>
+            ) : null}
+            {history.isFetchNextPageError ? <ErrorRetry onRetry={() => void history.fetchNextPage()}>{userFacingError(history.error)}</ErrorRetry> : null}
           </div>
         )}
       </section>
@@ -821,7 +850,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
           tone="danger"
           onCancel={() => setPendingQa(null)}
           onConfirm={() => {
-            const turn = source.qaAnswers.find((row) => row.id === pendingQa.id)
+            const turn = visibleQaAnswers.find((row) => row.id === pendingQa.id)
             setPendingQa(null)
             if (!turn) return
             scheduleQaDelete(turn)

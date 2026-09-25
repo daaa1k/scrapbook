@@ -1,10 +1,8 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { NoteShell } from '~/components/note-shell'
-import { resolveNoteShellView } from '~/domain/note-shell'
 import {
   notebookIdSchema,
   parseNotebookPageSearch,
-  sourceListFilterFromSourcesPageSearch,
 } from '~/domain/organization'
 import { organizationKeys, sourceKeys } from '~/lib/query-keys'
 import { getOrganizationCatalog } from '~/server/functions/organization'
@@ -22,32 +20,25 @@ export const Route = createFileRoute('/notebooks/$notebookId')({
   validateSearch: parseNotebookPageSearch,
   loaderDeps: ({ search }) => ({ sourceId: search.sourceId }),
   loader: async ({ context, params, deps }) => {
-    const filter = sourceListFilterFromSourcesPageSearch({ notebookId: params.notebookId })
-    const [sources, catalog] = await Promise.all([
-      context.queryClient
-        .ensureQueryData({
-          queryKey: sourceKeys.list(filter),
-          queryFn: () => listSources({ data: filter }),
-        })
-        .catch(() => undefined),
+    await Promise.all([
       context.queryClient
         .ensureQueryData({
           queryKey: organizationKeys.catalog,
           queryFn: () => getOrganizationCatalog(),
         })
         .catch(() => undefined),
+      context.queryClient.prefetchInfiniteQuery({
+        queryKey: sourceKeys.list({ q: '', notebookId: params.notebookId, tagName: null, sort: 'created' }),
+        queryFn: ({ pageParam }) => listSources({ data: { q: '', notebookId: params.notebookId, tagName: null, sort: 'created', cursor: pageParam } }),
+        initialPageParam: null as { key: string | number; id: string } | null,
+        getNextPageParam: (last: { nextCursor: { key: string | number; id: string } | null }) => last.nextCursor,
+      }),
     ])
-    if (!catalog || sources === undefined) return
-    const view = resolveNoteShellView(
-      { notebookId: params.notebookId, sourceId: deps.sourceId },
-      catalog,
-      sources,
-    )
-    if (view.status !== 'ready') return
+    if (!deps.sourceId) return
     await context.queryClient
       .ensureQueryData({
-        queryKey: sourceKeys.detail(view.focusSourceId),
-        queryFn: () => getSource({ data: { sourceId: view.focusSourceId } }),
+        queryKey: sourceKeys.detail(deps.sourceId),
+        queryFn: () => getSource({ data: { sourceId: deps.sourceId! } }),
       })
       .catch(() => undefined)
   },

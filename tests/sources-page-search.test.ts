@@ -91,6 +91,6 @@ describe('sources page search', () => {
 
     const ignored = parseSourcesPageSearch({ notebookId: 'not-a-notebook-id' })
     const unfiltered = await listSourceViews(db, sourceListFilterFromSourcesPageSearch(ignored))
-    expect(unfiltered.map((row) => row.title)).toEqual(['無関係', 'リンゴの記事'])
+    expect(unfiltered.map((row) => row.id)).toEqual([apple.sourceId, weather.sourceId].sort().reverse())
   })
 })

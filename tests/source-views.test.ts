@@ -58,7 +58,7 @@ describe('source views', () => {
     }
 
     const all = await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)
-    expect(all.map((row) => row.title)).toEqual(['無関係', 'ミカン便り', 'リンゴの記事'])
+    expect(all.map((row) => row.id)).toEqual([apple.sourceId, orange.sourceId, other.sourceId].sort().reverse())
   })
 
   it('composes q AND notebook AND tag', async () => {

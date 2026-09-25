@@ -16,6 +16,7 @@ const base: SourceDetail = {
   summary: null,
   body: null,
   job: null,
+  qaNextCursor: null,
   organization: {
     notebook: {
       id: notebookIdSchema.parse('11111111-1111-4111-8111-111111111111'),

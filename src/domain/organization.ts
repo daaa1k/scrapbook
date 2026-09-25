@@ -36,6 +36,10 @@ export const sourceListFilterSchema = z.object({
   notebookId: notebookIdSchema.nullable(),
   tagName: tagNameSchema.nullable(),
 })
+export const sourcePageInputSchema = sourceListFilterSchema.extend({
+  sort: z.enum(['created', 'updated', 'title']).default('created'),
+  cursor: z.object({ key: z.union([z.number(), z.string()]), id: z.string() }).nullable().default(null),
+})
 export type SourceListFilter = z.infer<typeof sourceListFilterSchema>
 
 export const EMPTY_SOURCE_LIST_FILTER: SourceListFilter = {

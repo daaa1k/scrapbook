@@ -480,8 +480,8 @@ describe('source citations', () => {
     })
 
     expect(() => sourceDetailSchema.parse(detailFixture)).toThrow()
-    expect(sourceDetailSchema.parse({ ...detailFixture, citations: [], qaAnswers: [] }).citations).toEqual([])
-    expect(sourceDetailSchema.parse({ ...detailFixture, citations: [], qaAnswers: [] }).qaAnswers).toEqual([])
+    expect(sourceDetailSchema.parse({ ...detailFixture, citations: [], qaAnswers: [], qaNextCursor: null }).citations).toEqual([])
+    expect(sourceDetailSchema.parse({ ...detailFixture, citations: [], qaAnswers: [], qaNextCursor: null }).qaAnswers).toEqual([])
   })
 
   it('still gates reads behind Access in production', async () => {

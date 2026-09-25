@@ -33,7 +33,7 @@ describe('source search', () => {
     expect(byBody.map((row) => row.title)).toEqual(['ミカン便り'])
 
     const empty = await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)
-    expect(empty.map((row) => row.title)).toEqual(['無関係', 'ミカン便り', 'リンゴの記事'])
+    expect(empty.map((row) => row.id)).toEqual([apple.sourceId, orange.sourceId, other.sourceId].sort().reverse())
 
     const none = await listSourceViews(db, { q: 'バナナ', notebookId: null, tagName: null })
     expect(none).toHaveLength(0)
