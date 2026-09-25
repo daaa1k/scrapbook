@@ -173,11 +173,14 @@ export function createMockCursorClient(options?: {
   const now = '2026-09-15T00:00:00.000Z'
   const agentId = 'bc-mock-00000000-0000-0000-0000-000000000001'
   const runId = 'run-mock-00000000-0000-0000-0000-000000000001'
-  const result = options?.result ?? JSON.stringify(MOCK_INGEST_JSON)
+  let result = options?.result ?? JSON.stringify(MOCK_INGEST_JSON)
   const status = options?.runStatus ?? 'FINISHED'
 
   return {
-    createAgent() {
+    createAgent(promptText) {
+      if (!options?.result && promptText.startsWith('Answer the question using only')) {
+        result = JSON.stringify(MOCK_ASK_JSON)
+      }
       return Effect.succeed({
         agent: {
           id: agentId,
