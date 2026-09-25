@@ -54,6 +54,16 @@ async function sourceByNormalizedUrl(db: AppDb, normalized: string) {
   return rows[0] ?? null
 }
 
+function isUniqueColumnConflict(error: unknown, column: string): boolean {
+  let current: unknown = error
+  const message = `UNIQUE constraint failed: ${column}`
+  while (current instanceof Error) {
+    if (current.message === message || current.message.startsWith(`${message}: SQLITE_CONSTRAINT`)) return true
+    current = current.cause
+  }
+  return false
+}
+
 export type RegisterFetchOptions = {
   fetchImpl?: typeof fetch
 }
@@ -67,59 +77,92 @@ export async function registerUrlSource(
   const { original, normalized, kind } = parseAndNormalizeUrl(input.url)
   const existing = await sourceByNormalizedUrl(db, normalized)
   if (existing) {
-    reuseOrRejectDuplicate(existing.notebookId, input.notebook)
-    const notebookId = notebookIdSchema.parse(existing.notebookId)
-    const latest = await latestJobForSource(db, existing.id)
-    if (latest) {
-      return { sourceId: existing.id, notebookId, jobId: latest.id, duplicate: true }
-    }
-    const queued = await enqueueJob(db, workflow, 0, {
-      mode: 'fetch',
-      sourceId: existing.id,
-      url: normalized,
-    })
-    return { ...queued, notebookId, duplicate: true }
+    return reuseExistingUrlSource(db, existing, input.notebook, normalized, workflow)
   }
 
   const hostname = new URL(normalized).hostname
   const pageTitle = await fetchUrlPageTitle(normalized, { fetchImpl: options?.fetchImpl })
   const titleHint = pageTitle ?? hostname
 
-  return withNotebookTarget(db, input.notebook, titleHint, async (notebookId) => {
-    const sourceId = crypto.randomUUID()
-    const ts = nowMs()
+  const sourceConflict = new Error('source_normalized_url_conflict')
+  try {
+    return await withNotebookTarget(db, input.notebook, titleHint, async (notebookId) => {
+      const sourceId = crypto.randomUUID()
+      const ts = nowMs()
 
-    await db.insert(sources).values({
-      id: sourceId,
-      notebookId,
-      kind,
-      url: original,
-      normalizedUrl: normalized,
-      title: pageTitle,
-      author: null,
-      publishedAt: null,
-      fetchedAt: null,
-      body: null,
-      summary: null,
-      contentHash: null,
-      fetchStatus: 'none',
-      acquiredVia: 'fetch',
-      r2Key: null,
-      createdAt: ts,
-      updatedAt: ts,
+      try {
+        await db.insert(sources).values({
+          id: sourceId,
+          notebookId,
+          kind,
+          url: original,
+          normalizedUrl: normalized,
+          title: pageTitle,
+          author: null,
+          publishedAt: null,
+          fetchedAt: null,
+          body: null,
+          summary: null,
+          contentHash: null,
+          fetchStatus: 'none',
+          acquiredVia: 'fetch',
+          r2Key: null,
+          createdAt: ts,
+          updatedAt: ts,
+        })
+      } catch (error) {
+        if (!isUniqueColumnConflict(error, 'sources.normalized_url')) throw error
+        throw sourceConflict
+      }
+
+      if (input.notebook !== 'new') {
+        await applyFirstSourceNotebookTitle(db, notebookId, titleHint)
+      }
+
+      const jobId = await enqueueOrReuseFetchJob(db, workflow, sourceId, normalized)
+      return { sourceId, jobId, notebookId, duplicate: false }
     })
+  } catch (error) {
+    if (error !== sourceConflict) throw error
+    const winner = await sourceByNormalizedUrl(db, normalized)
+    if (!winner) throw error
+    return reuseExistingUrlSource(db, winner, input.notebook, normalized, workflow)
+  }
+}
 
-    if (input.notebook !== 'new') {
-      await applyFirstSourceNotebookTitle(db, notebookId, titleHint)
-    }
+async function reuseExistingUrlSource(
+  db: AppDb,
+  existing: typeof sources.$inferSelect,
+  target: NotebookTarget,
+  normalized: string,
+  workflow: WorkflowBinding | undefined,
+): Promise<RegisterResult> {
+  reuseOrRejectDuplicate(existing.notebookId, target)
+  const notebookId = notebookIdSchema.parse(existing.notebookId)
+  const latest = await latestJobForSource(db, existing.id)
+  if (latest) return { sourceId: existing.id, notebookId, jobId: latest.id, duplicate: true }
 
+  const jobId = await enqueueOrReuseFetchJob(db, workflow, existing.id, normalized)
+  return { sourceId: existing.id, notebookId, jobId, duplicate: true }
+}
+
+async function enqueueOrReuseFetchJob(
+  db: AppDb,
+  workflow: WorkflowBinding | undefined,
+  sourceId: string,
+  normalized: string,
+): Promise<string> {
+  try {
     const queued = await enqueueJob(db, workflow, 0, {
-      mode: 'fetch',
-      sourceId,
-      url: normalized,
+      mode: 'fetch', sourceId, url: normalized,
     })
-    return { ...queued, notebookId, duplicate: false }
-  })
+    return queued.jobId
+  } catch (error) {
+    if (!isUniqueColumnConflict(error, 'jobs.source_id')) throw error
+    const winner = await latestJobForSource(db, sourceId)
+    if (!winner) throw error
+    return winner.id
+  }
 }
 
 export async function retrySourceIngest(
