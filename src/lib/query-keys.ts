@@ -5,6 +5,7 @@ export const sourceKeys = {
   list: (filter: SourceListFilter & { sort?: string }) => ['sources', 'list', filter] as const,
   detail: (sourceId: string) => ['sources', 'detail', sourceId] as const,
   qa: (sourceId: string, q: string) => ['sources', 'qa', sourceId, q] as const,
+  job: (sourceId: string) => ['sources', 'job', sourceId] as const,
 }
 
 export const organizationKeys = {

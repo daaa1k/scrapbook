@@ -12,6 +12,12 @@ export const sourceJobSchema = z.object({
   errorMessage: z.string().nullable(),
 })
 
+export const sourceJobStatusSchema = z.object({
+  sourceId: z.string(),
+  job: sourceJobSchema.nullable(),
+})
+export type SourceJobStatus = z.infer<typeof sourceJobStatusSchema>
+
 export const sourceListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
