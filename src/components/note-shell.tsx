@@ -950,6 +950,7 @@ function SourceRow({
                 </span>
               ) : null}
             </button>
+            {source.searchMatch ? <SourceSearchMatch match={source.searchMatch} /> : null}
           </div>
           {source.url ? (
             <a
@@ -1007,6 +1008,19 @@ function SourceRow({
         ) : null}
       </div>
     </li>
+  )
+}
+
+function SourceSearchMatch({ match }: { match: NonNullable<SourceListItem['searchMatch']> }) {
+  const chars = Array.from(match.excerpt)
+  const before = chars.slice(0, match.start).join('')
+  const found = chars.slice(match.start, match.start + match.length).join('')
+  const after = chars.slice(match.start + match.length).join('')
+  return (
+    <p className="line-clamp-2 break-anywhere text-meta text-muted">
+      <span>{match.field === 'title' ? 'タイトル: ' : '本文: '}</span>
+      {before}<mark className="rounded-sm bg-accent px-0.5 text-accent-fg">{found}</mark>{after}
+    </p>
   )
 }
 

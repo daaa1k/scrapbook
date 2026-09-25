@@ -25,6 +25,12 @@ export const sourceListItemSchema = z.object({
   updatedAt: z.number(),
   notebook: notebookRefSchema,
   tags: z.array(tagNameSchema),
+  searchMatch: z.object({
+    field: z.enum(['title', 'body']),
+    excerpt: z.string().refine((value) => Array.from(value).length <= 160),
+    start: z.number().int().nonnegative(),
+    length: z.number().int().positive(),
+  }).optional(),
 })
 export type SourceListItem = z.infer<typeof sourceListItemSchema>
 
