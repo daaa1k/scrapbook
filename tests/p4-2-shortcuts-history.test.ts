@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  canHandleNoteShortcut,
   isModEnter,
   isShortcutHelpKey,
   isTypingTarget,
@@ -33,6 +34,26 @@ describe('shortcuts', () => {
     expect(isTypingTarget({ tagName: 'INPUT' })).toBe(true)
     expect(isTypingTarget({ tagName: 'DIV' })).toBe(false)
     expect(isTypingTarget({ isContentEditable: true })).toBe(true)
+  })
+
+  it('limits note shortcuts to an unmodified key outside modal dialogs and editors', () => {
+    const event = {
+      defaultPrevented: false,
+      isComposing: false,
+      target: { tagName: 'BUTTON' },
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+    }
+    expect(canHandleNoteShortcut(event, false)).toBe(true)
+    expect(canHandleNoteShortcut(event, true)).toBe(false)
+    expect(canHandleNoteShortcut({ ...event, defaultPrevented: true }, false)).toBe(false)
+    expect(canHandleNoteShortcut({ ...event, isComposing: true }, false)).toBe(false)
+    expect(canHandleNoteShortcut({ ...event, target: { tagName: 'INPUT' } }, false)).toBe(false)
+    expect(canHandleNoteShortcut({ ...event, target: { isContentEditable: true } }, false)).toBe(false)
+    for (const modifier of ['metaKey', 'ctrlKey', 'altKey'] as const) {
+      expect(canHandleNoteShortcut({ ...event, [modifier]: true }, false)).toBe(false)
+    }
   })
 })
 

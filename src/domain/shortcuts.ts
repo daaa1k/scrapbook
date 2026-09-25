@@ -20,19 +20,19 @@ export const APP_SHORTCUTS: readonly ShortcutDefinition[] = [
   {
     id: 'source-prev',
     keys: 'K または [',
-    when: 'ノート画面（入力欄以外）',
+    when: 'ノート画面（ダイアログ・入力欄以外）',
     description: '前のソースへ移動',
   },
   {
     id: 'source-next',
     keys: 'J または ]',
-    when: 'ノート画面（入力欄以外）',
+    when: 'ノート画面（ダイアログ・入力欄以外）',
     description: '次のソースへ移動',
   },
   {
     id: 'help',
     keys: '?',
-    when: 'ノート画面（入力欄以外）',
+    when: 'ノート画面（ダイアログ・入力欄以外）',
     description: 'ショートカット一覧を開く',
   },
   {
@@ -49,6 +49,18 @@ export function isTypingTarget(target: unknown): boolean {
   if (el.isContentEditable) return true
   const tag = el.tagName
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
+export function canHandleNoteShortcut(event: {
+  defaultPrevented: boolean
+  isComposing: boolean
+  target: unknown
+  metaKey: boolean
+  ctrlKey: boolean
+  altKey: boolean
+}, modalOpen: boolean): boolean {
+  return !modalOpen && !event.defaultPrevented && !event.isComposing &&
+    !event.metaKey && !event.ctrlKey && !event.altKey && !isTypingTarget(event.target)
 }
 
 export function isModEnter(event: { key: string; metaKey: boolean; ctrlKey: boolean }): boolean {
