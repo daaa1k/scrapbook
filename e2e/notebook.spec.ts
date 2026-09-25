@@ -70,6 +70,9 @@ test('mobile tabs preserve memo input and support arrow key focus', async ({ pag
   await expect(page.getByRole('tabpanel', { name: 'メモ' })).toBeVisible()
   await expect(page.locator('#memo-save-status')).toHaveText('保存済み')
   await page.reload()
+  await expect.poll(() => memoTab.evaluate((element) =>
+    Object.keys(element).some((key) => key.startsWith('__reactFiber$')),
+  )).toBe(true)
   await memoTab.click()
   await expect(memo).toHaveValue('タブを切り替えても残るメモ')
 })
