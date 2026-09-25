@@ -104,6 +104,14 @@ function sourceFilterWhere(db: AppDb, filter: SourceListFilter) {
 type SourcePageInput = z.output<typeof sourcePageInputSchema>
 
 export async function listSourcePage(db: AppDb, input: SourcePageInput): Promise<{ items: SourceListItem[]; nextCursor: SourceCursor | null }> {
+  const query = input.q.trim()
+  const pattern = likeContainsPattern(query)
+  const titleMatches = pattern ? sql<boolean>`${sources.title} LIKE ${pattern} ESCAPE '\\'` : null
+  const matchText = titleMatches
+    ? sql<string>`case when ${titleMatches} then ${sources.title} else ${sources.body} end`
+    : null
+  const matchPosition = matchText ? sql<number>`instr(lower(${matchText}), lower(${query}))` : null
+  const snippetStart = matchPosition ? sql<number>`max(1, ${matchPosition} - 40)` : null
   const titleKey = sql<string>`coalesce(${sources.title}, ${sources.url}, ${sources.id}) collate nocase`
   const key = input.sort === 'title' ? titleKey : input.sort === 'updated' ? sources.updatedAt : sources.createdAt
   const descending = input.sort !== 'title'
@@ -126,6 +134,13 @@ export async function listSourcePage(db: AppDb, input: SourcePageInput): Promise
       updatedAt: sources.updatedAt,
       notebookId: notebooks.id,
       notebookTitle: notebooks.title,
+      ...(titleMatches && matchText && matchPosition && snippetStart
+        ? {
+            searchField: sql<'title' | 'body'>`case when ${titleMatches} then 'title' else 'body' end`,
+            searchExcerpt: sql<string>`substr(${matchText}, ${snippetStart}, 160)`,
+            searchStart: sql<number>`${matchPosition} - ${snippetStart}`,
+          }
+        : {}),
     })
     .from(sources)
     .innerJoin(notebooks, eq(sources.notebookId, notebooks.id))
@@ -142,6 +157,14 @@ export async function listSourcePage(db: AppDb, input: SourcePageInput): Promise
   const items: SourceListItem[] = []
   for (const row of pageRows) {
     const job = jobsBySource.get(row.id)
+    const searchMatch = 'searchField' in row && typeof row.searchExcerpt === 'string' && typeof row.searchStart === 'number'
+      ? {
+          field: row.searchField,
+          excerpt: row.searchExcerpt,
+          start: row.searchStart,
+          length: Math.min(Array.from(query).length, 160 - row.searchStart),
+        }
+      : undefined
     items.push(
       sourceListItemSchema.parse({
         id: row.id,
@@ -156,6 +179,7 @@ export async function listSourcePage(db: AppDb, input: SourcePageInput): Promise
         updatedAt: row.updatedAt,
         notebook: notebookRef(row.notebookId, row.notebookTitle),
         tags: tagsBySource.get(row.id) ?? [],
+        ...(searchMatch ? { searchMatch } : {}),
       }),
     )
   }
