@@ -122,7 +122,7 @@ notebookTest('populated notebook sources drawer and question failure', async ({ 
   await page.getByRole('button', { name: 'ソース一覧' }).click()
   await expect(page.getByRole('dialog', { name: 'ソース' })).toBeVisible()
   await assertNoCriticalOrSerious(page, 'populated-notebook-drawer')
-  await page.getByRole('button', { name: 'ソース一覧を閉じる' }).click()
+  await page.getByRole('dialog', { name: 'ソース' }).getByRole('button', { name: '閉じる' }).click()
 
   const failedQuestion = '通信失敗のアクセシビリティ検査'
   await page.route('**/_serverFn/**', async (route) => {
