@@ -63,8 +63,8 @@ import {
   type SourceListSort,
 } from '~/domain/source-list-controls'
 import {
+  canHandleNoteShortcut,
   isShortcutHelpKey,
-  isTypingTarget,
   SHORTCUT_HELP_TRIGGER_LABEL,
   sourceNavDirection,
 } from '~/domain/shortcuts'
@@ -295,7 +295,7 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (isTypingTarget(event.target)) return
+      if (!canHandleNoteShortcut(event, document.querySelector('dialog:modal') !== null)) return
       if (isShortcutHelpKey(event)) {
         event.preventDefault()
         setShortcutHelpOpen(true)
