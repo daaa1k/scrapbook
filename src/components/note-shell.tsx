@@ -777,15 +777,16 @@ export function NoteShell({ notebookId, sourceId }: NoteShellSearch) {
           try {
             await memoSessionRef.current?.flush()
           } catch {
-            return
+            return false
           }
-          if (!activeSessionRef.current) return
+          if (!activeSessionRef.current) return false
           setModalOpen(false)
           await navigate({
             to: '/notebooks/$notebookId',
             params: { notebookId },
             search: { sourceId: addedSourceId },
           })
+          return true
         }}
       />
       <ShortcutHelpDialog open={shortcutHelpOpen} onClose={() => setShortcutHelpOpen(false)} />
