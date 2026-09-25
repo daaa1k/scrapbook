@@ -419,6 +419,13 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
         </div>
       ) : null}
 
+      {!showPasteForm && !jobPending ? (
+        <Button type="button" variant="secondary" onClick={() =>
+          changeDraft((current) => ({ ...current, pasteRequested: true }))}>
+          本文を貼り付ける
+        </Button>
+      ) : null}
+
       {showPasteForm ? (
         <form
           className="space-y-3 rounded-md border border-zinc-200 p-4 dark:border-zinc-700"
