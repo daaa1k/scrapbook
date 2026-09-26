@@ -2,13 +2,14 @@ import { createServerFn } from '@tanstack/react-start'
 import { env } from 'cloudflare:workers'
 import { z } from 'zod'
 import { createDb } from '~/db/client'
-import { sourceListFilterSchema } from '~/domain/organization'
+import { sourcePageInputSchema } from '~/domain/organization'
+import { qaPageInputSchema } from '~/domain/source-views'
 import { parseRegisterPdfForm, parsePdfUpload } from '~/domain/pdf'
 import { pasteSourceInputSchema, registerUrlInputSchema, retrySourceInputSchema } from '~/domain/url'
 import { authMiddleware } from '~/server/auth/middleware'
 import { pasteSourceBody, registerUrlSource, retrySourceIngest, askSourceQuestion, deleteQaAnswer, deleteSource, summarizeSourceBody } from '~/server/ingest/register'
 import { extractPdfTextWithUnpdf, registerPdfSource, workerAssets } from '~/server/ingest/pdf'
-import { listSourceViews, readSourceDetail } from '~/server/source-views'
+import { listSourcePage, listQaPage, readSourceDetail, readSourceJob } from '~/server/source-views'
 
 const sourceIdInput = z.object({
   sourceId: z.string().min(1),
@@ -16,11 +17,16 @@ const sourceIdInput = z.object({
 
 export const listSources = createServerFn({ method: 'GET' })
   .middleware([authMiddleware])
-  .validator(sourceListFilterSchema)
+  .validator(sourcePageInputSchema)
   .handler(async ({ data }) => {
     const db = createDb(env.DB)
-    return listSourceViews(db, data)
+    return listSourcePage(db, data)
   })
+
+export const listQaHistory = createServerFn({ method: 'GET' })
+  .middleware([authMiddleware])
+  .validator(qaPageInputSchema)
+  .handler(async ({ data }) => listQaPage(createDb(env.DB), data))
 
 export const getSource = createServerFn({ method: 'GET' })
   .middleware([authMiddleware])
@@ -28,6 +34,14 @@ export const getSource = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     const db = createDb(env.DB)
     return readSourceDetail(db, data.sourceId)
+  })
+
+export const getSourceJob = createServerFn({ method: 'GET' })
+  .middleware([authMiddleware])
+  .validator(sourceIdInput)
+  .handler(async ({ data }) => {
+    const db = createDb(env.DB)
+    return readSourceJob(db, data.sourceId)
   })
 
 export const registerSource = createServerFn({ method: 'POST' })

@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { CitedProse } from '~/components/citation-footnotes'
 import { Alert } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
@@ -26,11 +26,9 @@ import {
   type JobStatusView,
 } from '~/domain/job-status-copy'
 import type { JobStatus } from '~/domain/jobs'
+import { qaDeleteQueue } from '~/domain/qa-delete-queue'
 import {
-  filterQaTurnsByQuery,
   qaTurnsCollapsed,
-  QA_UNDO_WINDOW_MS,
-  type PendingQaUndo,
 } from '~/domain/qa-history'
 import {
   COPY_FAILURE_ANNOUNCEMENT,
@@ -54,6 +52,8 @@ import {
   askSource,
   deleteSourceQaAnswer,
   getSource,
+  listQaHistory,
+  getSourceJob,
   pasteSource,
   retrySource,
   summarizeSource,
@@ -104,30 +104,59 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   const [copyAnnouncement, setCopyAnnouncement] = useState('')
   const [pendingQa, setPendingQa] = useState<{ id: string; question: string } | null>(null)
   const [pendingReuse, setPendingReuse] = useState<string | null>(null)
-  const [qaUndo, setQaUndo] = useState<PendingQaUndo | null>(null)
+  const qaEntries = useSyncExternalStore(qaDeleteQueue.subscribe, qaDeleteQueue.getSnapshot, qaDeleteQueue.getServerSnapshot)
+    .filter((entry) => entry.sourceId === sourceId)
   const [qaSearch, setQaSearch] = useState('')
   const [qaCollapsed, setQaCollapsed] = useState(true)
   const previousJobStatus = useRef<JobStatus | null | undefined>(undefined)
+  const lastDetailRefresh = useRef<string | null>(null)
   const pasteTitleRef = useRef(pasteTitle)
   const pasteBodyRef = useRef(pasteBody)
   pasteTitleRef.current = pasteTitle
   pasteBodyRef.current = pasteBody
-  const qaUndoTimer = useRef<number | null>(null)
   const qaListRef = useRef<HTMLUListElement | null>(null)
+  const scrollLatestAfterSearchRef = useRef(false)
 
   const query = useQuery({
     queryKey: sourceKeys.detail(sourceId),
     queryFn: () => getSource({ data: { sourceId } }),
+  })
+
+  const jobQuery = useQuery({
+    queryKey: sourceKeys.job(sourceId),
+    queryFn: () => getSourceJob({ data: { sourceId } }),
+    enabled: Boolean(query.data),
     refetchInterval: (current) => {
       const status = current.state.data?.job?.status
-      if (!status || isTerminalJobStatus(status)) return false
-      return 2000
+      return status && !isTerminalJobStatus(status) ? 2000 : false
     },
   })
 
   const source = query.data
-  const jobInput: JobCopyInput | null = source ? jobCopyInputFromSource(source) : null
+  const deferredQaSearch = qaSearch.trim()
+  const history = useInfiniteQuery({
+    queryKey: sourceKeys.qa(sourceId, deferredQaSearch),
+    queryFn: ({ pageParam }) => listQaHistory({ data: { sourceId, q: deferredQaSearch, cursor: pageParam } }),
+    initialPageParam: null as { createdAt: number; id: string } | null,
+    getNextPageParam: (page) => page.qaNextCursor,
+  })
+  const liveJob = jobQuery.dataUpdatedAt > query.dataUpdatedAt ? jobQuery.data?.job : source?.job
+  const jobInput: JobCopyInput | null = source
+    ? jobCopyInputFromSource({ ...source, job: liveJob ?? null })
+    : null
   const progress = jobInput ? jobProgressView(jobInput) : null
+
+  useEffect(() => {
+    if (!source || !jobQuery.data || jobQuery.dataUpdatedAt <= query.dataUpdatedAt) return
+    const current = jobQuery.data.job
+    if (source.job?.id === current?.id && source.job?.status === current?.status) return
+    if (source.job?.id === current?.id && current && !isTerminalJobStatus(current.status)) return
+    const snapshot = `${sourceId}:${current?.id ?? 'none'}:${current?.status ?? 'none'}`
+    if (lastDetailRefresh.current === snapshot) return
+    lastDetailRefresh.current = snapshot
+    void queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) })
+    void queryClient.invalidateQueries({ queryKey: ['sources', 'qa', sourceId] })
+  }, [source, sourceId, jobQuery.data, jobQuery.dataUpdatedAt, query.dataUpdatedAt, queryClient])
 
   useEffect(() => {
     if (source?.title?.trim()) {
@@ -137,8 +166,8 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   }, [source?.title])
 
   useEffect(() => {
-    const nextStatus = source?.job?.status ?? null
-    const nextKind = source?.job?.kind ?? null
+    const nextStatus = liveJob?.status ?? null
+    const nextKind = liveJob?.kind ?? null
     if (previousJobStatus.current === undefined) {
       previousJobStatus.current = nextStatus
       return
@@ -149,7 +178,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
     })
     if (text) setCompletionAnnouncement(text)
     previousJobStatus.current = nextStatus
-  }, [source?.job?.status, source?.job?.kind])
+  }, [liveJob?.status, liveJob?.kind])
 
   useEffect(() => {
     function keepAskActionsVisible() {
@@ -167,10 +196,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   }, [])
 
   const invalidateSource = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) }),
-      queryClient.invalidateQueries({ queryKey: sourceKeys.all }),
-    ])
+    await queryClient.invalidateQueries({ queryKey: sourceKeys.all })
   }
 
   const summarize = useMutation({
@@ -225,69 +251,30 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
     onError: (error) => setActionError(userFacingError(error)),
   })
 
-  const deleteQa = useMutation({
-    mutationFn: (qaAnswerId: string) => deleteSourceQaAnswer({ data: { sourceId, qaAnswerId } }),
-    onSuccess: async () => {
-      setActionError(null)
-      await queryClient.invalidateQueries({ queryKey: sourceKeys.detail(sourceId) })
-    },
-    onError: (error) => setActionError(userFacingError(error)),
-  })
-
-  useEffect(() => {
-    return () => {
-      if (qaUndoTimer.current != null) window.clearTimeout(qaUndoTimer.current)
-    }
-  }, [])
-
-  function clearQaUndoTimer() {
-    if (qaUndoTimer.current != null) {
-      window.clearTimeout(qaUndoTimer.current)
-      qaUndoTimer.current = null
-    }
-  }
-
-  function scheduleQaDelete(turn: {
-    id: string
-    question: string
-    answer: string | null
-    canDelete: boolean
-    citations: readonly unknown[]
-  }) {
-    clearQaUndoTimer()
-    const expiresAt = Date.now() + QA_UNDO_WINDOW_MS
-    setQaUndo({
-      id: turn.id,
-      question: turn.question,
-      answer: turn.answer,
-      canDelete: turn.canDelete,
-      citations: turn.citations,
-      expiresAt,
+  function scheduleQaDelete(turn: { id: string; question: string }) {
+    qaDeleteQueue.schedule({ sourceId, id: turn.id, question: turn.question }, async () => {
+      await deleteSourceQaAnswer({ data: { sourceId, qaAnswerId: turn.id } })
+      await queryClient.invalidateQueries({ queryKey: sourceKeys.all })
     })
-    qaUndoTimer.current = window.setTimeout(() => {
-      setQaUndo(null)
-      qaUndoTimer.current = null
-      deleteQa.mutate(turn.id)
-    }, QA_UNDO_WINDOW_MS)
-  }
-
-  function undoQaDelete() {
-    clearQaUndoTimer()
-    setQaUndo(null)
   }
 
   const visibleQaAnswers = useMemo(() => {
-    if (!source) return []
-    const withoutPending = qaUndo
-      ? source.qaAnswers.filter((turn) => turn.id !== qaUndo.id)
-      : source.qaAnswers
-    return filterQaTurnsByQuery(withoutPending, qaSearch)
-  }, [source, qaUndo, qaSearch])
+    const turns = history.data?.pages.flatMap((page) => page.qaAnswers) ?? []
+    const withoutPending = turns.filter((turn) =>
+      !qaEntries.some((entry) => entry.id === turn.id && entry.status !== 'failed'))
+    return withoutPending
+  }, [history.data, qaEntries])
 
   const { visible: listedQaAnswers, hiddenCount: collapsedHiddenCount } = useMemo(
     () => qaTurnsCollapsed(visibleQaAnswers, qaCollapsed),
     [visibleQaAnswers, qaCollapsed],
   )
+  useEffect(() => {
+    if (!scrollLatestAfterSearchRef.current || deferredQaSearch || history.isFetching) return
+    scrollLatestAfterSearchRef.current = false
+    const first = listedQaAnswers[0]
+    if (first) document.getElementById(`qa-turn-${first.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [deferredQaSearch, history.isFetching, listedQaAnswers])
 
   if (query.isError && !source) {
     return (
@@ -301,7 +288,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
     return <LoadingSkeleton label={STUDY_LOADING_LABEL} lines={4} />
   }
 
-  const jobKind = source.job?.kind ?? null
+  const jobKind = liveJob?.kind ?? null
   const jobPending = progress.pending
   const bodyForCursor = storedBodyText(source.body)
   const budget = cursorBodyBudgetCopy(
@@ -315,7 +302,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   const pasteCount = sourceAddPasteBodyCount(pasteBody)
   const studyBusy =
     summarize.isPending || ask.isPending || retry.isPending || paste.isPending || jobPending
-  const deletingQaId = deleteQa.isPending ? deleteQa.variables : undefined
+  const deletingQaIds = qaEntries.filter((entry) => entry.status === 'committing').map((entry) => entry.id)
   const recoveryActions = (progress.recovery ?? []).filter(
     (action) => action.id !== 'paste-body' || !showPasteForm,
   )
@@ -359,6 +346,12 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
   }
 
   function scrollToLatestAnswer() {
+    if (qaSearch) {
+      scrollLatestAfterSearchRef.current = true
+      setQaSearch('')
+      setQaCollapsed(true)
+      return
+    }
     const first = listedQaAnswers[0]
     if (!first) return
     const node = document.getElementById(`qa-turn-${first.id}`)
@@ -376,6 +369,17 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
 
   return (
     <div className="flex min-h-full flex-col gap-6" aria-busy={studyBusy || undefined}>
+      {query.isError || jobQuery.isError ? (
+        <div className="space-y-2 rounded-md border border-border bg-surface-muted p-inset" role="status">
+          <p>最新の状態を取得できませんでした。表示中の内容は古い可能性があります。</p>
+          <Button type="button" variant="secondary" size="sm" onClick={() => {
+            void query.refetch()
+            void jobQuery.refetch()
+          }}>
+            表示を更新
+          </Button>
+        </div>
+      ) : null}
       <header className="space-y-2">
         <p className="break-anywhere text-lg font-semibold">
           {source.url ? (
@@ -548,6 +552,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
           <CitedProse
             text={source.summary}
             citations={source.citations}
+            body={source.body}
             emptyLabel="まだありません"
             onCopyAnnouncement={setCopyAnnouncement}
           />
@@ -669,7 +674,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
         ) : (
           <p className="text-sm text-muted">本文を貼り付けると質問できます。</p>
         )}
-        {source.qaAnswers.length === 0 && !qaUndo ? (
+        {visibleQaAnswers.length === 0 && qaEntries.length === 0 && !qaSearch && !history.isFetching ? (
           <div className="mt-2 space-y-3">
             <p className="text-sm text-muted">まだ質問はありません</p>
             {bodyForCursor ? (
@@ -695,18 +700,25 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
           </div>
         ) : (
           <div className="mt-2 space-y-3">
-            {qaUndo ? (
-              <div
+            {qaEntries.map((entry) => (
+              <div key={entry.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface-muted p-inset"
-                role="status"
-                aria-live="polite"
-              >
-                <p className="text-sm text-ink">質問を削除しました。取り消せます。</p>
-                <Button type="button" variant="secondary" size="sm" onClick={undoQaDelete}>
-                  元に戻す
-                </Button>
+                role="status">
+                <p className="text-sm text-ink">
+                  {entry.status === 'pending' ? `「${entry.question}」を削除予約中です。再読み込みすると予約は取り消されます。`
+                    : entry.status === 'committing' ? `「${entry.question}」を削除しています。`
+                      : entry.status === 'done' ? `「${entry.question}」を削除しました。`
+                        : `「${entry.question}」: ${entry.error}`}
+                </p>
+                {entry.status === 'pending' ? (
+                  <Button type="button" variant="secondary" size="sm"
+                    onClick={() => qaDeleteQueue.undo(sourceId, entry.id)}>元に戻す</Button>
+                ) : entry.status === 'failed' || entry.status === 'done' ? (
+                  <Button type="button" variant="secondary" size="sm"
+                    onClick={() => qaDeleteQueue.dismiss(sourceId, entry.id)}>閉じる</Button>
+                ) : null}
               </div>
-            ) : null}
+            ))}
             <div className="flex flex-wrap items-end gap-gap">
               <div className="min-w-[10rem] flex-1">
                 <label htmlFor="investigate-qa-search" className="mb-1 block text-meta font-medium text-muted">
@@ -736,12 +748,14 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
               ) : null}
             </div>
             {listedQaAnswers.length === 0 ? (
+              history.isFetching ? <LoadingSkeleton label="履歴を読み込み中…" lines={2} /> :
+              history.isError ? <ErrorRetry onRetry={() => void history.refetch()}>{userFacingError(history.error)}</ErrorRetry> :
               <p className="text-sm text-muted">一致する質問はありません</p>
             ) : (
               <ul ref={qaListRef} className="space-y-3">
                 {listedQaAnswers.map((turn) => {
-                  const turnView = qaTurnView(turn, jobInput)
-                  const deletingThis = deletingQaId === turn.id
+                  const turnView = qaTurnView(turn)
+                  const deletingThis = deletingQaIds.includes(turn.id)
                   const deleteBusyId = `${turn.id}-delete-busy`
                   return (
                     <li
@@ -790,6 +804,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
                           <CitedProse
                             text={turn.answer ?? ''}
                             citations={turn.citations}
+                            body={source.body}
                             emptyLabel="回答待ち…"
                             onCopyAnnouncement={setCopyAnnouncement}
                           />
@@ -804,7 +819,10 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
                                 className="gap-2"
                                 variant={action.id === 'retry' ? 'primary' : 'secondary'}
                                 disabled={studyBusy}
-                                onClick={() => runRecovery(action, turn.question)}
+                                onClick={() => {
+                                  if (action.id === 'retry') ask.mutate(turn.question)
+                                  else runRecovery(action, turn.question)
+                                }}
                               >
                                 {ask.isPending && action.id === 'retry' ? <PendingMark /> : null}
                                 {action.label}
@@ -823,6 +841,13 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
                 })}
               </ul>
             )}
+            {history.hasNextPage && !qaCollapsed ? (
+              <Button type="button" variant="secondary" disabled={history.isFetchingNextPage}
+                onClick={() => void history.fetchNextPage()}>
+                {history.isFetchingNextPage ? '読み込み中…' : 'さらに質問を表示'}
+              </Button>
+            ) : null}
+            {history.isFetchNextPageError ? <ErrorRetry onRetry={() => void history.fetchNextPage()}>{userFacingError(history.error)}</ErrorRetry> : null}
           </div>
         )}
       </section>
@@ -847,7 +872,7 @@ export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvest
           tone="danger"
           onCancel={() => setPendingQa(null)}
           onConfirm={() => {
-            const turn = source.qaAnswers.find((row) => row.id === pendingQa.id)
+            const turn = visibleQaAnswers.find((row) => row.id === pendingQa.id)
             setPendingQa(null)
             if (!turn) return
             scheduleQaDelete(turn)

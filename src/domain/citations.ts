@@ -115,3 +115,19 @@ export function citationViewFromRow(row: CitationRow, body: string | null): Cita
       : null
   return { id: row.id, excerpt: row.excerpt, bodySpan }
 }
+
+export function citationBodyContext(body: string | null, citation: Pick<CitationView, 'excerpt' | 'bodySpan'>,
+  radius = 80): { before: string; match: string; after: string; clippedBefore: boolean; clippedAfter: boolean } | null {
+  const span = citation.bodySpan
+  if (!body || !span || span.start < 0 || span.end > body.length ||
+    body.slice(span.start, span.end) !== citation.excerpt) return null
+  const start = Math.max(0, span.start - radius)
+  const end = Math.min(body.length, span.end + radius)
+  return {
+    before: body.slice(start, span.start),
+    match: body.slice(span.start, span.end),
+    after: body.slice(span.end, end),
+    clippedBefore: start > 0,
+    clippedAfter: end < body.length,
+  }
+}

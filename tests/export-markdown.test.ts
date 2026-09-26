@@ -16,6 +16,7 @@ const base: SourceDetail = {
   summary: null,
   body: null,
   job: null,
+  qaNextCursor: null,
   organization: {
     notebook: {
       id: notebookIdSchema.parse('11111111-1111-4111-8111-111111111111'),
@@ -41,6 +42,7 @@ describe('source markdown export', () => {
           id: 'q1',
           question: '要点は？',
           answer: 'これです。',
+          job: { id: 'job-q1', kind: 'ask_source', status: 'succeeded', errorCode: null, errorMessage: null },
           canDelete: true,
           citations: [{ id: 'qc1', excerpt: '根拠', bodySpan: { start: 0, end: 2 } }],
         },

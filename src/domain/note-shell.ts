@@ -118,6 +118,7 @@ export function resolveNoteShellView(
   search: NoteShellSearch,
   catalog: OrganizationCatalog,
   sources: readonly SourceListItem[],
+  allowUnlistedSelection = false,
 ): NoteShellView {
   const notebook = catalog.notebooks.find((row) => row.id === search.notebookId)
   if (!notebook) {
@@ -128,13 +129,13 @@ export function resolveNoteShellView(
   }
   const requested = search.sourceId
   const matched = Boolean(requested && sources.some((row) => row.id === requested))
-  const focusSourceId = matched && requested ? requested : sources[0]!.id
+  const focusSourceId = requested && (matched || allowUnlistedSelection) ? requested : sources[0]!.id
   return {
     status: 'ready',
     notebook,
     sources: [...sources],
     focusSourceId,
-    ...(requested && !matched ? { invalidSourceId: requested } : {}),
+    ...(requested && !matched && !allowUnlistedSelection ? { invalidSourceId: requested } : {}),
   }
 }
 
@@ -142,6 +143,7 @@ export function resolveNoteShellFrame(
   search: NoteShellSearch,
   catalog: AsyncResourceView<OrganizationCatalog>,
   sources: AsyncResourceView<readonly SourceListItem[]>,
+  allowUnlistedSelection = false,
 ): NoteShellFrame {
   if (catalog.status === 'loading') return { status: 'catalog-loading' }
   if (catalog.status === 'error') return { status: 'catalog-error' }
@@ -151,7 +153,7 @@ export function resolveNoteShellFrame(
   }
   if (sources.status === 'loading') return { status: 'sources-loading', notebook }
   if (sources.status === 'error') return { status: 'sources-error', notebook }
-  return resolveNoteShellView(search, catalog.data, sources.data)
+  return resolveNoteShellView(search, catalog.data, sources.data, allowUnlistedSelection)
 }
 
 /** Search results affect the list only; the selected source is resolved from the full notebook list. */

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-async function addPasteSource(page: Page, title: string, fromHome = false) {
+async function addPasteSource(page: Page, title: string, fromHome = false, body = `${title} の本文です。`) {
   const addButton = page.getByRole('button', { name: fromHome ? '新しいノート' : 'ソースを追加' }).first()
   const dialog = page.locator('dialog[open]')
   await expect(async () => {
@@ -9,7 +9,7 @@ async function addPasteSource(page: Page, title: string, fromHome = false) {
   }).toPass({ timeout: 30_000 })
   await dialog.getByRole('tab', { name: '貼り付け' }).click()
   await dialog.getByLabel('タイトル', { exact: true }).fill(title)
-  await dialog.getByLabel('本文', { exact: true }).fill(`${title} の本文です。`)
+  await dialog.getByLabel('本文', { exact: true }).fill(body)
   await dialog.getByRole('button', { name: '本文を保存' }).click()
   await expect(dialog).not.toBeVisible()
   await expect(sourceButton(page, title)).toBeVisible()
@@ -70,4 +70,33 @@ test('search keeps its input, selected source, and memo through loading, zero re
   await expect(page.locator('#notebook-panel-sources').getByRole('button', { name: '再試行' })).toBeVisible({ timeout: 20_000 })
   await expect(memo).toHaveValue(`unsaved memo ${suffix}`)
   await expect(page).toHaveURL(selectedUrl)
+})
+
+test('search shows a safe excerpt for body matches and keeps source selection usable', async ({ page }) => {
+  const suffix = Date.now().toString(36)
+  const bodyTitle = `Issue95 Body ${suffix}`
+  const titleMatch = `Issue95 MIXED ${suffix}`
+  await page.goto('/')
+  await addPasteSource(page, bodyTitle, true, `${'前置き '.repeat(30)}<script>needle</script> 100%_SAFE`)
+  await addPasteSource(page, titleMatch, false, '別の本文')
+
+  const panel = page.locator('#notebook-panel-sources')
+  const search = panel.getByRole('searchbox', { name: '検索', exact: true })
+  await search.fill('needle')
+  await expect(sourceButton(page, bodyTitle)).toBeVisible()
+  await expect(panel.locator('p').filter({ hasText: '本文:' })).toBeVisible()
+  await expect(panel.locator('mark')).toHaveText('needle')
+  await sourceButton(page, bodyTitle).click()
+  await expect(sourceButton(page, bodyTitle)).toHaveAttribute('aria-current', 'true')
+
+  await search.fill('<script>')
+  await expect(panel.locator('mark')).toHaveText('<script>')
+  await expect(panel.locator('script')).toHaveCount(0)
+  await search.fill('100%_')
+  await expect(panel.locator('mark')).toHaveText('100%_')
+  await search.fill('mixed')
+  await expect(sourceButton(page, titleMatch)).toBeVisible()
+  await expect(panel.locator('mark')).toHaveText('MIXED')
+  await search.fill('')
+  await expect(panel.locator('mark')).toHaveCount(0)
 })
