@@ -44,6 +44,7 @@ import {
 } from '~/domain/source-add'
 import { STUDY_LOADING_LABEL } from '~/domain/note-shell'
 import { sourceBodyDateLabel, sourceDateTime } from '~/domain/source-dates'
+import { acceptedPasteDraft, acceptedQuestionDraft, type SourceInputDraft } from '~/domain/source-input-drafts'
 import { isModEnter } from '~/domain/shortcuts'
 import { copyText } from '~/lib/clipboard'
 import { sourceKeys } from '~/lib/query-keys'
@@ -60,6 +61,8 @@ import {
 
 type SourceInvestigateProps = {
   sourceId: string
+  draft: SourceInputDraft
+  updateDraft: (sourceId: string, update: (draft: SourceInputDraft) => SourceInputDraft) => void
 }
 
 function describedBy(...ids: Array<string | false | null | undefined>): string | undefined {
@@ -85,16 +88,17 @@ function ProgressLine({ view }: { view: JobStatusView }) {
   )
 }
 
-export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
+export function SourceInvestigate({ sourceId, draft, updateDraft }: SourceInvestigateProps) {
   const queryClient = useQueryClient()
-  const [questionDraft, setQuestionDraft] = useState('')
+  const questionDraft = draft.question
+  const pasteTitle = draft.pasteTitle ?? ''
+  const pasteBody = draft.pasteBody
+  const pasteRequested = draft.pasteRequested
+  const changeDraft = (update: (current: SourceInputDraft) => SourceInputDraft) => updateDraft(sourceId, update)
   const [questionNotSent, setQuestionNotSent] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [pasteTitle, setPasteTitle] = useState('')
-  const [pasteBody, setPasteBody] = useState('')
   const [pasteTitleError, setPasteTitleError] = useState<string | null>(null)
   const [pasteBodyError, setPasteBodyError] = useState<string | null>(null)
-  const [pasteRequested, setPasteRequested] = useState(false)
   const [pasteHasNewEdits, setPasteHasNewEdits] = useState(false)
   const [completionAnnouncement, setCompletionAnnouncement] = useState('')
   const [copyAnnouncement, setCopyAnnouncement] = useState('')
@@ -103,7 +107,6 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const [qaSearch, setQaSearch] = useState('')
   const [qaCollapsed, setQaCollapsed] = useState(true)
   const previousJobStatus = useRef<JobStatus | null | undefined>(undefined)
-  const pasteTitleSeeded = useRef(false)
   const pasteTitleRef = useRef(pasteTitle)
   const pasteBodyRef = useRef(pasteBody)
   pasteTitleRef.current = pasteTitle
@@ -126,12 +129,11 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const progress = jobInput ? jobProgressView(jobInput) : null
 
   useEffect(() => {
-    if (!source || pasteTitleSeeded.current) return
-    if (source.title?.trim()) {
-      setPasteTitle(source.title)
-      pasteTitleSeeded.current = true
+    if (source?.title?.trim()) {
+      changeDraft((current) => current.pasteTitle === null
+        ? { ...current, pasteTitle: source.title } : current)
     }
-  }, [source])
+  }, [source?.title])
 
   useEffect(() => {
     const nextStatus = source?.job?.status ?? null
@@ -185,7 +187,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
     onSuccess: async (result, question) => {
       setActionError(null)
       if (result.started) {
-        setQuestionDraft((current) => (current === question ? '' : current))
+        changeDraft((current) => acceptedQuestionDraft(current, question))
       } else {
         setQuestionNotSent(true)
       }
@@ -210,10 +212,9 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
     onSuccess: async (_result, input) => {
       setActionError(null)
       if (pasteTitleRef.current === input.title && pasteBodyRef.current === input.body) {
-        setPasteBody('')
-        setPasteRequested(false)
+        changeDraft((current) => acceptedPasteDraft(current, input))
       } else {
-        setPasteRequested(true)
+        changeDraft((current) => ({ ...current, pasteRequested: true }))
         setPasteHasNewEdits(true)
       }
       setPasteTitleError(null)
@@ -308,7 +309,8 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
   const title = source.title ?? source.url ?? source.id
   const publishedDate = sourceDateTime(source.publishedAt)
   const bodyDate = sourceDateTime(bodyForCursor ? source.fetchedAt : null)
-  const showPasteForm = pasteRequested || (!jobInput.hasBody && !jobPending)
+  const hasPasteDraft = pasteBody !== '' || (draft.pasteTitle !== null && pasteTitle !== (source.title ?? ''))
+  const showPasteForm = pasteRequested || hasPasteDraft || (!jobInput.hasBody && !jobPending)
   const pasteCount = sourceAddPasteBodyCount(pasteBody)
   const studyBusy =
     summarize.isPending || ask.isPending || retry.isPending || paste.isPending || jobPending
@@ -322,7 +324,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
 
   function runRecovery(action: JobRecoveryAction, question?: string) {
     if (action.id === 'paste-body') {
-      setPasteRequested(true)
+      changeDraft((current) => ({ ...current, pasteRequested: true }))
       return
     }
     if (jobKind === 'fetch') {
@@ -417,6 +419,13 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
         </div>
       ) : null}
 
+      {!showPasteForm && !jobPending ? (
+        <Button type="button" variant="secondary" onClick={() =>
+          changeDraft((current) => ({ ...current, pasteRequested: true }))}>
+          本文を貼り付ける
+        </Button>
+      ) : null}
+
       {showPasteForm ? (
         <form
           className="space-y-3 rounded-md border border-zinc-200 p-4 dark:border-zinc-700"
@@ -440,7 +449,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
               value={pasteTitle}
               onChange={(event) => {
                 pasteTitleRef.current = event.target.value
-                setPasteTitle(event.target.value)
+                changeDraft((current) => ({ ...current, pasteTitle: event.target.value }))
                 if (pasteTitleError) setPasteTitleError(null)
               }}
               aria-invalid={pasteTitleError ? true : undefined}
@@ -463,7 +472,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
               onChange={(event) => {
                 const next = event.target.value
                 pasteBodyRef.current = next
-                setPasteBody(next)
+                changeDraft((current) => ({ ...current, pasteBody: next }))
                 setPasteBodyError(
                   sourceAddPasteBodyCount(next).over
                     ? sourceAddPasteBodyIssue(next)
@@ -494,6 +503,17 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
             {paste.isPending ? <PendingMark /> : null}
             本文を貼り付ける
           </Button>
+          {hasPasteDraft || pasteRequested ? (
+            <Button type="button" variant="secondary" onClick={() => {
+              changeDraft((current) => ({
+                ...current, pasteTitle: source.title ?? '', pasteBody: '', pasteRequested: false,
+              }))
+              setPasteTitleError(null)
+              setPasteBodyError(null)
+            }}>
+              貼付下書きを破棄
+            </Button>
+          ) : null}
         </form>
       ) : null}
 
@@ -573,7 +593,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
               name="question"
               required
               value={questionDraft}
-              onChange={(event) => setQuestionDraft(event.target.value)}
+              onChange={(event) => changeDraft((current) => ({ ...current, question: event.target.value }))}
               onKeyDown={(event) => {
                 if (!isModEnter(event)) return
                 event.preventDefault()
@@ -614,6 +634,14 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                 {ask.isPending ? <PendingMark /> : null}
                 質問する
               </Button>
+              {questionDraft !== '' ? (
+                <Button type="button" variant="secondary" size="sm" onClick={() => {
+                  changeDraft((current) => ({ ...current, question: '' }))
+                  setQuestionNotSent(false)
+                }}>
+                  質問下書きを破棄
+                </Button>
+              ) : null}
               {jobPending && jobKind !== 'ask_source' ? (
                 <p className="text-sm text-muted">処理中のため質問できません。</p>
               ) : (
@@ -645,7 +673,7 @@ export function SourceInvestigate({ sourceId }: SourceInvestigateProps) {
                         variant="secondary"
                         size="sm"
                         className="h-auto min-h-11 w-full justify-start whitespace-normal text-left"
-                        onClick={() => setQuestionDraft(example)}
+                        onClick={() => changeDraft((current) => ({ ...current, question: example }))}
                       >
                         {example}
                       </Button>
