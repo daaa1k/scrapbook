@@ -1,10 +1,12 @@
 import { eq } from 'drizzle-orm'
+import { Miniflare } from 'miniflare'
 import { describe, expect, it } from 'vitest'
+import { createDb } from '../src/db/client'
 import { jobs, notebooks, sources, sourceTags } from '../src/db/schema'
 import { organizationCommandSchema } from '../src/domain/organization'
 import { pasteSourceBody, registerUrlSource, retrySourceIngest } from '../src/server/ingest/register'
 import { applyOrganizationCommand } from '../src/server/organization'
-import { createTestDb } from './helpers/db'
+import { createTestDb, migrationStatements } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 
 async function organize(db: ReturnType<typeof createTestDb>['db'], input: unknown) {
@@ -62,6 +64,117 @@ describe('register ingest', () => {
     const rows = await db.select().from(sources).where(eq(sources.normalizedUrl, 'https://example.com/a'))
     expect(rows).toHaveLength(1)
   })
+
+  it('converges concurrent registrations after both title fetches have started', async () => {
+    const { db } = createTestDb()
+    const notebookId = await seedNotebook(db)
+    let release!: () => void
+    const barrier = new Promise<void>((resolve) => { release = resolve })
+    let bothFetching!: () => void
+    const entered = new Promise<void>((resolve) => { bothFetching = resolve })
+    let fetches = 0
+    const fetchImpl: typeof fetch = async () => {
+      if (++fetches === 2) bothFetching()
+      await barrier
+      return new Response('<title>Concurrent</title>', { headers: { 'content-type': 'text/html' } })
+    }
+    const created: unknown[] = []
+    const workflow = { create: async (options: { params: unknown }) => {
+      created.push(options.params)
+      return { id: 'wf' }
+    } }
+    const input = { url: 'https://example.com/concurrent', notebook: notebookId }
+    const first = registerUrlSource(db, input, workflow, { fetchImpl })
+    const second = registerUrlSource(db, input, workflow, { fetchImpl })
+    await entered
+    release()
+    const results = await Promise.all([first, second])
+
+    expect(results.map((result) => result.duplicate).sort()).toEqual([false, true])
+    expect(new Set(results.map((result) => result.sourceId)).size).toBe(1)
+    expect(new Set(results.map((result) => result.jobId)).size).toBe(1)
+    expect(await db.select().from(sources)).toHaveLength(1)
+    expect(await db.select().from(jobs)).toHaveLength(1)
+    expect(created).toHaveLength(1)
+  })
+
+  it('converges concurrent registrations of an existing source without a job', async () => {
+    const { db } = createTestDb()
+    const notebookId = await seedNotebook(db)
+    const input = { url: 'https://example.com/no-job', notebook: notebookId }
+    const original = await registerUrlSource(db, input, { create: async () => ({ id: 'initial' }) })
+    await db.delete(jobs).where(eq(jobs.id, original.jobId))
+    const created: unknown[] = []
+    const workflow = { create: async (options: { params: unknown }) => {
+      created.push(options.params)
+      return { id: 'wf' }
+    } }
+
+    const results = await Promise.all([
+      registerUrlSource(db, input, workflow),
+      registerUrlSource(db, input, workflow),
+    ])
+    expect(results.every((result) => result.duplicate)).toBe(true)
+    expect(results.map((result) => result.sourceId)).toEqual([original.sourceId, original.sourceId])
+    expect(new Set(results.map((result) => result.jobId)).size).toBe(1)
+    expect(await db.select().from(jobs)).toHaveLength(1)
+    expect(created).toHaveLength(1)
+  })
+
+  it('converges both URL and job conflicts on local D1', async () => {
+    const miniflare = new Miniflare({
+      workers: [{ config: {
+        name: 'test', type: 'worker', compatibilityDate: '2026-09-15',
+        manifest: { mainModule: 'index.js', modules: {
+          'index.js': { type: 'esm', contents: 'export default { fetch() { return new Response("ok") } }' },
+        } },
+        env: { DB: { type: 'd1', name: 'register-test-db' } },
+      } }],
+    })
+    try {
+      const d1 = await miniflare.getD1Database('DB')
+      for (const statement of migrationStatements()) await d1.prepare(statement).run()
+      const db = createDb(d1)
+      const notebook = await seedNotebook(db)
+      let release!: () => void
+      const barrier = new Promise<void>((resolve) => { release = resolve })
+      let bothFetching!: () => void
+      const entered = new Promise<void>((resolve) => { bothFetching = resolve })
+      let fetches = 0
+      const fetchImpl: typeof fetch = async () => {
+        if (++fetches === 2) bothFetching()
+        await barrier
+        return new Response('<title>D1</title>', { headers: { 'content-type': 'text/html' } })
+      }
+      const starts: unknown[] = []
+      const workflow = { create: async (options: { params: unknown }) => {
+        starts.push(options.params)
+        return { id: 'wf' }
+      } }
+      const input = { url: 'https://example.com/d1-concurrent', notebook }
+      const requests = [
+        registerUrlSource(db, input, workflow, { fetchImpl }),
+        registerUrlSource(db, input, workflow, { fetchImpl }),
+      ]
+      await entered
+      release()
+      const results = await Promise.all(requests)
+      expect(new Set(results.map((result) => result.sourceId)).size).toBe(1)
+      expect(new Set(results.map((result) => result.jobId)).size).toBe(1)
+      expect(starts).toHaveLength(1)
+
+      await db.delete(jobs).where(eq(jobs.sourceId, results[0]!.sourceId))
+      const reused = await Promise.all([
+        registerUrlSource(db, input, workflow),
+        registerUrlSource(db, input, workflow),
+      ])
+      expect(new Set(reused.map((result) => result.jobId)).size).toBe(1)
+      expect(await db.select().from(jobs)).toHaveLength(1)
+      expect(starts).toHaveLength(2)
+    } finally {
+      await miniflare.dispose()
+    }
+  }, 30_000)
 
   it('keeps memo and tags when the same URL is registered again in the same notebook', async () => {
     const { db } = createTestDb()
