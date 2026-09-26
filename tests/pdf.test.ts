@@ -53,6 +53,12 @@ function helloPdfBytes(): Uint8Array {
   return new TextEncoder().encode(HELLO_PDF)
 }
 
+it('treats a PDF page containing only spaces as missing extractable body text', async () => {
+  const blank = HELLO_PDF.replace('scrapbook-hello', ' '.repeat('scrapbook-hello'.length))
+  const upload = parsePdfUpload({ bytes: new TextEncoder().encode(blank), filename: 'blank.pdf' })
+  expect(await extractPdfTextWithUnpdf(upload.bytes)).toEqual({ kind: 'empty' })
+})
+
 async function registerPdfSource(
   db: AppDb,
   assets: AssetsPort,
