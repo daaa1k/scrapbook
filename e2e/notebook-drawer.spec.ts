@@ -1,0 +1,49 @@
+import { expect, test } from '@playwright/test'
+
+test('tablet source drawer traps focus and restores it on close, selection, and resize', async ({ page }) => {
+  const title = `Drawer focus ${Date.now()}`
+  await page.goto('/')
+  const addDialog = page.locator('dialog[open]')
+  await expect(async () => {
+    await page.getByRole('button', { name: '新しいノート' }).click()
+    await expect(addDialog).toBeVisible({ timeout: 1_000 })
+  }).toPass({ timeout: 20_000 })
+  await addDialog.getByRole('tab', { name: '貼り付け' }).click()
+  await addDialog.getByLabel('タイトル', { exact: true }).fill(title)
+  await addDialog.getByLabel('本文', { exact: true }).fill('drawer のフォーカス試験用本文です。')
+  await addDialog.getByRole('button', { name: '本文を保存' }).click()
+  await expect(addDialog).not.toBeVisible()
+
+  await page.setViewportSize({ width: 800, height: 800 })
+  const trigger = page.getByRole('button', { name: 'ソース一覧' })
+  const drawer = page.getByRole('dialog', { name: 'ソース' })
+  const close = drawer.getByRole('button', { name: '閉じる' })
+  const memo = page.getByRole('textbox', { name: 'ソースのメモ' })
+
+  await trigger.click()
+  await expect(drawer).toBeVisible()
+  await expect(close).toBeFocused()
+  await expect(drawer).toHaveJSProperty('open', true)
+  await close.press('Tab')
+  await expect(drawer.locator(':focus')).toHaveCount(1)
+  await page.keyboard.press('Shift+Tab')
+  await expect(close).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(drawer).not.toBeVisible()
+  await expect(trigger).toBeFocused()
+  await memo.focus()
+  await expect(memo).toBeFocused()
+
+  await trigger.click()
+  await drawer.locator('button[title]').filter({ hasText: title }).click()
+  await expect(drawer).not.toBeVisible()
+  await expect(page.getByRole('heading', { name: '要約・質問' })).toBeFocused()
+
+  await trigger.click()
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await expect(drawer).toHaveCount(0)
+  await memo.focus()
+  await expect(memo).toBeFocused()
+  await page.setViewportSize({ width: 390, height: 800 })
+  await expect(page.getByRole('tablist', { name: 'ノートの表示切替' })).toBeVisible()
+})
