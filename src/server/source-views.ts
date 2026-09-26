@@ -152,6 +152,8 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
       author: sources.author,
       fetchStatus: sources.fetchStatus,
       acquiredVia: sources.acquiredVia,
+      publishedAt: sources.publishedAt,
+      fetchedAt: sources.fetchedAt,
       summary: sources.summary,
       body: sources.body,
       memo: sources.memo,
@@ -222,6 +224,8 @@ export async function readSourceDetail(db: AppDb, sourceId: string): Promise<Sou
     author: row.author,
     fetchStatus: row.fetchStatus,
     acquiredVia: row.acquiredVia,
+    publishedAt: row.publishedAt,
+    fetchedAt: row.fetchedAt,
     summary: row.summary,
     body: row.body,
     job: job

@@ -11,6 +11,8 @@ const base: SourceDetail = {
   author: 'Ada',
   fetchStatus: 'full',
   acquiredVia: 'paste',
+  publishedAt: null,
+  fetchedAt: null,
   summary: null,
   body: null,
   job: null,

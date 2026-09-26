@@ -15,6 +15,7 @@ import {
 } from '../src/domain/pdf'
 import type { AssetsPort } from '../src/server/ingest/pdf'
 import { deleteSource, pasteSourceBody, summarizeSourceBody } from '../src/server/ingest/register'
+import { readSourceDetail } from '../src/server/source-views'
 import { findSourcesByQuery } from '../src/server/ingest/search'
 import { listSourceViews } from '../src/server/source-views'
 import {
@@ -207,6 +208,11 @@ describe('pdf register', () => {
 
     expect(row?.kind).toBe('pdf')
     expect(row?.acquiredVia).toBe('upload')
+    expect(await readSourceDetail(db, result.sourceId)).toMatchObject({
+      publishedAt: null,
+      fetchedAt: row?.fetchedAt,
+      acquiredVia: 'upload',
+    })
     expect(row?.title).toBe('講義.pdf')
     expect(row?.url).toBeNull()
     expect(row?.normalizedUrl).toBeNull()
