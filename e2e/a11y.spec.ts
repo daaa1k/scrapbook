@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Locator } from '@playwright/test'
+import { test as notebookTest } from './fixtures/notebook'
 
 async function assertNoCriticalOrSerious(page: import('@playwright/test').Page, label: string) {
   const results = await new AxeBuilder({ page }).analyze()
@@ -93,4 +94,28 @@ test.describe('axe critical/serious = 0', () => {
       await assertNoCriticalOrSerious(page, `populated-study-${theme}`)
     })
   }
+})
+
+notebookTest('populated notebook sources drawer and question failure', async ({ page, notebook }) => {
+  await page.setViewportSize({ width: 800, height: 800 })
+  await page.goto(`${notebook.path}?sourceId=${notebook.firstSourceId}`)
+  await expect(page.getByRole('tabpanel', { name: '要約・質問' })).toBeVisible()
+  await page.getByRole('button', { name: 'ソース一覧' }).click()
+  await expect(page.getByRole('dialog', { name: 'ソース' })).toBeVisible()
+  await assertNoCriticalOrSerious(page, 'populated-notebook-drawer')
+  await page.getByRole('button', { name: 'ソース一覧を閉じる' }).click()
+
+  const failedQuestion = '通信失敗のアクセシビリティ検査'
+  await page.route('**/_serverFn/**', async (route) => {
+    if (route.request().method() === 'POST' && route.request().postData()?.includes(failedQuestion)) {
+      await route.abort('failed')
+    } else {
+      await route.continue()
+    }
+  })
+  const question = page.getByRole('textbox', { name: '質問' })
+  await question.fill(failedQuestion)
+  await page.getByRole('button', { name: '質問する' }).click()
+  await expect(page.locator('#investigate-action-error')).toBeVisible()
+  await assertNoCriticalOrSerious(page, 'populated-notebook-question-error')
 })
