@@ -1,7 +1,8 @@
 import { Effect } from 'effect'
 import { and, eq, isNull } from 'drizzle-orm'
-import { citations as citationsTable, cursorRuns, jobs, qaAnswers, qaCitations, sources } from '~/db/schema'
+import { cursorRuns, jobs, qaAnswers, sources } from '~/db/schema'
 import type { AppDb } from '~/db/types'
+import { saveAnswerResult, saveSourceResult } from '~/db/atomic-result'
 import { encodeLocator, rebaseCitationsForStoredBody, type Citation } from '~/domain/citations'
 import {
   parseAskResultJson,
@@ -201,42 +202,24 @@ async function promptForJob(db: AppDb, params: IngestWorkflowParams): Promise<st
   }
 }
 
-async function replaceSourceCitations(
-  db: AppDb,
-  sourceId: string,
-  citations: readonly Citation[],
-  ts: number,
-): Promise<void> {
-  await db.delete(citationsTable).where(eq(citationsTable.sourceId, sourceId))
-  if (citations.length === 0) return
-  await db.insert(citationsTable).values(
-    citations.map((citation) => ({
+function sourceCitationRows(sourceId: string, citations: readonly Citation[], ts: number) {
+  return citations.map((citation) => ({
       id: crypto.randomUUID(),
       sourceId,
       locator: encodeLocator(citation.locator),
       excerpt: citation.excerpt,
       createdAt: ts,
-    })),
-  )
+  }))
 }
 
-async function replaceQaCitations(
-  db: AppDb,
-  qaAnswerId: string,
-  citations: readonly Citation[],
-  ts: number,
-): Promise<void> {
-  await db.delete(qaCitations).where(eq(qaCitations.qaAnswerId, qaAnswerId))
-  if (citations.length === 0) return
-  await db.insert(qaCitations).values(
-    citations.map((citation) => ({
+function qaCitationRows(qaAnswerId: string, citations: readonly Citation[], ts: number) {
+  return citations.map((citation) => ({
       id: crypto.randomUUID(),
       qaAnswerId,
       locator: encodeLocator(citation.locator),
       excerpt: citation.excerpt,
       createdAt: ts,
-    })),
-  )
+  }))
 }
 
 async function persistIngestOutput(
@@ -261,9 +244,12 @@ async function persistIngestOutput(
           : stored.fetchStatus === 'partial'
             ? 'partial'
             : parsed.fetchStatus
-      await db
-        .update(sources)
-        .set({
+      const rows = sourceCitationRows(
+        params.sourceId,
+        rebaseCitationsForStoredBody(parsed.citations, parsed.body, stored.body, stored.leadingTrimChars),
+        ts,
+      )
+      await saveSourceResult(db, params.sourceId, {
           title: parsed.title,
           author: parsed.author,
           publishedAt,
@@ -274,38 +260,25 @@ async function persistIngestOutput(
           acquiredVia: 'fetch',
           fetchedAt: ts,
           updatedAt: ts,
-        })
-        .where(eq(sources.id, params.sourceId))
-      await replaceSourceCitations(
-        db,
-        params.sourceId,
-        rebaseCitationsForStoredBody(parsed.citations, parsed.body, stored.body, stored.leadingTrimChars),
-        ts,
-      )
+      }, rows)
       break
     }
     case 'summarize_body': {
       const parsed = parseSummarizeResultJson(raw)
-      await db
-        .update(sources)
-        .set({
+      const rows = sourceCitationRows(params.sourceId, parsed.citations, ts)
+      await saveSourceResult(db, params.sourceId, {
           summary: parsed.summary,
           updatedAt: ts,
-        })
-        .where(eq(sources.id, params.sourceId))
-      await replaceSourceCitations(db, params.sourceId, parsed.citations, ts)
+      }, rows)
       break
     }
     case 'ask_source': {
       const parsed = parseAskResultJson(raw)
-      await db
-        .update(qaAnswers)
-        .set({
+      const rows = qaCitationRows(params.qaAnswerId, parsed.citations, ts)
+      await saveAnswerResult(db, params.qaAnswerId, {
           answer: parsed.answer,
           updatedAt: ts,
-        })
-        .where(eq(qaAnswers.id, params.qaAnswerId))
-      await replaceQaCitations(db, params.qaAnswerId, parsed.citations, ts)
+      }, rows)
       break
     }
   }
