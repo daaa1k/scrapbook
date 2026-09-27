@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  QUESTION_EXAMPLES,
   SOURCE_LIST_SORT_DEFAULT,
   sortSourceListItems,
-  sourceListSearchEmptyCopy,
 } from '../src/domain/source-list-controls'
 import { notebookIdSchema, notebookTitleSchema } from '../src/domain/organization'
 import { sourceListItemSchema } from '../src/domain/source-views'
@@ -45,16 +43,5 @@ describe('sortSourceListItems', () => {
       'ガンマ',
       'ベータ',
     ])
-  })
-})
-
-describe('source list copy helpers', () => {
-  it('explains empty search', () => {
-    expect(sourceListSearchEmptyCopy('')).toBe('ソースはまだありません')
-    expect(sourceListSearchEmptyCopy('PDF')).toBe('「PDF」に一致するソースはありません')
-  })
-
-  it('offers question examples', () => {
-    expect(QUESTION_EXAMPLES.length).toBeGreaterThanOrEqual(3)
   })
 })
