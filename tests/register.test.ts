@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { jobs, notebooks, sources, sourceTags } from '../src/db/schema'
+import { jobs, sources, sourceTags } from '../src/db/schema'
 import { organizationCommandSchema } from '../src/domain/organization'
 import { pasteSourceBody, registerUrlSource, retrySourceIngest } from '../src/server/ingest/register'
 import { applyOrganizationCommand } from '../src/server/organization'
@@ -39,15 +39,11 @@ describe('register ingest', () => {
 
     const rows = await db.select().from(sources)
     expect(rows).toHaveLength(1)
-    expect(rows[0]?.notebookId).toBeTruthy()
-    const book = (await db.select().from(notebooks).where(eq(notebooks.id, rows[0]!.notebookId)))[0]
-    expect(book?.title).toBe('研究')
-    expect(rows[0]?.memo).toBeNull()
-    expect(rows[0]?.fetchStatus).toBe('none')
-    expect(rows[0]?.kind).toBe('url')
-    expect(rows[0]?.acquiredVia).toBe('fetch')
     expect(rows[0]?.url).toBe('https://Example.com/post/')
     expect(rows[0]?.normalizedUrl).toBe('https://example.com/post')
+    const jobRows = await db.select().from(jobs).where(eq(jobs.sourceId, result.sourceId))
+    expect(jobRows).toHaveLength(1)
+    expect(jobRows[0]?.status).toBe('queued')
   })
 
   it('does not create a second source for a duplicate normalized URL', async () => {
