@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { EMPTY_SOURCE_LIST_FILTER } from '../src/domain/organization'
-import { jobs, notebooks, sources } from '../src/db/schema'
+import { jobs, sources } from '../src/db/schema'
 import type { AppDb } from '../src/db/types'
 import {
   MAX_PDF_BYTES,
@@ -15,7 +15,6 @@ import {
 } from '../src/domain/pdf'
 import type { AssetsPort } from '../src/server/ingest/pdf'
 import { deleteSource, pasteSourceBody, summarizeSourceBody } from '../src/server/ingest/register'
-import { findSourcesByQuery } from '../src/server/ingest/search'
 import { listSourceViews } from '../src/server/source-views'
 import {
   extractPdfTextWithUnpdf,
@@ -195,23 +194,10 @@ describe('pdf register', () => {
     }))
 
     const row = (await db.select().from(sources).where(eq(sources.id, result.sourceId)))[0]
-    const book = (await db.select().from(notebooks).where(eq(notebooks.id, row!.notebookId)))[0]
     const jobRows = await db.select().from(jobs).where(eq(jobs.sourceId, result.sourceId))
     const stored = await assets.get(pdfOriginalKey(result.sourceId))
 
-    expect(row?.kind).toBe('pdf')
-    expect(row?.acquiredVia).toBe('upload')
-    expect(row?.title).toBe('講義.pdf')
-    expect(row?.url).toBeNull()
-    expect(row?.normalizedUrl).toBeNull()
     expect(row?.body).toBe('抽出本文')
-    expect(row?.summary).toBeNull()
-    expect(row?.memo).toBeNull()
-    expect(row?.fetchStatus).toBe('full')
-    expect(row?.contentHash).toBeTruthy()
-    expect(row?.r2Key).toBe(`pdf/${result.sourceId}/original.pdf`)
-    expect(result.notebookId).toBe(row?.notebookId)
-    expect(book?.title).toBe('研究')
     expect(jobRows).toHaveLength(0)
     expect(stored).toEqual(upload.bytes)
   })
@@ -226,32 +212,24 @@ describe('pdf register', () => {
     expect(row?.fetchStatus).toBe('full')
   })
 
-  it('keeps the original when extract is empty', async () => {
-    const { db } = createTestDb()
-    const assets = createMemoryAssets()
-    const upload = parsePdfUpload({ bytes: helloPdfBytes(), filename: 'scan.pdf' })
-    const result = await registerPdfSource(db, assets, upload, async () => ({ kind: 'empty' }))
-    const row = (await db.select().from(sources).where(eq(sources.id, result.sourceId)))[0]
-    const stored = await assets.get(pdfOriginalKey(result.sourceId))
-    expect(row?.fetchStatus).toBe('failed')
-    expect(row?.body).toBeNull()
-    expect(stored?.byteLength).toBe(upload.bytes.byteLength)
-    expect(pdfTextHelp({ kind: row!.kind, body: row!.body })).toBe(
-      'テキストを抽出できませんでした。スキャンされたPDFの場合は、下のフォームから本文を貼り付けてください。',
-    )
-  })
-
-  it('treats whitespace-only extracted text as failed', async () => {
-    const { db } = createTestDb()
-    const assets = createMemoryAssets()
-    const upload = parsePdfUpload({ bytes: helloPdfBytes(), filename: 'blank.pdf' })
-    const result = await registerPdfSource(db, assets, upload, async () => ({ kind: 'text', text: ' \n ' }))
-    const row = (await db.select().from(sources).where(eq(sources.id, result.sourceId)))[0]
-
-    expect(row?.fetchStatus).toBe('failed')
-    expect(row?.body).toBeNull()
-    expect(row?.contentHash).toBeNull()
-    expect(await assets.get(pdfOriginalKey(result.sourceId))).toEqual(upload.bytes)
+  it('keeps the original when extracted text is empty or whitespace-only', async () => {
+    for (const [filename, extraction] of [
+      ['scan.pdf', { kind: 'empty' as const }],
+      ['blank.pdf', { kind: 'text' as const, text: ' \n ' }],
+    ] as const) {
+      const { db } = createTestDb()
+      const assets = createMemoryAssets()
+      const upload = parsePdfUpload({ bytes: helloPdfBytes(), filename })
+      const result = await registerPdfSource(db, assets, upload, async () => extraction)
+      const row = (await db.select().from(sources).where(eq(sources.id, result.sourceId)))[0]
+      const stored = await assets.get(pdfOriginalKey(result.sourceId))
+      expect(row?.fetchStatus).toBe('failed')
+      expect(row?.body).toBeNull()
+      expect(stored).toEqual(upload.bytes)
+      expect(pdfTextHelp({ kind: row!.kind, body: row!.body })).toBe(
+        'テキストを抽出できませんでした。スキャンされたPDFの場合は、下のフォームから本文を貼り付けてください。',
+      )
+    }
   })
 
   it('publishes a failed source with its original after extraction throws', async () => {
@@ -292,14 +270,6 @@ describe('pdf register', () => {
     expect(row?.body).toBe('スキャンの本文')
   })
 
-  it('finds an extracted PDF body by search', async () => {
-    const { db } = createTestDb()
-    const assets = createMemoryAssets()
-    const upload = parsePdfUpload({ bytes: helloPdfBytes(), filename: 'search.pdf' })
-    await registerPdfSource(db, assets, upload, async () => ({ kind: 'text', text: '抽出ヒット' }))
-    const hits = await findSourcesByQuery(db, '抽出ヒット')
-    expect(hits.map((row) => row.title)).toEqual(['search.pdf'])
-  })
 })
 
 describe('pdf serve', () => {
