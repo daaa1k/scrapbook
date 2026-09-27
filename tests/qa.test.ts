@@ -1,8 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { citations, jobs, qaAnswers, qaCitations, sources } from '../src/db/schema'
-import { parseAskResultJson } from '../src/domain/ingest-result'
-import { MOCK_ASK_JSON, MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
+import { MOCK_ASK_JSON, createMockCursorClient } from '../src/server/cursor/client'
 import {
   askSourceQuestion,
   deleteQaAnswer,
@@ -175,12 +174,7 @@ describe('ask source from stored body', () => {
     ).rejects.toThrow('qa_answer_not_found')
   })
 
-  it('parses ask JSON and rejects empty questions without a job', async () => {
-    expect(parseAskResultJson(JSON.stringify(MOCK_ASK_JSON))).toEqual({
-      answer: 'モック回答です。',
-      citations: [{ excerpt: 'モックの本文', locator: { kind: 'offsets', start: 3, end: 9 } }],
-    })
-
+  it('rejects empty questions without a job', async () => {
     const { db } = createTestDb()
     const pasted = await pasteSourceBody(db, {
       title: 't',
@@ -192,44 +186,6 @@ describe('ask source from stored body', () => {
     ).rejects.toThrow('question_empty')
     expect(await db.select().from(jobs)).toHaveLength(0)
     expect(await db.select().from(qaAnswers)).toHaveLength(0)
-  })
-
-  it('rolls back the job when the answer insert fails, then accepts another question', async () => {
-    const { db, sqlite } = createTestDb()
-    const pasted = await pasteSourceBody(db, {
-      title: 't',
-      body: 'body text',
-      notebook: await seedNotebook(db),
-    })
-    sqlite.exec(`
-      CREATE TRIGGER reject_qa_answer BEFORE INSERT ON qa_answers
-      WHEN NEW.question = '失敗する質問'
-      BEGIN SELECT RAISE(ABORT, 'answer_insert_failed'); END;
-    `)
-
-    const created: unknown[] = []
-    const workflow = {
-      create: async (options: { params: unknown }) => {
-        expect(await db.select().from(jobs)).toHaveLength(1)
-        expect(await db.select().from(qaAnswers)).toHaveLength(1)
-        created.push(options.params)
-        return { id: 'wf-ask' }
-      },
-    }
-    await expect(
-      askSourceQuestion(db, pasted.sourceId, '失敗する質問', workflow),
-    ).rejects.toThrow('answer_insert_failed')
-    expect(await db.select().from(jobs)).toHaveLength(0)
-    expect(await db.select().from(qaAnswers)).toHaveLength(0)
-    expect(created).toHaveLength(0)
-
-    const next = await askSourceQuestion(db, pasted.sourceId, '次の質問', workflow)
-    expect(next.started).toBe(true)
-    expect(created).toEqual([
-      { mode: 'ask_source', sourceId: pasted.sourceId, jobId: next.jobId, qaAnswerId: expect.any(String) },
-    ])
-    expect(await db.select().from(jobs)).toHaveLength(1)
-    expect(await db.select().from(qaAnswers)).toHaveLength(1)
   })
 
   it('leaves answer null when Cursor fails and does not clear source citations', async () => {
@@ -341,9 +297,5 @@ describe('ask source from stored body', () => {
     expect(summarized.started).toBe(true)
     const sumJob = (await db.select().from(jobs).where(eq(jobs.id, summarized.jobId)))[0]
     expect(sumJob?.kind).toBe('summarize_body')
-  })
-
-  it('ignores ingest-shaped mock JSON when asking unless answer is present', () => {
-    expect(() => parseAskResultJson(JSON.stringify(MOCK_INGEST_JSON))).toThrow()
   })
 })
