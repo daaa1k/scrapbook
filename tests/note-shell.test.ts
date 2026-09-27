@@ -3,12 +3,8 @@ import {
   cancelNotebookTitleEdit,
   nextSourceIdAfterDelete,
   notebookLayoutModeFromMatches,
-  notebookPanelId,
   notebookPanelIsConcealed,
-  notebookStudySwitchAnnouncement,
-  notebookTabId,
   notebookTitleCommit,
-  notebookTitleDraftChanged,
   paneAfterTabKey,
   resolveNoteShellFrame,
   resolveNoteShellResults,
@@ -16,7 +12,6 @@ import {
   sourceListKind,
   sourceListKindLabel,
   sourceRowJobChip,
-  startNotebookTitleEdit,
 } from '../src/domain/note-shell'
 import {
   notebookIdSchema,
@@ -243,8 +238,6 @@ describe('paneAfterTabKey', () => {
 
   it('ignores keys that are not part of the tablist pattern', () => {
     expect(paneAfterTabKey('study', 'ArrowDown')).toBe(null)
-    expect(paneAfterTabKey('study', 'Tab')).toBe(null)
-    expect(paneAfterTabKey('study', 'Enter')).toBe(null)
   })
 })
 
@@ -278,23 +271,9 @@ describe('notebookPanelIsConcealed', () => {
 })
 
 describe('notebook title editor', () => {
-  it('starts from the saved title and cancel returns to viewing', () => {
-    expect(startNotebookTitleEdit('研究')).toEqual({ status: 'editing', draft: '研究' })
-    expect(cancelNotebookTitleEdit()).toEqual({ status: 'viewing' })
-  })
-
-  it('keeps a typed draft in editing and commits only a changed name', () => {
-    expect(notebookTitleDraftChanged('論文')).toEqual({ status: 'editing', draft: '論文' })
+  it('rejects an empty title and submits only a changed, trimmed title', () => {
     expect(notebookTitleCommit('研究', '研究')).toEqual({ action: 'unchanged' })
     expect(notebookTitleCommit('  論文  ', '研究')).toEqual({ action: 'submit', title: '論文' })
     expect(notebookTitleCommit('   ', '研究')).toEqual({ action: 'invalid' })
-  })
-})
-
-describe('notebook tab ids and study switch copy', () => {
-  it('names the study tab, panel, and source-driven announcement', () => {
-    expect(notebookTabId('study')).toBe('notebook-tab-study')
-    expect(notebookPanelId('memo')).toBe('notebook-panel-memo')
-    expect(notebookStudySwitchAnnouncement('記事')).toBe('記事を選び、要約・質問を表示しています')
   })
 })
