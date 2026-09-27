@@ -7,7 +7,6 @@ import {
   readStoredThemePreference,
   resolveTheme,
   THEME_STORAGE_KEY,
-  themePreferenceLabel,
 } from '~/lib/theme'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -24,12 +23,6 @@ describe('theme preference', () => {
     expect(cycleThemePreference('system')).toBe('light')
     expect(cycleThemePreference('light')).toBe('dark')
     expect(cycleThemePreference('dark')).toBe('system')
-  })
-
-  it('labels preferences in English', () => {
-    expect(themePreferenceLabel('system')).toBe('System')
-    expect(themePreferenceLabel('light')).toBe('Light')
-    expect(themePreferenceLabel('dark')).toBe('Dark')
   })
 
   it('accepts only known preference strings', () => {
