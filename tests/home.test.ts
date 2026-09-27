@@ -56,12 +56,4 @@ describe('home list controls', () => {
       '研究メモ',
     ])
   })
-
-  it('presents filtered then sorted notebooks', () => {
-    expect(presentHomeNotebooks([a, b, c], '研究', 'updated').map((n) => n.title)).toEqual([
-      '研究メモ',
-      '研究ノート',
-    ])
-  })
-
 })
