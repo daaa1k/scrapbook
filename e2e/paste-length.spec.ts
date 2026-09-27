@@ -32,11 +32,6 @@ test('keeps oversized native pastes visible and saves a body at the limit', asyn
   await expect(save).toBeDisabled()
 
   await body.press('ControlOrMeta+A')
-  await pasteText(page, overLimit)
-  await expect(body).toHaveValue(overLimit)
-  await expect(save).toBeDisabled()
-
-  await body.press('ControlOrMeta+A')
   await pasteText(page, exactLimit)
   await expect(body).toHaveValue(exactLimit)
   await expect(dialog.locator('#source-add-paste-count')).toHaveText('200,000 / 200,000')

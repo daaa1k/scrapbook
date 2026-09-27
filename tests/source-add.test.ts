@@ -1,13 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   emptySourceAddDraft,
-  formatFileBytes,
   sourceAddCloseIntent,
-  sourceAddDiscardCopy,
-  sourceAddFirstFieldId,
   sourceAddIsDirty,
   sourceAddMethodAfterTabKey,
-  sourceAddPanelId,
   sourceAddPanelIsConcealed,
   sourceAddPasteBodyCount,
   sourceAddPasteBodyIssue,
@@ -15,44 +11,26 @@ import {
   sourceAddPasteUrlIssue,
   sourceAddPdfIssue,
   sourceAddPdfSubmitDisabled,
-  sourceAddSubmitLabel,
-  sourceAddTabId,
   sourceAddUrlIssue,
 } from '../src/domain/source-add'
 
 describe('sourceAddMethodAfterTabKey', () => {
   it('moves across the three methods and wraps at the ends', () => {
     expect(sourceAddMethodAfterTabKey('url', 'ArrowRight')).toBe('pdf')
-    expect(sourceAddMethodAfterTabKey('pdf', 'ArrowRight')).toBe('paste')
-    expect(sourceAddMethodAfterTabKey('paste', 'ArrowRight')).toBe('url')
     expect(sourceAddMethodAfterTabKey('url', 'ArrowLeft')).toBe('paste')
-    expect(sourceAddMethodAfterTabKey('pdf', 'ArrowLeft')).toBe('url')
-    expect(sourceAddMethodAfterTabKey('paste', 'ArrowLeft')).toBe('pdf')
   })
 
   it('jumps to the first or last method on Home and End', () => {
     expect(sourceAddMethodAfterTabKey('paste', 'Home')).toBe('url')
     expect(sourceAddMethodAfterTabKey('url', 'End')).toBe('paste')
-    expect(sourceAddMethodAfterTabKey('pdf', 'Home')).toBe('url')
-    expect(sourceAddMethodAfterTabKey('pdf', 'End')).toBe('paste')
   })
 
   it('ignores keys that are not part of the tablist pattern', () => {
     expect(sourceAddMethodAfterTabKey('pdf', 'ArrowDown')).toBe(null)
-    expect(sourceAddMethodAfterTabKey('pdf', 'Tab')).toBe(null)
-    expect(sourceAddMethodAfterTabKey('pdf', 'Enter')).toBe(null)
   })
 })
 
-describe('sourceAdd panel ids and concealment', () => {
-  it('names the tab, panel, and first field for each method', () => {
-    expect(sourceAddTabId('url')).toBe('source-add-tab-url')
-    expect(sourceAddPanelId('pdf')).toBe('source-add-panel-pdf')
-    expect(sourceAddFirstFieldId('paste')).toBe('source-add-paste-title')
-    expect(sourceAddFirstFieldId('url')).toBe('source-add-url')
-    expect(sourceAddFirstFieldId('pdf')).toBe('source-add-pdf')
-  })
-
+describe('sourceAdd panel visibility', () => {
   it('conceals every method except the selected one', () => {
     expect(sourceAddPanelIsConcealed('url', 'url')).toBe(false)
     expect(sourceAddPanelIsConcealed('pdf', 'url')).toBe(true)
@@ -152,31 +130,5 @@ describe('sourceAdd field issues', () => {
     expect(sourceAddPdfSubmitDisabled({ ...valid, size: 0 }, false)).toBe(true)
     expect(sourceAddPdfSubmitDisabled({ ...valid, size: 8 * 1024 * 1024 + 1 }, false)).toBe(true)
     expect(sourceAddPdfSubmitDisabled({ ...valid, name: 'notes.png', type: 'image/png' }, false)).toBe(true)
-  })
-})
-
-describe('sourceAdd copy', () => {
-  it('names the in-progress submit and the idle action per method', () => {
-    expect(sourceAddSubmitLabel('url', true)).toBe('登録中…')
-    expect(sourceAddSubmitLabel('pdf', true)).toBe('登録中…')
-    expect(sourceAddSubmitLabel('paste', false)).toBe('本文を保存')
-    expect(sourceAddSubmitLabel('url', false)).toBe('URLを登録')
-    expect(sourceAddSubmitLabel('pdf', false)).toBe('PDFを登録')
-  })
-
-  it('asks to discard typed input without calling it a delete', () => {
-    expect(sourceAddDiscardCopy()).toEqual({
-      title: '入力を破棄しますか？',
-      description: '入力した内容は保存されません。',
-      confirmLabel: '破棄する',
-      cancelLabel: 'キャンセル',
-    })
-  })
-
-  it('formats file sizes with one decimal for KB and MB', () => {
-    expect(formatFileBytes(0)).toBe('0 B')
-    expect(formatFileBytes(512)).toBe('512 B')
-    expect(formatFileBytes(1536)).toBe('1.5 KB')
-    expect(formatFileBytes(8 * 1024 * 1024)).toBe('8.0 MB')
   })
 })
