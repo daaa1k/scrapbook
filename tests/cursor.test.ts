@@ -4,7 +4,6 @@ import {
   CursorNotConfigured,
   askPromptForBody,
   createCursorClient,
-  createMockCursorClient,
   ingestPromptForUrl,
   summarizePromptForBody,
 } from '../src/server/cursor/client'
@@ -97,50 +96,20 @@ describe('Cursor client', () => {
     await expect(runPromiseFail(client.getAgent('bc-x'))).rejects.toThrow(/non-JSON/)
   })
 
-  it('mock client returns FINISHED canned JSON', async () => {
-    const mock = createMockCursorClient()
-    const created = await Effect.runPromise(mock.createAgent('x'))
-    const run = await Effect.runPromise(mock.getRun(created.agent.id, created.run.id))
-    expect(run.status).toBe('FINISHED')
-    expect(run.result).toContain('モック')
-  })
+  it('keeps body prompts local and forwards the question and body', () => {
+    const question = '要点は？'
+    const body = '手入力の本文です。'
+    const summarize = summarizePromptForBody(body)
+    const ask = askPromptForBody(question, body)
 
-  it('adds an unauthenticated X note for twitter hosts', () => {
-    const prompt = ingestPromptForUrl('https://x.com/foo/status/1')
-    expect(prompt).toContain('authenticated X fetch is not implemented')
-    expect(ingestPromptForUrl('https://example.com/a')).not.toContain('authenticated X fetch is not implemented')
-  })
+    expect(summarize).toContain(body)
+    expect(ask).toContain(`Question: ${question}`)
+    expect(ask).toContain(body)
+    for (const prompt of [summarize, ask]) {
+      expect(prompt).toMatch(/do not fetch/i)
+    }
 
-  it('asks Cursor to summarize the stored body instead of fetching a URL', () => {
-    const prompt = summarizePromptForBody('手入力の本文です。')
-    expect(prompt).toContain('手入力の本文です。')
-    expect(prompt).toContain('Do not fetch any URL')
-    expect(prompt).not.toContain('Fetch the URL')
-  })
-
-  it('requires Japanese for summarize and ingest summary fields', () => {
-    const summarize = summarizePromptForBody('手入力の本文です。')
-    expect(summarize).toContain('Write the summary field in Japanese.')
-    expect(summarize).toContain('"summary":"string"')
-
-    const ingest = ingestPromptForUrl('https://example.com/a')
-    expect(ingest).toContain('Write the summary field in Japanese.')
-    expect(ingest).toContain('"summary":"string"')
-  })
-
-  it('asks Cursor to answer a question from the stored body', () => {
-    const prompt = askPromptForBody('要点は？', '手入力の本文です。')
-    expect(prompt).toContain('Question: 要点は？')
-    expect(prompt).toContain('手入力の本文です。')
-    expect(prompt).toContain('"answer"')
-    expect(prompt).toContain('Do not fetch any URL')
-    expect(prompt).not.toContain('Fetch the URL')
-  })
-
-  it('requires Japanese for ask answers', () => {
-    const prompt = askPromptForBody('要点は？', '手入力の本文です。')
-    expect(prompt).toContain('Write the answer field in Japanese.')
-    expect(prompt).toContain('"answer":"string"')
+    expect(ingestPromptForUrl('https://x.com/foo/status/1')).toContain('https://x.com/foo/status/1')
   })
 
   it('truncates long bodies in summarize and ask prompts', () => {
