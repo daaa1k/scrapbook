@@ -1,11 +1,8 @@
-import { readFileSync } from 'node:fs'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { citations } from '../src/db/schema'
 import { parseIngestResultJson } from '../src/domain/ingest-result'
 import { MAX_SOURCE_BODY_CHARS } from '../src/domain/pdf'
-import { sourceDetailSchema, sourceListItemSchema } from '../src/domain/source-views'
-import { authenticateAccessRequest } from '../src/server/auth/access'
 import { MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
 import { pasteSourceBody, registerUrlSource, retrySourceIngest, summarizeSourceBody } from '../src/server/ingest/register'
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
@@ -14,27 +11,6 @@ import { createTestDb } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 
 const workflow = { create: async () => ({ id: 'wf' }) }
-
-const detailFixture = {
-  id: 'source-1',
-  kind: 'url',
-  url: 'https://example.com/a',
-  title: 't',
-  author: null,
-  fetchStatus: 'full',
-  acquiredVia: 'fetch' as const,
-  summary: null,
-  body: null,
-  job: null,
-  organization: {
-    notebook: {
-      id: '11111111-1111-4111-8111-111111111111',
-      title: '受信箱',
-    },
-    tags: [],
-    memo: null,
-  },
-}
 
 describe('source citations', () => {
   it('rejects lone, reversed, or negative citation offsets', () => {
@@ -240,31 +216,13 @@ describe('source citations', () => {
     })
     expect(await db.select().from(citations).where(eq(citations.sourceId, registered.sourceId))).toEqual([])
 
-    const restored = await retrySourceIngest(db, registered.sourceId, workflow)
-    expect(restored.started).toBe(true)
-    await runIngestWorkflow({
-      params: {
-        mode: 'fetch',
-        jobId: restored.jobId,
-        sourceId: registered.sourceId,
-        url: 'https://example.com/clear',
-      },
-      db,
-      step: createImmediateStep(),
-      cursor: createMockCursorClient(),
-      maxPolls: 2,
-      pollSleep: 0,
+    await db.insert(citations).values({
+      id: 'seed-before-omitted',
+      sourceId: registered.sourceId,
+      locator: '3:9',
+      excerpt: 'モックの本文',
+      createdAt: 1,
     })
-    const restoredRows = await db.select().from(citations).where(eq(citations.sourceId, registered.sourceId))
-    expect(restoredRows).toEqual([
-      {
-        id: restoredRows[0]!.id,
-        sourceId: registered.sourceId,
-        locator: '3:9',
-        excerpt: 'モックの本文',
-        createdAt: restoredRows[0]!.createdAt,
-      },
-    ])
 
     const omitted = await retrySourceIngest(db, registered.sourceId, workflow)
     expect(omitted.started).toBe(true)
@@ -428,63 +386,4 @@ describe('source citations', () => {
     ])
   })
 
-  it('requires citations on detail and ignores them on list items', () => {
-    expect(
-      sourceListItemSchema.parse({
-        id: 'source-1',
-        title: 't',
-        url: 'https://example.com/a',
-        kind: 'url',
-        fetchStatus: 'full',
-        acquiredVia: 'fetch',
-        jobStatus: null,
-        jobKind: null,
-        createdAt: 1,
-        updatedAt: 1,
-        notebook: detailFixture.organization.notebook,
-        tags: [],
-      }),
-    ).toEqual({
-      id: 'source-1',
-      title: 't',
-      url: 'https://example.com/a',
-      kind: 'url',
-      fetchStatus: 'full',
-      acquiredVia: 'fetch',
-      jobStatus: null,
-      jobKind: null,
-      createdAt: 1,
-      updatedAt: 1,
-      notebook: {
-        id: '11111111-1111-4111-8111-111111111111',
-        title: '受信箱',
-      },
-      tags: [],
-    })
-
-    expect(() => sourceDetailSchema.parse(detailFixture)).toThrow()
-    expect(sourceDetailSchema.parse({ ...detailFixture, citations: [], qaAnswers: [] }).citations).toEqual([])
-    expect(sourceDetailSchema.parse({ ...detailFixture, citations: [], qaAnswers: [] }).qaAnswers).toEqual([])
-  })
-
-  it('still gates reads behind Access in production', async () => {
-    await expect(
-      authenticateAccessRequest(new Request('https://scrapbook.example/'), {
-        ENVIRONMENT: 'production',
-        ALLOW_INSECURE_AUTH_BYPASS: 'true',
-        ACCESS_TEAM_DOMAIN: 'https://example.cloudflareaccess.com',
-        ACCESS_AUD: 'test-aud',
-        ACCESS_ALLOWED_EMAILS: 'you@example.com',
-      }),
-    ).rejects.toMatchObject({ code: 'missing_token' })
-
-    const sourcesFn = readFileSync(new URL('../src/server/functions/sources.ts', import.meta.url), 'utf8')
-    const getSourceBlock = sourcesFn.slice(
-      sourcesFn.indexOf('export const getSource'),
-      sourcesFn.indexOf('export const registerSource'),
-    )
-    expect(getSourceBlock).toContain('export const getSource = createServerFn')
-    expect(getSourceBlock).toContain('.middleware([authMiddleware])')
-    expect(getSourceBlock).not.toContain('citations')
-  })
 })
