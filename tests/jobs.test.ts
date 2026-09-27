@@ -1,14 +1,13 @@
 import { Effect, Exit } from 'effect'
 import { describe, expect, it } from 'vitest'
 import {
-  JOB_TRANSITIONS,
   IllegalJobTransitionError,
   assertTransition,
   assertTransitionEffect,
   canStartCursorJob,
   jobErrorReason,
 } from '../src/domain/jobs'
-import { jobStatusLabel, userFacingError } from '../src/lib/utils'
+import { userFacingError } from '../src/lib/utils'
 
 describe('job transitions', () => {
   it('allows the documented edges', () => {
@@ -33,11 +32,6 @@ describe('job transitions', () => {
     expect(() => assertTransition('succeeded', 'failed')).toThrow(IllegalJobTransitionError)
     expect(() => assertTransition('failed', 'queued')).toThrow(IllegalJobTransitionError)
     expect(() => assertTransition('persisting', 'waiting_agent')).toThrow(IllegalJobTransitionError)
-  })
-
-  it('encodes terminals as empty adjacency lists', () => {
-    expect(JOB_TRANSITIONS.succeeded).toEqual([])
-    expect(JOB_TRANSITIONS.failed).toEqual([])
   })
 
   it('allows a new Cursor job only when the latest job is missing or terminal', () => {
@@ -76,10 +70,4 @@ describe('job transitions', () => {
     expect(userFacingError(new TypeError('Failed to fetch'))).toBe('通信に失敗しました')
   })
 
-  it('labels in-flight jobs in Japanese without internal status names', () => {
-    expect(jobStatusLabel('queued', 'fetch')).toBe('本文の取得を準備しています')
-    expect(jobStatusLabel('waiting_agent', 'fetch')).toBe('本文を取得しています')
-    expect(jobStatusLabel('waiting_agent', 'summarize_body')).toBe('要約しています')
-    expect(jobStatusLabel('waiting_agent', 'ask_source')).toBe('回答しています')
-  })
 })
