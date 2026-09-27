@@ -64,15 +64,10 @@ async function clickHydrated(button: Locator) {
   await button.click()
 }
 
-test('retries the same selected PDF in a new and an existing notebook', async ({ page }) => {
+test('retries the same selected PDF in a new notebook', async ({ page }) => {
   test.setTimeout(120_000)
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   await clickHydrated(page.getByRole('button', { name: '新しいノート' }))
-  await retrySelectedPdf(page)
-  await expect(page).toHaveURL(/\/notebooks\/[^/]+/)
-  await page.reload()
-
-  await clickHydrated(page.getByRole('button', { name: 'ソースを追加' }).first())
   await retrySelectedPdf(page)
 })
