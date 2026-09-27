@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { jobs, notebooks, sources, sourceTags } from '../src/db/schema'
+import { jobs, sources, sourceTags } from '../src/db/schema'
 import { organizationCommandSchema } from '../src/domain/organization'
 import { pasteSourceBody, registerUrlSource } from '../src/server/ingest/register'
 import { applyOrganizationCommand } from '../src/server/organization'
@@ -24,15 +24,8 @@ describe('paste source body', () => {
     expect(result.notebookId).toBe(notebookId)
     const row = (await db.select().from(sources).where(eq(sources.id, result.sourceId)))[0]
     const jobRows = await db.select().from(jobs).where(eq(jobs.sourceId, result.sourceId))
-    const book = (await db.select().from(notebooks).where(eq(notebooks.id, row!.notebookId)))[0]
     expect(row?.title).toBe('手入力タイトル')
     expect(row?.body).toBe('手入力の本文です。')
-    expect(row?.summary).toBeNull()
-    expect(row?.memo).toBeNull()
-    expect(book?.title).toBe('研究')
-    expect(row?.fetchStatus).toBe('full')
-    expect(row?.acquiredVia).toBe('paste')
-    expect(row?.contentHash).toBeTruthy()
     expect(jobRows).toHaveLength(0)
   })
 

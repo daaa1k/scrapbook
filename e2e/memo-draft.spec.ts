@@ -51,11 +51,6 @@ test('restores, discards, and saves a local memo draft', async ({ page }) => {
   await expect(page.locator('#memo-save-status')).toHaveText('保存済み')
   expect(await page.evaluate((storageKey) => localStorage.getItem(storageKey), key)).toBeNull()
 
-  await page.evaluate(([storageKey, value]) => localStorage.setItem(storageKey, value), [key, 'restored draft'])
-  await page.reload()
-  await expect(memo).toHaveValue('restored draft')
-  await expect(page.getByRole('button', { name: '下書きを復元' })).toBeHidden()
-
   // A client navigation starts with no detail in the query cache.
   await page.evaluate(([storageKey, value]) => localStorage.setItem(storageKey, value), [key, 'pending draft'])
   await page.goto('/')

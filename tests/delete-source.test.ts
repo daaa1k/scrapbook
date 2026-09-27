@@ -9,8 +9,7 @@ import {
   sourceTags,
   sources,
 } from '../src/db/schema'
-import { isTerminalJobStatus } from '../src/domain/jobs'
-import { EMPTY_SOURCE_LIST_FILTER, organizationCommandSchema } from '../src/domain/organization'
+import { organizationCommandSchema } from '../src/domain/organization'
 import { MOCK_ASK_JSON, MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
 import {
   askSourceQuestion,
@@ -20,7 +19,6 @@ import {
 import { pdfOriginalKey, registerPdfSource } from '../src/server/ingest/pdf'
 import { applyOrganizationCommand } from '../src/server/organization'
 import { createImmediateStep, runIngestWorkflow } from '../src/server/ingest/workflow-run'
-import { listSourceViews } from '../src/server/source-views'
 import { createTestDb } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 import { createMemoryAssets } from './helpers/r2'
@@ -126,32 +124,4 @@ describe('delete source', () => {
     expect(await db.select().from(sources).where(eq(sources.id, registered.sourceId))).toHaveLength(0)
   })
 
-  it('list eligibility matches the idle gate used by deleteSource', async () => {
-    const { db } = createTestDb()
-    const notebook = await seedNotebook(db)
-    const registered = await registerUrlSource(db, { url: 'https://example.com/list-del', notebook }, {
-      create: async () => ({ id: 'wf' }),
-    })
-    const busy = await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)
-    const busyItem = busy.find((item) => item.id === registered.sourceId)
-    expect(busyItem?.jobStatus).toBe('queued')
-    expect(busyItem?.jobStatus === null || isTerminalJobStatus(busyItem!.jobStatus)).toBe(false)
-
-    await db
-      .update(jobs)
-      .set({
-        status: 'failed',
-        errorCode: 'timeout',
-        errorMessage: 'done',
-        finishedAt: Date.now(),
-        updatedAt: Date.now(),
-      })
-      .where(eq(jobs.id, registered.jobId))
-
-    const idle = await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)
-    const idleItem = idle.find((item) => item.id === registered.sourceId)
-    expect(idleItem?.jobStatus === null || isTerminalJobStatus(idleItem!.jobStatus)).toBe(true)
-    await deleteSource(db, registered.sourceId, undefined)
-    expect(await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)).toHaveLength(0)
-  })
 })

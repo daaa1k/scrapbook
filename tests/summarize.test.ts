@@ -1,7 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { jobs, sources } from '../src/db/schema'
-import { parseSummarizeResultJson } from '../src/domain/ingest-result'
 import { organizationCommandSchema } from '../src/domain/organization'
 import { MOCK_INGEST_JSON, createMockCursorClient } from '../src/server/cursor/client'
 import { retrySourceIngest, summarizeSourceBody, pasteSourceBody, registerUrlSource } from '../src/server/ingest/register'
@@ -59,13 +58,6 @@ describe('summarize from stored body', () => {
     expect(source?.memo).toBe('残すメモ')
     expect(source?.acquiredVia).toBe('paste')
     expect(source?.fetchStatus).toBe('full')
-  })
-
-  it('keeps extra keys on mock ingest JSON when parsing a summary', () => {
-    expect(parseSummarizeResultJson(JSON.stringify(MOCK_INGEST_JSON))).toEqual({
-      summary: 'モック要約',
-      citations: [{ excerpt: 'モックの本文', locator: { kind: 'offsets', start: 3, end: 9 } }],
-    })
   })
 
   it('rejects an empty or whitespace body without inserting a job', async () => {

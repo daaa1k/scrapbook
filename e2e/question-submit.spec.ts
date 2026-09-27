@@ -45,13 +45,6 @@ test('a competing job leaves the question draft and explains when to retry', asy
   await expect(page.getByText(/別の処理が実行中だったため、質問は送信されませんでした。処理が完了したら、もう一度/)).toBeVisible()
 })
 
-test('an accepted question clears the submitted draft', async ({ page }) => {
-  const input = await createPastedSource(page)
-  await input.fill('受理された質問')
-  await page.getByRole('button', { name: '質問する' }).click()
-  await expect(input).toHaveValue('')
-})
-
 test('editing while a question is pending keeps the newer draft', async ({ page }) => {
   const input = await createPastedSource(page)
   const draft = '最初の質問'

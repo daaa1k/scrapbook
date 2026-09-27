@@ -21,8 +21,9 @@ describe('source search', () => {
     const apple = await pasteSourceBody(db, { title: 'リンゴの記事', body: '赤い果物の話', notebook: notebookId })
     const orange = await pasteSourceBody(db, { title: 'ミカン便り', body: 'オレンジ色の果物', notebook: notebookId })
     const other = await pasteSourceBody(db, { title: '無関係', body: '天気の話', notebook: notebookId })
+    const literalWildcards = await pasteSourceBody(db, { title: '100%保証', body: 'a_b の例', notebook: notebookId })
     const tiedAt = 1_700_000_000_000
-    for (const id of [apple.sourceId, orange.sourceId, other.sourceId]) {
+    for (const id of [apple.sourceId, orange.sourceId, other.sourceId, literalWildcards.sourceId]) {
       await db.update(sources).set({ createdAt: tiedAt }).where(eq(sources.id, id))
     }
 
@@ -33,12 +34,14 @@ describe('source search', () => {
     expect(byBody.map((row) => row.title)).toEqual(['ミカン便り'])
 
     const empty = await listSourceViews(db, EMPTY_SOURCE_LIST_FILTER)
-    expect(empty.map((row) => row.title)).toEqual(['無関係', 'ミカン便り', 'リンゴの記事'])
+    expect(empty.map((row) => row.title)).toEqual(['100%保証', '無関係', 'ミカン便り', 'リンゴの記事'])
 
     const none = await listSourceViews(db, { q: 'バナナ', notebookId: null, tagName: null })
     expect(none).toHaveLength(0)
 
     const wildcard = await listSourceViews(db, { q: '%', notebookId: null, tagName: null })
-    expect(wildcard).toHaveLength(0)
+    expect(wildcard.map((row) => row.id)).toEqual([literalWildcards.sourceId])
+    const underscore = await listSourceViews(db, { q: '_', notebookId: null, tagName: null })
+    expect(underscore.map((row) => row.id)).toEqual([literalWildcards.sourceId])
   })
 })
