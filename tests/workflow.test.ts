@@ -12,11 +12,15 @@ import { createTestDb } from './helpers/db'
 import { seedNotebook } from './helpers/notebook'
 
 describe('ingest workflow', () => {
-  function replayDbSteps(names: readonly string[]): IngestStep {
+  function replayDbSteps(names: readonly string[], snapshot?: () => Promise<unknown>): IngestStep {
     return {
       do: async (name, callback) => {
         const result = await callback()
-        if (names.includes(name)) await callback()
+        if (names.includes(name)) {
+          const before = await snapshot?.()
+          await callback()
+          if (snapshot) expect(await snapshot()).toEqual(before)
+        }
         return result
       },
       sleep: async () => {},
@@ -33,10 +37,21 @@ describe('ingest workflow', () => {
     await runIngestWorkflow({
       params: { mode: 'fetch', jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/replay' },
       db,
-      step: replayDbSteps([
-        'queued-to-starting', 'save-cursor-ids', 'starting-to-waiting',
-        'waiting-to-persisting', 'persisting-to-succeeded',
-      ]),
+      step: replayDbSteps(
+        [
+          'queued-to-starting', 'save-cursor-ids', 'starting-to-waiting',
+          'waiting-to-persisting', 'persisting-to-succeeded',
+        ],
+        async () => {
+          const currentJob = (await db.select().from(jobs).where(eq(jobs.id, registered.jobId)))[0]
+          const currentRuns = await db.select().from(cursorRuns).where(eq(cursorRuns.jobId, registered.jobId))
+          return {
+            startedAt: currentJob?.startedAt,
+            finishedAt: currentJob?.finishedAt,
+            runCreatedAt: currentRuns.map((run) => run.createdAt),
+          }
+        },
+      ),
       cursor: createMockCursorClient(),
       maxPolls: 1,
       pollSleep: 0,
@@ -46,10 +61,7 @@ describe('ingest workflow', () => {
     const job = (await db.select().from(jobs).where(eq(jobs.id, registered.jobId)))[0]
     const runs = await db.select().from(cursorRuns).where(eq(cursorRuns.jobId, registered.jobId))
     expect(job?.status).toBe('succeeded')
-    expect(job?.startedAt).toBe(100)
-    expect(job?.finishedAt).toBe(112)
     expect(runs).toHaveLength(1)
-    expect(runs[0]?.createdAt).toBe(104)
   })
 
   it('replays fail-run without changing the recorded failure', async () => {
@@ -62,7 +74,10 @@ describe('ingest workflow', () => {
     await runIngestWorkflow({
       params: { mode: 'fetch', jobId: registered.jobId, sourceId: registered.sourceId, url: 'https://example.com/replay-fail' },
       db,
-      step: replayDbSteps(['fail-run']),
+      step: replayDbSteps(['fail-run'], async () => {
+        const currentJob = (await db.select().from(jobs).where(eq(jobs.id, registered.jobId)))[0]
+        return { finishedAt: currentJob?.finishedAt }
+      }),
       cursor: createMockCursorClient({ runStatus: 'ERROR' }),
       maxPolls: 1,
       pollSleep: 0,
@@ -71,7 +86,6 @@ describe('ingest workflow', () => {
     const job = (await db.select().from(jobs).where(eq(jobs.id, registered.jobId)))[0]
     expect(job?.status).toBe('failed')
     expect(job?.errorCode).toBe('cursor_run_failed')
-    expect(job?.finishedAt).toBe(105)
   })
 
   it('rejects a different failure already recorded before fail-run', async () => {
