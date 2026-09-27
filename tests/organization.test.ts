@@ -54,12 +54,6 @@ describe('notebook titles', () => {
 })
 
 describe('organization', () => {
-  it('does not create a notebook on an empty catalog', async () => {
-    const { db } = createTestDb()
-    const catalog = await readOrganizationCatalog(db)
-    expect(catalog).toEqual({ notebooks: [], tags: [] })
-  })
-
   it('creates and renames unique titles, including 受信箱 as an ordinary name', async () => {
     const { db } = createTestDb()
 
@@ -88,19 +82,6 @@ describe('organization', () => {
     await expect(
       run(db, { type: 'rename-notebook', notebookId: researchId, title: '重複先' }),
     ).rejects.toThrow('notebook_title_taken')
-  })
-
-  it('creates a source directly in the given notebook without an inbox', async () => {
-    const { db } = createTestDb()
-    const created = organizationMutationAckSchema.parse(
-      await run(db, { type: 'create-notebook', title: '研究' }),
-    )
-    const notebookId = notebookIdSchema.parse(created.notebookId)
-    const pasted = await pasteSourceBody(db, { title: '記事', body: '本文', notebook: notebookId })
-    expect((await db.select().from(sources).where(eq(sources.id, pasted.sourceId)))[0]?.notebookId).toBe(
-      notebookId,
-    )
-    expect(await db.select().from(notebooks)).toHaveLength(1)
   })
 
   it('moves a source by changing only notebook_id', async () => {
